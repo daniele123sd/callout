@@ -16,7 +16,7 @@ import {
 } from './server/security.mjs';
 import {
   connectDatabase, createPost, createReport, createUser, databaseMode, deletePost,
-  findUserByEmail, findUserByGoogleId, findUserById, publicUser, updatePost, updateUser
+  findUserByEmail, findUserByGoogleId, findUserById, listPosts, publicUser, updatePost, updateUser
 } from './server/repository.mjs';
 
 dotenv.config();
@@ -187,6 +187,9 @@ app.patch('/api/profile', requireAuth, validate(schemas.profile), async (req, re
   try { res.json({ user: publicUser(await updateUser(req.userId, req.body)) }); } catch (error) { next(error); }
 });
 
+app.get('/api/posts', async (_req, res, next) => {
+  try { res.json({ posts: await listPosts() }); } catch (error) { next(error); }
+});
 app.post('/api/posts', requireAuth, validate(schemas.post), async (req, res, next) => {
   try { res.status(201).json({ post: await createPost(req.userId, req.body) }); } catch (error) { next(error); }
 });

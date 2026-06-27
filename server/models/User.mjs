@@ -9,10 +9,22 @@ const socialLinksSchema = new mongoose.Schema({
   custom: { type: String, default: '' }
 }, { _id: false });
 
+const preferencesSchema = new mongoose.Schema({
+  theme: { type: String, enum: ['light', 'dark', 'system'], default: 'light' },
+  notifications: {
+    likes: { type: Boolean, default: true },
+    comments: { type: Boolean, default: true },
+    guildInvites: { type: Boolean, default: true }
+  },
+  directMessages: { type: String, enum: ['everyone', 'guilds', 'nobody'], default: 'everyone' },
+  textSize: { type: String, enum: ['small', 'medium', 'large'], default: 'medium' }
+}, { _id: false });
+
 const userSchema = new mongoose.Schema({
   googleId: { type: String, sparse: true, index: true },
   email: { type: String, required: true, unique: true, lowercase: true, trim: true },
   displayName: { type: String, required: true, trim: true },
+  handle: { type: String, unique: true, sparse: true, lowercase: true, trim: true, match: /^@[a-z0-9_]{3,30}$/ },
   avatarUrl: { type: String, default: '' },
   vibeScore: { type: Number, default: 0, min: 0 },
   bio: { type: String, default: '', maxlength: 200 },
@@ -21,6 +33,7 @@ const userSchema = new mongoose.Schema({
   socialLinks: { type: socialLinksSchema, default: () => ({}) },
   pronouns: { type: String, default: '', maxlength: 40 },
   status: { type: String, enum: ['online', 'idle', 'dnd', 'invisible'], default: 'online' },
+  preferences: { type: preferencesSchema, default: () => ({}) },
   password: { type: String, select: false },
   refreshTokenHash: { type: String, select: false, default: '' },
   passwordResetHash: { type: String, select: false, default: '' },

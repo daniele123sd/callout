@@ -68,9 +68,14 @@ export async function findUserById(id, secrets = false) {
 }
 
 export async function createUser(values) {
-  if (connected) return User.create(values);
+  const userValues = { ...values };
+  if (!userValues.handle) {
+    const base = String(userValues.displayName || 'member').toLowerCase().replace(/[^a-z0-9_]/g, '').slice(0, 21) || 'member';
+    userValues.handle = `@${base}_${crypto.randomBytes(3).toString('hex')}`;
+  }
+  if (connected) return User.create(userValues);
   const now = new Date();
-  const user = { id: crypto.randomUUID(), vibeScore: 0, avatarUrl: '', bio: '', bannerUrl: '', themeColor: '#ff4713', socialLinks: {}, pronouns: '', status: 'online', createdAt: now, updatedAt: now, ...values };
+  const user = { id: crypto.randomUUID(), vibeScore: 0, avatarUrl: '', bio: '', bannerUrl: '', themeColor: '#ff4713', socialLinks: {}, pronouns: '', status: 'online', preferences: {}, createdAt: now, updatedAt: now, ...userValues };
   memoryUsers.set(user.id, user);
   return user;
 }
@@ -88,6 +93,22 @@ export async function createPost(authorId, values) {
   const post = { id: crypto.randomUUID(), author: String(authorId), alrightVotes: 0, cringeVotes: 0, createdAt: new Date(), updatedAt: new Date(), ...values };
   memoryPosts.set(post.id, post);
   return post;
+}
+
+export async function listPosts() {
+  if (connected) {
+    const posts = await Post.find().sort({ createdAt: -1 }).populate('author', 'displayName handle avatarUrl').lean().exec();
+    return posts.map(post => ({
+      ...post,
+      id: String(post._id),
+      _id: undefined,
+      author: post.author ? { ...post.author, id: String(post.author._id), _id: undefined } : null
+    }));
+  }
+  return [...memoryPosts.values()].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)).map(post => ({
+    ...post,
+    author: publicUser(memoryUsers.get(String(post.author)))
+  }));
 }
 
 export async function updatePost(postId, authorId, values) {

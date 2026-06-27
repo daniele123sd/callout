@@ -41,6 +41,7 @@ export const schemas = {
   passwordReset: Joi.object({ email: Joi.string().email().max(254).lowercase().required(), token: Joi.string().min(32).max(512).required(), password: Joi.string().min(8).max(128).required() }),
   profile: Joi.object({
     displayName: plain(40).required(),
+    handle: Joi.string().lowercase().pattern(/^@[a-z0-9_]{3,30}$/).required(),
     bio: plain(200).allow(''),
     bannerUrl: optionalBanner,
     avatarUrl: optionalUrl,
@@ -50,6 +51,12 @@ export const schemas = {
     socialLinks: Joi.object({
       twitter: plain(2048).allow(''), instagram: plain(2048).allow(''), discord: plain(100).allow(''),
       youtube: plain(2048).allow(''), twitch: plain(2048).allow(''), custom: plain(2048).allow('')
+    }).required(),
+    preferences: Joi.object({
+      theme: Joi.string().valid('light', 'dark', 'system').required(),
+      notifications: Joi.object({ likes: Joi.boolean().required(), comments: Joi.boolean().required(), guildInvites: Joi.boolean().required() }).required(),
+      directMessages: Joi.string().valid('everyone', 'guilds', 'nobody').required(),
+      textSize: Joi.string().valid('small', 'medium', 'large').required()
     }).required()
   }),
   post: Joi.object({ content: plain(180).required(), category: Joi.string().valid('Movies', 'Music', 'Entertainment', 'Games', 'Life').required() }),

@@ -5,8 +5,8 @@ const defaultState = {
   guilds: [],
   savedPostIds: [],
   profile: {
-    displayName: 'Bruce Wayne',
-    handle: '@storyseeker',
+    displayName: 'Guest',
+    handle: '@guest',
     bio: '',
     avatarUrl: '',
     bannerUrl: '',
@@ -14,7 +14,7 @@ const defaultState = {
     socialLinks: { twitter: '', instagram: '', discord: '', youtube: '', twitch: '', custom: '' },
     pronouns: '',
     status: 'online',
-    vibeScore: 824
+    vibeScore: 0
   },
   settings: {
     appearanceVersion: 2,
@@ -50,7 +50,7 @@ const state = {
     notifications: { ...defaultState.settings.notifications, ...(storedState?.settings?.notifications || {}) },
     blockedUsers: Array.isArray(storedState?.settings?.blockedUsers) ? storedState.settings.blockedUsers : []
   },
-  posts: Array.isArray(storedState?.posts) ? storedState.posts.map(post => ({ ...post, authorId: post.authorId || 'local-user', comments: Array.isArray(post.comments) ? post.comments : [] })) : [],
+  posts: Array.isArray(storedState?.posts) ? storedState.posts.map(post => ({ ...post, id: String(post.id), authorId: String(post.authorId || 'local-user'), comments: Array.isArray(post.comments) ? post.comments : [] })) : [],
   guilds: Array.isArray(storedState?.guilds) ? storedState.guilds : [],
   savedPostIds: Array.isArray(storedState?.savedPostIds) ? storedState.savedPostIds : []
 };
@@ -115,6 +115,7 @@ function applySessionUser(user) {
   state.profile = {
     ...state.profile,
     displayName: user.displayName || state.profile.displayName,
+    handle: user.handle || state.profile.handle,
     avatarUrl: user.avatarUrl || state.profile.avatarUrl,
     vibeScore: Number(user.vibeScore ?? state.profile.vibeScore),
     bio: user.bio ?? state.profile.bio,
@@ -124,12 +125,50 @@ function applySessionUser(user) {
     pronouns: user.pronouns ?? state.profile.pronouns,
     status: user.status || state.profile.status
   };
+  if (user.preferences) {
+    state.settings = {
+      ...state.settings,
+      ...user.preferences,
+      notifications: { ...state.settings.notifications, ...(user.preferences.notifications || {}) }
+    };
+  }
   persist();
   document.querySelector('#headerName').textContent = state.profile.displayName;
 }
 
 async function hydrateSession() {
   try { const payload = await apiFetch('/api/auth/me', {}, false); applySessionUser(payload.user); if (currentRoute() === 'profile' || currentRoute() === 'auth') renderRoute(); } catch { sessionUser = null; }
+}
+
+async function hydratePosts() {
+  try {
+    const payload = await apiFetch('/api/posts', {}, false);
+    state.posts = (payload.posts || []).map(post => {
+      const id = String(post.id || post._id);
+      return {
+        id,
+        databaseId: id,
+        authorId: String(post.author?.id || post.author?._id || post.author || ''),
+        authorHandle: post.author?.handle || '@member',
+        authorName: post.author?.displayName || 'Callout member',
+        authorAvatarUrl: post.author?.avatarUrl || '',
+        text: String(post.content || '').toUpperCase(),
+        category: post.category,
+        alrightVotes: Number(post.alrightVotes || 0),
+        cringeVotes: Number(post.cringeVotes || 0),
+        userVote: null,
+        comments: [],
+        createdAt: new Date(post.createdAt || Date.now()).getTime()
+      };
+    });
+    persist();
+    renderRoute();
+  } catch (error) { console.error('Unable to load posts:', error); }
+}
+
+async function hydrateApp() {
+  await hydrateSession();
+  await hydratePosts();
 }
 
 function currentRoute() {
@@ -148,6 +187,11 @@ function currentUserId() {
 
 function avatarMarkup(className = '') {
   return state.profile.avatarUrl ? `<span class="avatar ${className}"><img src="${escapeHtml(state.profile.avatarUrl)}" alt="" /></span>` : `<span class="avatar ${className}">🦸🏻</span>`;
+}
+
+function postAvatarMarkup(post) {
+  if (post.authorAvatarUrl) return `<span class="avatar take-avatar"><img src="${escapeHtml(post.authorAvatarUrl)}" alt="" /></span>`;
+  return `<span class="avatar take-avatar">${escapeHtml((post.authorName || 'C').charAt(0).toUpperCase())}</span>`;
 }
 
 function pageHeader(kicker, title, description, action = '') {
@@ -182,9 +226,9 @@ function postTemplate(post, detail = false) {
   const commentCount = countComments(post.comments || []);
   return `<article class="take-card ${detail ? 'take-card-detail' : 'take-card-feed'}" data-post-id="${post.id}">
     <div class="take-top">
-      ${avatarMarkup('take-avatar')}
+      ${postAvatarMarkup(post)}
       <div class="take-content" ${detail ? '' : `data-open-take="${post.id}" role="link" tabindex="0" aria-label="Open take: ${escapeHtml(post.text)}"`}>
-        <div class="take-byline"><strong>${escapeHtml(post.authorHandle || state.profile.handle)}</strong><small>Just now in ${escapeHtml(post.category)}</small></div>
+        <div class="take-byline"><strong>${escapeHtml(post.authorHandle || '@member')}</strong><small>${timeLabel(post.createdAt || Date.now())} in ${escapeHtml(post.category)}</small></div>
         <h2>${escapeHtml(post.text)}</h2>
       </div>
       <button class="icon-button save-button ${isSaved ? 'saved' : ''}" type="button" data-save-post="${post.id}" aria-label="${isSaved ? 'Remove from saved' : 'Save take'}"><svg><use href="#i-bookmark"></use></svg></button>
@@ -244,8 +288,8 @@ function commentThreadDetail(post) {
 }
 
 function takeDetailView() {
-  const id = Number(location.hash.split('/')[1]);
-  const post = state.posts.find(item => item.id === id);
+  const id = decodeURIComponent(location.hash.split('/')[1] || '');
+  const post = state.posts.find(item => String(item.id) === id);
   if (!post) return `${pageHeader('TAKE', 'Take not found', 'This take may have been removed.')}<button class="quiet-action" type="button" data-back-feed>← Back to feed</button>`;
   return `<div class="detail-back-row"><button type="button" data-back-feed>← Back to feed</button><span>TAKE DETAIL</span></div>${postTemplate(post, true)}${commentThreadDetail(post)}`;
 }
@@ -402,7 +446,7 @@ function renderFilteredPosts(category = 'All', search = '') {
 function bindPostInteractions() {
   document.querySelectorAll('[data-vote]').forEach(button => button.addEventListener('click', () => {
     const card = button.closest('[data-post-id]');
-    const post = state.posts.find(item => item.id === Number(card.dataset.postId));
+    const post = state.posts.find(item => String(item.id) === card.dataset.postId);
     if (!post) return;
     const nextVote = button.dataset.vote;
     if (post.userVote === nextVote) return showToast('You already called this one.');
@@ -416,7 +460,7 @@ function bindPostInteractions() {
     showToast(nextVote === 'alright' ? 'You called it Alright.' : 'You called it Cringe.');
   }));
   document.querySelectorAll('[data-save-post]').forEach(button => button.addEventListener('click', () => {
-    const id = Number(button.dataset.savePost);
+    const id = button.dataset.savePost;
     const index = state.savedPostIds.indexOf(id);
     if (index >= 0) state.savedPostIds.splice(index, 1); else state.savedPostIds.push(id);
     persist(); renderRoute(); showToast(index >= 0 ? 'Removed from saved.' : 'Saved for later.');
@@ -426,12 +470,12 @@ function bindPostInteractions() {
     element.addEventListener('click', open);
     element.addEventListener('keydown', event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); open(); } });
   });
-  document.querySelectorAll('[data-post-menu]').forEach(button => button.addEventListener('click', event => { event.stopPropagation(); openPostMenu(Number(button.dataset.postMenu)); }));
+  document.querySelectorAll('[data-post-menu]').forEach(button => button.addEventListener('click', event => { event.stopPropagation(); openPostMenu(button.dataset.postMenu); }));
 }
 
 function bindViewInteractions(route) {
   bindPostInteractions();
-  document.querySelectorAll('[data-open-composer]').forEach(button => button.addEventListener('click', () => composer.showModal()));
+  document.querySelectorAll('[data-open-composer]').forEach(button => button.addEventListener('click', openComposerForUser));
   document.querySelectorAll('[data-create-guild]').forEach(button => button.addEventListener('click', () => guildComposer.showModal()));
   document.querySelectorAll('.segmented-control button').forEach(button => button.addEventListener('click', () => {
     button.parentElement.querySelectorAll('button').forEach(item => item.classList.remove('active'));
@@ -497,7 +541,7 @@ function showActionDialog(content) {
 }
 
 function openPostMenu(id) {
-  const post = state.posts.find(item => item.id === id);
+  const post = state.posts.find(item => String(item.id) === String(id));
   if (!post) return;
   const isAuthor = post.authorId === currentUserId();
   showActionDialog(actionDialogShell('POST OPTIONS', 'What would you like to do?', `<div class="post-menu-list">${isAuthor ? '<button type="button" data-edit-post>✎ <span><strong>Edit Post</strong><small>Update the wording or category</small></span></button><button class="danger" type="button" data-delete-post>⌫ <span><strong>Delete Post</strong><small>Remove this take permanently</small></span></button>' : ''}<button type="button" data-share-post>↗ <span><strong>Share</strong><small>Copy a direct link to this take</small></span></button>${isAuthor ? '' : '<button type="button" data-report-post>⚑ <span><strong>Report</strong><small>Send this take for review</small></span></button>'}</div>`));
@@ -581,7 +625,7 @@ async function loginUser(event) {
   const form = event.currentTarget;
   try {
     const payload = await apiFetch('/api/auth/login', { method: 'POST', body: JSON.stringify({ email: sanitizeInput(form.elements.email.value), password: form.elements.password.value }) }, false);
-    applySessionUser(payload.user); renderRoute(); showToast('Signed in securely.');
+    applySessionUser(payload.user); navigate('home'); await hydratePosts(); showToast('Signed in securely.');
   } catch (error) { showToast(error.message); }
 }
 
@@ -590,7 +634,7 @@ async function signupUser(event) {
   const form = event.currentTarget;
   try {
     const payload = await apiFetch('/api/auth/signup', { method: 'POST', body: JSON.stringify({ displayName: sanitizeInput(form.elements.displayName.value), email: sanitizeInput(form.elements.email.value), password: form.elements.password.value, ageConfirmed: form.elements.ageConfirmed.checked }) }, false);
-    applySessionUser(payload.user); renderRoute(); showToast('Account created.');
+    applySessionUser(payload.user); navigate('settings'); showToast('Account created. Customize your profile.');
   } catch (error) { showToast(error.message); }
 }
 
@@ -616,12 +660,14 @@ async function confirmPasswordReset(event) {
 
 async function logoutUser() {
   try { await apiFetch('/api/auth/logout', { method: 'POST' }, false); } catch { /* clear local session regardless */ }
-  sessionUser = null; renderRoute(); showToast('Signed out.');
+  sessionUser = null;
+  state.profile = { ...defaultState.profile, socialLinks: { ...defaultState.profile.socialLinks } };
+  persist(); renderRoute(); showToast('Signed out.');
 }
 
 function activeTake() {
-  const id = Number(location.hash.split('/')[1]);
-  return state.posts.find(post => post.id === id);
+  const id = decodeURIComponent(location.hash.split('/')[1] || '');
+  return state.posts.find(post => String(post.id) === id);
 }
 
 function findComment(comments, id) {
@@ -697,7 +743,7 @@ async function saveSettings(event) {
   state.profile = {
     ...state.profile,
     displayName: sanitizeInput(formData.get('displayName')),
-    handle: sanitizeInput(formData.get('handle')),
+    handle: sanitizeInput(formData.get('handle')).toLowerCase().replace(/\s+/g, '_'),
     bio: sanitizeInput(formData.get('bio')),
     bannerUrl: formData.get('bannerUrl') || '',
     themeColor: formData.get('themeColor'),
@@ -709,9 +755,10 @@ async function saveSettings(event) {
     }
   };
   if (!state.profile.handle.startsWith('@')) state.profile.handle = `@${state.profile.handle}`;
+  state.profile.handle = `@${state.profile.handle.slice(1).replace(/[^a-z0-9_]/g, '').slice(0, 29)}`;
   try {
     if (sessionUser) {
-      const payload = await apiFetch('/api/profile', { method: 'PATCH', body: JSON.stringify({ displayName: state.profile.displayName, avatarUrl: state.profile.avatarUrl, bio: state.profile.bio, bannerUrl: state.profile.bannerUrl, themeColor: state.profile.themeColor, socialLinks: state.profile.socialLinks, pronouns: state.profile.pronouns, status: state.profile.status }) });
+      const payload = await apiFetch('/api/profile', { method: 'PATCH', body: JSON.stringify({ displayName: state.profile.displayName, handle: state.profile.handle, avatarUrl: state.profile.avatarUrl, bio: state.profile.bio, bannerUrl: state.profile.bannerUrl, themeColor: state.profile.themeColor, socialLinks: state.profile.socialLinks, pronouns: state.profile.pronouns, status: state.profile.status, preferences: { theme: state.settings.theme, notifications: state.settings.notifications, directMessages: state.settings.directMessages, textSize: state.settings.textSize } }) });
       applySessionUser(payload.user);
     }
     persist(); applyDisplaySettings(); document.querySelector('#headerName').textContent = state.profile.displayName; renderRoute(); showToast('Settings saved.');
@@ -730,19 +777,27 @@ document.querySelectorAll('[data-route]').forEach(link => link.addEventListener(
 document.querySelectorAll('[data-route-button]').forEach(button => button.addEventListener('click', () => navigate(button.dataset.routeButton)));
 document.querySelector('#profileButton').addEventListener('click', () => navigate('profile'));
 document.querySelector('#mobileMenu').addEventListener('click', () => document.querySelector('#sidebar').classList.toggle('open'));
-document.querySelector('#openComposer').addEventListener('click', () => composer.showModal());
+function openComposerForUser() {
+  if (!sessionUser) { navigate('auth'); return showToast('Create an account or sign in to post a take.'); }
+  composer.showModal();
+}
+
+document.querySelector('#openComposer').addEventListener('click', openComposerForUser);
 document.querySelector('[data-close-composer]').addEventListener('click', () => composer.close());
 document.querySelector('[data-close-guild]').addEventListener('click', () => guildComposer.close());
 document.querySelector('#takeText').addEventListener('input', event => document.querySelector('#charCount').textContent = `${event.target.value.length} / 180`);
 document.querySelector('#composerForm').addEventListener('submit', async event => {
   event.preventDefault();
+  if (!sessionUser) { composer.close(); navigate('auth'); return showToast('Sign in to publish a take.'); }
   const input = document.querySelector('#takeText');
   const text = sanitizeInput(input.value);
   if (!text) return;
   const category = document.querySelector('#takeCategory').value;
-  const post = { id: Date.now(), authorId: currentUserId(), authorHandle: state.profile.handle, text: text.toUpperCase(), category, alrightVotes: 0, cringeVotes: 0, userVote: null, comments: [] };
+  const post = { id: String(Date.now()), authorId: currentUserId(), authorHandle: state.profile.handle, authorName: state.profile.displayName, authorAvatarUrl: state.profile.avatarUrl, text: text.toUpperCase(), category, alrightVotes: 0, cringeVotes: 0, userVote: null, comments: [], createdAt: Date.now() };
   try {
-    if (sessionUser) { const payload = await apiFetch('/api/posts', { method: 'POST', body: JSON.stringify({ content: text, category }) }); post.databaseId = String(payload.post._id || payload.post.id); }
+    const payload = await apiFetch('/api/posts', { method: 'POST', body: JSON.stringify({ content: text, category }) });
+    post.databaseId = String(payload.post._id || payload.post.id);
+    post.id = post.databaseId;
   } catch (error) { return showToast(error.message); }
   state.posts.unshift(post);
   persist();
@@ -788,5 +843,5 @@ document.querySelector('#headerName').textContent = state.profile.displayName;
 applyDisplaySettings();
 if (!location.hash) history.replaceState(null, '', '#home');
 renderRoute();
-hydrateSession();
+hydrateApp();
 loadProductionAds();
