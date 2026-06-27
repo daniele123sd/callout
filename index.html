@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="Callout is the place to post your boldest takes, vote Alright or Cringe, and build your vibe." />
+    <meta name="theme-color" content="#ff4713" />
+    <meta name="adsense-client" content="ca-pub-XXXXXXXXXXXXXXXX" />
+    <title>Callout — Put your take on the line</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Inter:wght@500;600;700;800&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <svg class="svg-sprite" aria-hidden="true">
+      <symbol id="i-home" viewBox="0 0 24 24"><path fill="currentColor" d="M3 11.5 12 4l9 7.5v8a1 1 0 0 1-1 1h-5.5v-6h-5v6H4a1 1 0 0 1-1-1z"/></symbol>
+      <symbol id="i-trend" viewBox="0 0 24 24"><path fill="currentColor" d="m13.5 2-9 12h6L9.5 22l10-13h-6z"/></symbol>
+      <symbol id="i-users" viewBox="0 0 24 24"><circle cx="9" cy="8" r="4" fill="none"/><path d="M2.5 21v-3.5c0-3 2.4-5.5 5.5-5.5h2c3 0 5.5 2.4 5.5 5.5V21M16 4.5a4 4 0 0 1 0 7.5m1 1c2.6.5 4.5 2.8 4.5 5.5V21" fill="none" stroke="currentColor" stroke-width="2"/></symbol>
+      <symbol id="i-bell" viewBox="0 0 24 24"><path d="M5 17h14l-1.7-2.2V10a5.3 5.3 0 0 0-10.6 0v4.8z" fill="none" stroke="currentColor" stroke-width="2"/><path d="M10 20h4" fill="none" stroke="currentColor" stroke-width="2"/></symbol>
+      <symbol id="i-bookmark" viewBox="0 0 24 24"><path d="M6 3h12v18l-6-4-6 4z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></symbol>
+      <symbol id="i-search" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="m15.5 15.5 5 5" fill="none" stroke="currentColor" stroke-width="2"/></symbol>
+      <symbol id="i-message" viewBox="0 0 24 24"><path d="M4 5h16v12H8l-4 3z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></symbol>
+      <symbol id="i-trophy" viewBox="0 0 24 24"><path d="M8 4h8v5a4 4 0 0 1-8 0zM8 6H4v2a4 4 0 0 0 4 4m8-6h4v2a4 4 0 0 1-4 4M12 13v4m-4 3h8" fill="none" stroke="currentColor" stroke-width="2"/></symbol>
+      <symbol id="i-more" viewBox="0 0 24 24"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></symbol>
+      <symbol id="i-edit" viewBox="0 0 24 24"><path d="m4 16-1 5 5-1L20 8l-4-4zM14 6l4 4" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></symbol>
+      <symbol id="i-settings" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="2"/><path d="M19 13.5v-3l-2.1-.6a7 7 0 0 0-.8-1.8l1.1-1.9-2.1-2.1-1.9 1.1a7 7 0 0 0-1.8-.8L10.5 2h-3l-.6 2.1a7 7 0 0 0-1.8.8L3.2 3.8 1.1 5.9l1.1 1.9a7 7 0 0 0-.8 1.8L0 10.5v3l2.1.6a7 7 0 0 0 .8 1.8l-1.1 1.9 2.1 2.1 1.9-1.1a7 7 0 0 0 1.8.8l.6 2.1h3l.6-2.1a7 7 0 0 0 1.8-.8l1.9 1.1 2.1-2.1-1.1-1.9a7 7 0 0 0 .8-1.8z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" transform="translate(2 0) scale(.84 1)"/></symbol>
+    </svg>
+
+    <div class="page-shell">
+      <header class="topbar">
+        <a href="#home" class="brand" data-route="home" aria-label="Callout home"><span>callout</span><span class="brand-flame">🔥</span></a>
+        <div class="top-search">
+          <svg><use href="#i-search"></use></svg>
+          <input id="globalSearch" type="search" placeholder="Search Callout..." aria-label="Search Callout" />
+          <kbd>⌘ K</kbd>
+        </div>
+        <button class="profile-button" id="profileButton" type="button" aria-label="Open profile">
+          <span class="avatar avatar-bruce">🦸🏻</span>
+          <span class="profile-copy"><strong id="headerName">Bruce Wayne</strong><small>@storyseeker</small></span>
+          <span class="chevron">›</span>
+        </button>
+        <button class="mobile-menu" id="mobileMenu" type="button" aria-label="Open navigation">☰</button>
+      </header>
+
+      <aside class="sidebar" id="sidebar" aria-label="Primary navigation">
+        <nav class="main-nav">
+          <a class="nav-item active" href="#home" data-route="home"><svg><use href="#i-home"></use></svg><span>Home</span></a>
+          <a class="nav-item" href="#trending" data-route="trending"><svg><use href="#i-trend"></use></svg><span>Trending</span></a>
+          <a class="nav-item" href="#guilds" data-route="guilds"><svg><use href="#i-users"></use></svg><span>Guilds</span></a>
+          <a class="nav-item" href="#leaderboards" data-route="leaderboards"><svg><use href="#i-trophy"></use></svg><span>Leaderboards</span></a>
+          <a class="nav-item" href="#notifications" data-route="notifications"><svg><use href="#i-bell"></use></svg><span>Notifications</span><b class="badge" id="notificationBadge" hidden>0</b></a>
+          <a class="nav-item" href="#messages" data-route="messages"><svg><use href="#i-message"></use></svg><span>Messages</span></a>
+          <a class="nav-item" href="#saved" data-route="saved"><svg><use href="#i-bookmark"></use></svg><span>Saved</span></a>
+          <a class="nav-item" href="#settings" data-route="settings"><svg><use href="#i-settings"></use></svg><span>Settings</span></a>
+          <a class="nav-item" href="#auth" data-route="auth"><svg><use href="#i-users"></use></svg><span>Sign in</span></a>
+        </nav>
+        <button class="post-button" id="openComposer" type="button"><span>＋</span> Post Take</button>
+
+        <section class="vibe-card" aria-label="Your vibe score">
+          <p class="eyebrow">YOUR VIBE</p>
+          <div class="score">824</div>
+          <strong>VIBE SCORE</strong>
+          <div class="score-track" role="progressbar" aria-label="Vibe rank progress" aria-valuenow="82" aria-valuemin="0" aria-valuemax="100"><span></span><i></i></div>
+          <hr />
+          <div class="rank-row"><span>♢</span><strong>Diamond III</strong></div>
+          <p>876 / 1000</p>
+          <a href="#profile" data-route="profile">View progress →</a>
+        </section>
+        <div class="ad-slot ad-sidebar" data-ad-slot="sidebar-rail"><span>ADVERTISEMENT</span><small>160 × 600</small></div>
+      </aside>
+
+      <main class="main-content" id="mainContent" tabindex="-1"></main>
+
+      <aside class="right-rail" id="rightRail">
+        <section class="status-card">
+          <div class="status-top"><span>🔥</span><div><p>YOUR STANDING</p><strong>UNRANKED</strong></div></div>
+          <p class="status-note">Rankings appear after community activity.</p>
+          <button class="text-button" type="button" data-route-button="leaderboards">View leaderboards →</button>
+        </section>
+        <section class="badge-card">
+          <div><p>CRINGE BADGE</p><strong>NONE</strong><span>You’re in the clear 😎</span></div><div class="shield">♢</div>
+        </section>
+        <div class="ad-slot ad-rectangle" data-ad-slot="right-rail"><ins class="adsbygoogle" style="display:block" data-ad-client="ca-pub-XXXXXXXXXXXXXXXX" data-ad-slot="RIGHT_RAIL_SLOT" data-ad-format="rectangle" data-full-width-responsive="true"></ins><span>ADVERTISEMENT</span><small>300 × 250</small></div>
+        <section class="rail-guild-card">
+          <p class="eyebrow">GUILDS</p>
+          <div class="guild-art">⚔</div>
+          <strong>Find your people</strong>
+          <p>Join communities built around shared interests and stronger takes.</p>
+          <button type="button" data-route-button="guilds">View Guilds</button>
+        </section>
+      </aside>
+
+      <footer class="site-footer">
+        <div class="ad-slot footer-ad" data-ad-slot="footer"><ins class="adsbygoogle" style="display:block" data-ad-client="ca-pub-XXXXXXXXXXXXXXXX" data-ad-slot="FOOTER_SLOT" data-ad-format="horizontal" data-full-width-responsive="true"></ins><span>ADVERTISEMENT</span><small>Responsive footer unit</small></div>
+        <div class="footer-bottom"><span>© 2026 Callout</span><nav aria-label="Legal"><a href="/privacy">Privacy Policy</a><a href="/terms">Terms of Service</a><a href="#auth" data-route="auth">Sign in</a></nav><p>Solo project. Do not share sensitive personal information.</p></div>
+      </footer>
+    </div>
+
+    <dialog class="composer" id="composer">
+      <form method="dialog" id="composerForm">
+        <div class="composer-head"><div><span class="brand-mini">callout 🔥</span><h2>Put your take on the line.</h2></div><button type="button" data-close-composer aria-label="Close">×</button></div>
+        <label for="takeText">Your take</label>
+        <textarea id="takeText" maxlength="180" placeholder="Say something worth judging..." required></textarea>
+        <div class="composer-meta"><select id="takeCategory" aria-label="Category"><option>Movies</option><option>Music</option><option>Entertainment</option><option>Games</option><option>Life</option></select><span id="charCount">0 / 180</span></div>
+        <button class="publish-button" value="default" type="submit">Post Take</button>
+      </form>
+    </dialog>
+
+    <dialog class="simple-dialog" id="guildComposer">
+      <form method="dialog" id="guildForm">
+        <div class="dialog-title"><div><span class="section-kicker">NEW GUILD</span><h2>Create a guild</h2></div><button type="button" data-close-guild aria-label="Close">×</button></div>
+        <label for="guildName">Guild name</label><input id="guildName" maxlength="40" required placeholder="Name your community" />
+        <label for="guildDescription">Description</label><textarea id="guildDescription" maxlength="160" required placeholder="What brings this guild together?"></textarea>
+        <button class="primary-action" type="submit">Create Guild</button>
+      </form>
+    </dialog>
+
+    <dialog class="action-dialog" id="actionDialog"><div id="actionDialogContent"></div></dialog>
+
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+    <script src="/vendor/dompurify.min.js"></script>
+    <script src="app.js"></script>
+  </body>
+</html>

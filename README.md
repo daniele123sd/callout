@@ -1,0 +1,56 @@
+# Callout
+
+Callout is an Express-backed social product prototype where people publish takes, vote **Alright** or **Cringe**, build a Vibe Score, customize profiles, join guilds, and participate in nested discussions.
+
+## Run locally
+
+1. Install Node.js 20 or newer.
+2. Run `npm install` (or `pnpm install`).
+3. Copy `.env.example` to `.env` and replace the development secrets.
+4. Run `npm start`.
+5. Open `http://127.0.0.1:4173`.
+
+For Cursor or VS Code preview, start the server first and open `http://localhost:4173`. Do not preview `index.html` directly as a file because authentication, DOMPurify, CSP, and API routes are served by Express.
+
+When `DB_URI` is missing or MongoDB is unavailable, the server uses an in-memory development store so email signup, login, profile writes, and post APIs still work locally. Data in that fallback store resets when the server restarts.
+
+## Google OAuth setup
+
+Create an OAuth 2.0 web application in Google Cloud Console and add this authorized redirect URI for local development:
+
+`http://127.0.0.1:4173/api/auth/google/callback`
+
+Set `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, and `GOOGLE_CALLBACK_URL` in `.env`. Production must use its HTTPS origin and matching callback URL.
+
+## Security architecture
+
+- Joi validation and sanitization on account, profile, post, comment, message, and report inputs
+- DOMPurify sanitization in the browser
+- bcrypt password hashing with 12 salt rounds
+- 15-minute JWT access tokens and rotating 7-day refresh tokens in HTTP-only, SameSite cookies
+- Five authentication attempts per IP per minute
+- Helmet CSP, referrer, and baseline security headers
+- Password reset tokens are hashed before storage
+- MongoDB user, post, and report schemas
+
+## Product areas
+
+- Home, Trending, Guilds, Leaderboards, Notifications, Messages, Saved, Profile, Settings, and Auth
+- Animated Alright/Cringe response meter
+- Dedicated take details with nested Reddit-style comments
+- Discord-style profile customization, Vibe Score, badges, banner, accent color, status, pronouns, and social links
+- Conditional author/non-author post menus with edit, delete, share, and report flows
+- Light, Dark, and System themes plus notification, privacy, and display preferences
+- Privacy Policy and Terms of Service routes
+
+## Advertising integration
+
+AdSense-ready units use `<ins class="adsbygoogle">` and placeholder client/slot values:
+
+- `right-rail` — responsive right-rail rectangle
+- `in-feed` — inserted after every third feed post
+- `footer` — responsive horizontal footer unit
+
+Replace `ca-pub-XXXXXXXXXXXXXXXX` and each placeholder slot value in `index.html` and `app.js` before production deployment.
+
+The AdSense network script is intentionally not requested while the placeholder client ID is present. This prevents development browsers and embedded editor previews from waiting on an invalid advertising request.
