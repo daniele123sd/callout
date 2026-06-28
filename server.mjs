@@ -40,6 +40,7 @@ app.use(helmet({
       styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
       fontSrc: ["'self'", 'https://fonts.gstatic.com'],
       imgSrc: ["'self'", 'data:', 'blob:', 'https:'],
+      mediaSrc: ["'self'", 'data:', 'blob:', 'https:'],
       connectSrc: ["'self'", 'https://accounts.google.com'],
       frameSrc: ["'self'", 'https://accounts.google.com', 'https://googleads.g.doubleclick.net', 'https://tpc.googlesyndication.com'],
       objectSrc: ["'none'"],
@@ -51,8 +52,8 @@ app.use(helmet({
   },
   referrerPolicy: { policy: 'strict-origin-when-cross-origin' }
 }));
-app.use(express.json({ limit: '3mb' }));
-app.use(express.urlencoded({ extended: false, limit: '3mb' }));
+app.use(express.json({ limit: '12mb' }));
+app.use(express.urlencoded({ extended: false, limit: '12mb' }));
 app.use(cookieParser());
 app.use(passport.initialize());
 
@@ -219,6 +220,7 @@ app.post('/api/posts/:id/vote', requireAuth, validate(schemas.vote), async (req,
   try {
     const post = await voteOnPost(req.params.id, req.userId, req.body.value);
     if (!post) return res.status(404).json({ error: 'Post not found.' });
+    if (post.forbidden) return res.status(400).json({ error: 'You cannot rank your own take.' });
     res.json({ post });
   } catch (error) { next(error); }
 });

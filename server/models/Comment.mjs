@@ -5,6 +5,7 @@ const commentSchema = new mongoose.Schema({
   author: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, index: true },
   parent: { type: mongoose.Schema.Types.ObjectId, ref: 'Comment', default: null, index: true },
   text: { type: String, required: true, maxlength: 500 },
+  gifUrl: { type: String, default: '', maxlength: 2800000 },
   upvotes: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }]
 }, { timestamps: true });
 

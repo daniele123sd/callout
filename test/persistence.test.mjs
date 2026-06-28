@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  createComment, createGuild, createMessage, createPost, createUser,
+  createComment, createGuild, createMessage, createPost, createUser, findUserById,
   listComments, listGuilds, listLeaderboard, listMessages, listNotifications,
   listPosts, listSavedPostIds, searchCallout, toggleGuildMembership,
   toggleSavedPost, voteOnPost
@@ -30,9 +30,10 @@ test('votes, comments, saves and notifications persist per account', async () =>
   await toggleSavedPost(reader.id, post.id);
   assert.deepEqual(await listSavedPostIds(reader.id), [post.id]);
   assert.ok((await listNotifications(author.id)).length >= 2);
+  assert.equal((await findUserById(reader.id)).vibeScore, 5);
 });
 
-test('guild membership, leaderboard points, search and messages use shared records', async () => {
+test('guild membership, Cringe ranking, search and messages use shared records', async () => {
   const { author, reader } = await accounts();
   const post = await createPost(author.id, { content: 'Find this callout', category: 'Games' });
   const guild = await createGuild(author.id, { name: `Guild ${post.id.slice(0, 6)}`, description: 'Persistent community' });
@@ -42,8 +43,12 @@ test('guild membership, leaderboard points, search and messages use shared recor
   assert.equal(publicGuild.joined, true);
   assert.equal(publicGuild.memberCount, 2);
 
+  assert.equal((await voteOnPost(post.id, author.id, 'cringe')).forbidden, true);
+  await voteOnPost(post.id, reader.id, 'cringe');
   const ranking = await listLeaderboard();
-  assert.ok(ranking.find(user => user.id === author.id).points >= 10);
+  assert.equal(ranking.find(user => user.id === author.id).cringeScore, 1);
+  assert.ok(ranking.find(user => user.id === author.id).rank >= 1);
+  assert.ok(ranking.find(user => user.id === author.id).cringeBadge.name);
   assert.ok(ranking.some(user => user.id === reader.id));
 
   const search = await searchCallout('Find this');

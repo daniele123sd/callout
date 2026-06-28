@@ -36,11 +36,14 @@
           <div class="global-search-results" id="globalSearchResults" hidden></div>
           <kbd>⌘ K</kbd>
         </div>
-        <button class="profile-button" id="profileButton" type="button" aria-label="Open profile">
-          <span class="avatar avatar-bruce" id="headerAvatar">C</span>
-          <span class="profile-copy"><strong id="headerName">Guest</strong><small id="headerHandle">@guest</small></span>
-          <span class="chevron">›</span>
-        </button>
+        <div class="account-cluster">
+          <button class="profile-button" id="profileButton" type="button" aria-label="Open profile">
+            <span class="avatar avatar-bruce" id="headerAvatar">C</span>
+            <span class="profile-copy"><strong id="headerName">Guest</strong><small><span id="headerHandle">@guest</span><b id="headerVibe">✦ 0</b></small></span>
+          </button>
+          <button class="global-rank-button" id="globalRankButton" type="button" aria-expanded="false" aria-controls="miniLeaderboard"><small>GLOBAL</small><strong id="headerGlobalRank">—</strong></button>
+          <section class="mini-leaderboard" id="miniLeaderboard" hidden aria-label="Global Cringe leaderboard preview"><header><span>🔥 CRINGE LEADERBOARD</span><button type="button" data-route-button="leaderboards">See all</button></header><div id="miniLeaderboardRows"></div></section>
+        </div>
         <button class="mobile-menu" id="mobileMenu" type="button" aria-label="Open navigation">☰</button>
       </header>
 
@@ -60,12 +63,12 @@
 
         <section class="vibe-card" aria-label="Your vibe score">
           <p class="eyebrow">YOUR VIBE</p>
-          <div class="score">824</div>
+          <div class="score" id="sidebarVibeScore">0</div>
           <strong>VIBE SCORE</strong>
-          <div class="score-track" role="progressbar" aria-label="Vibe rank progress" aria-valuenow="82" aria-valuemin="0" aria-valuemax="100"><span></span><i></i></div>
+          <div class="score-track" id="vibeProgress" role="progressbar" aria-label="Vibe badge progress" aria-valuenow="0" aria-valuemin="0" aria-valuemax="25"><span></span><i></i></div>
           <hr />
-          <div class="rank-row"><span>♢</span><strong>Diamond III</strong></div>
-          <p>876 / 1000</p>
+          <div class="rank-row"><span id="vibeBadgeIcon">✦</span><strong id="vibeBadgeName">New Voice</strong></div>
+          <p id="vibeProgressText">0 / 25</p>
           <a href="#profile" data-route="profile">View progress →</a>
         </section>
         <div class="ad-slot ad-sidebar" data-ad-slot="sidebar-rail"><span>ADVERTISEMENT</span><small>160 × 600</small></div>
@@ -75,12 +78,12 @@
 
       <aside class="right-rail" id="rightRail">
         <section class="status-card">
-          <div class="status-top"><span>🔥</span><div><p>YOUR STANDING</p><strong>UNRANKED</strong></div></div>
-          <p class="status-note">Rankings appear after community activity.</p>
+          <div class="status-top"><span>🔥</span><div><p>GLOBAL CRINGE RANK</p><strong id="railGlobalRank">—</strong></div></div>
+          <p class="status-note" id="railRankNote">Sign in to claim your place.</p>
           <button class="text-button" type="button" data-route-button="leaderboards">View leaderboards →</button>
         </section>
         <section class="badge-card">
-          <div><p>CRINGE BADGE</p><strong>NONE</strong><span>You’re in the clear 😎</span></div><div class="shield">♢</div>
+          <div><p>CRINGE BADGE</p><strong id="cringeBadgeName">FRESH FACE</strong><span id="cringeBadgeNote">The leaderboard updates from real Cringe votes.</span></div><div class="shield" id="cringeBadgeIcon">◇</div>
         </section>
         <div class="ad-slot ad-rectangle" data-ad-slot="right-rail"><ins class="adsbygoogle" style="display:block" data-ad-client="ca-pub-XXXXXXXXXXXXXXXX" data-ad-slot="RIGHT_RAIL_SLOT" data-ad-format="rectangle" data-full-width-responsive="true"></ins><span>ADVERTISEMENT</span><small>300 × 250</small></div>
         <section class="rail-guild-card">
@@ -103,6 +106,10 @@
         <div class="composer-head"><div><span class="brand-mini">callout 🔥</span><h2>Put your take on the line.</h2></div><button type="button" data-close-composer aria-label="Close">×</button></div>
         <label for="takeText">Your take</label>
         <textarea id="takeText" maxlength="180" placeholder="Say something worth judging..." required></textarea>
+        <div class="composer-tools" aria-label="Take attachments"><label class="media-picker" for="takeMedia">▧ Add media<input id="takeMedia" type="file" accept="image/png,image/jpeg,image/webp,image/gif,video/mp4,video/webm" multiple /></label><button type="button" id="addGifUrl">GIF link</button><div class="emoji-tray" id="postEmojiTray"><button type="button">🔥</button><button type="button">😂</button><button type="button">😭</button><button type="button">💀</button><button type="button">🤝</button><button type="button">👀</button></div></div>
+        <div class="media-preview" id="mediaPreview" hidden></div>
+        <input id="gifUrlInput" type="url" inputmode="url" placeholder="Paste a direct HTTPS GIF URL" hidden />
+        <p class="media-rules">Images: 1, 2, or 4 · Video: one square/near-square clip, maximum 25 seconds and 8 MB</p>
         <div class="composer-meta"><select id="takeCategory" aria-label="Category"><option>Movies</option><option>Music</option><option>Entertainment</option><option>Games</option><option>Life</option></select><span id="charCount">0 / 180</span></div>
         <button class="publish-button" value="default" type="submit">Post Take</button>
       </form>

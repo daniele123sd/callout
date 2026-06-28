@@ -14,7 +14,8 @@ const defaultState = {
     socialLinks: { twitter: '', instagram: '', discord: '', youtube: '', twitch: '', custom: '' },
     pronouns: '',
     status: 'online',
-    vibeScore: 0
+    vibeScore: 0,
+    vibeBadges: []
   },
   settings: {
     appearanceVersion: 2,
@@ -55,6 +56,7 @@ const state = {
   savedPostIds: Array.isArray(storedState?.savedPostIds) ? storedState.savedPostIds.map(String) : [],
   trendingPosts: [],
   leaderboard: [],
+  userStanding: null,
   notifications: [],
   messages: []
 };
@@ -70,6 +72,7 @@ const composer = document.querySelector('#composer');
 const guildComposer = document.querySelector('#guildComposer');
 const actionDialog = document.querySelector('#actionDialog');
 let sessionUser = null;
+let pendingMedia = [];
 
 function sanitizeInput(value) {
   const source = String(value || '');
@@ -122,6 +125,7 @@ function applySessionUser(user) {
     handle: user.handle || state.profile.handle,
     avatarUrl: user.avatarUrl || state.profile.avatarUrl,
     vibeScore: Number(user.vibeScore ?? state.profile.vibeScore),
+    vibeBadges: user.vibeBadges || state.profile.vibeBadges,
     bio: user.bio ?? state.profile.bio,
     bannerUrl: user.bannerUrl ?? state.profile.bannerUrl,
     themeColor: user.themeColor || state.profile.themeColor,
@@ -148,6 +152,40 @@ function updateHeaderProfile() {
   avatar.innerHTML = profile.avatarUrl
     ? `<img src="${escapeHtml(profile.avatarUrl)}" alt="${escapeHtml(profile.displayName)}" />`
     : escapeHtml((profile.displayName || 'C').charAt(0).toUpperCase());
+  updateAccountChrome();
+}
+
+function vibeMilestone(score = 0) {
+  const levels = [
+    { name: 'New Voice', icon: '✦', threshold: 0, next: 25 },
+    { name: 'Good Energy', icon: '☀', threshold: 25, next: 100 },
+    { name: 'Conversation Starter', icon: '⚡', threshold: 100, next: 250 },
+    { name: 'Community Spark', icon: '🔥', threshold: 250, next: 1000 },
+    { name: 'Vibe Legend', icon: '♛', threshold: 1000, next: 2000 }
+  ];
+  return [...levels].reverse().find(level => score >= level.threshold) || levels[0];
+}
+
+function updateAccountChrome() {
+  const score = sessionUser ? Number(state.profile.vibeScore || 0) : 0;
+  const standing = state.userStanding;
+  const milestone = vibeMilestone(score);
+  const progress = Math.max(0, Math.min(100, ((score - milestone.threshold) / (milestone.next - milestone.threshold)) * 100));
+  const rankText = standing ? `#${standing.rank}` : '—';
+  document.querySelector('#headerVibe').textContent = `✦ ${score.toLocaleString()}`;
+  document.querySelector('#headerGlobalRank').textContent = rankText;
+  document.querySelector('#sidebarVibeScore').textContent = score.toLocaleString();
+  document.querySelector('#vibeBadgeIcon').textContent = milestone.icon;
+  document.querySelector('#vibeBadgeName').textContent = milestone.name;
+  document.querySelector('#vibeProgressText').textContent = `${score.toLocaleString()} / ${milestone.next.toLocaleString()}`;
+  const track = document.querySelector('#vibeProgress');
+  track.setAttribute('aria-valuenow', String(score)); track.setAttribute('aria-valuemax', String(milestone.next)); track.querySelector('span').style.width = `${progress}%`; track.querySelector('i').style.left = `${Math.max(2, progress - 3)}%`;
+  document.querySelector('#railGlobalRank').textContent = standing ? `#${standing.rank} GLOBAL` : '—';
+  document.querySelector('#railRankNote').textContent = standing ? `${standing.cringeScore.toLocaleString()} Cringe ${standing.cringeScore === 1 ? 'vote' : 'votes'} received.` : 'Sign in to claim your place.';
+  document.querySelector('#cringeBadgeName').textContent = (standing?.cringeBadge?.name || 'Fresh Face').toUpperCase();
+  document.querySelector('#cringeBadgeIcon').textContent = standing?.cringeBadge?.icon || '◇';
+  const mini = document.querySelector('#miniLeaderboardRows');
+  mini.innerHTML = state.leaderboard.slice(0, 5).map(user => `<button type="button" data-mini-rank="${user.rank}"><b>${user.rank}</b><span class="avatar">${user.avatarUrl ? `<img src="${escapeHtml(user.avatarUrl)}" alt="" />` : escapeHtml((user.displayName || 'C').charAt(0))}</span><span><strong>${escapeHtml(user.displayName)}</strong><small>${escapeHtml(user.handle || '')}</small></span><em>${Number(user.cringeScore || 0).toLocaleString()}</em></button>`).join('') || '<p>No ranked users yet.</p>';
 }
 
 async function hydrateSession() {
@@ -160,7 +198,7 @@ function mapPost(post) {
     id, databaseId: id,
     authorId: String(post.author?.id || post.author?._id || post.author || ''),
     authorHandle: post.author?.handle || '@member', authorName: post.author?.displayName || 'Callout member',
-    authorAvatarUrl: post.author?.avatarUrl || '', text: String(post.content || '').toUpperCase(), category: post.category,
+    authorAvatarUrl: post.author?.avatarUrl || '', text: String(post.content || '').toUpperCase(), category: post.category, media: Array.isArray(post.media) ? post.media : [],
     alrightVotes: Number(post.alrightVotes || 0), cringeVotes: Number(post.cringeVotes || 0), impressions: Number(post.impressions || 0),
     userVote: post.userVote || null, commentCount: Number(post.commentCount || 0), comments: Array.isArray(post.comments) ? post.comments : [],
     createdAt: new Date(post.createdAt || Date.now()).getTime()
@@ -184,7 +222,7 @@ async function hydrateApp() {
 }
 
 async function hydrateGuilds() { try { state.guilds = (await apiFetch('/api/guilds', {}, false)).guilds || []; } catch (error) { console.error(error); } }
-async function hydrateLeaderboard() { try { state.leaderboard = (await apiFetch('/api/leaderboard', {}, false)).users || []; } catch (error) { console.error(error); } }
+async function hydrateLeaderboard() { try { state.leaderboard = (await apiFetch('/api/leaderboard', {}, false)).users || []; state.userStanding = sessionUser ? state.leaderboard.find(user => String(user.id) === String(sessionUser.id)) || null : null; updateAccountChrome(); } catch (error) { console.error(error); } }
 async function hydrateTrending() { try { state.trendingPosts = ((await apiFetch('/api/posts/trending', {}, false)).posts || []).map(mapPost); } catch (error) { console.error(error); } }
 async function hydrateAccountData() {
   if (!sessionUser) { state.savedPostIds = []; state.notifications = []; state.messages = []; return; }
@@ -259,6 +297,7 @@ function postTemplate(post, detail = false) {
       <button class="icon-button save-button ${isSaved ? 'saved' : ''}" type="button" data-save-post="${post.id}" aria-label="${isSaved ? 'Remove from saved' : 'Save take'}"><svg><use href="#i-bookmark"></use></svg></button>
       <button class="icon-button" type="button" data-post-menu="${post.id}" aria-label="Post options"><svg><use href="#i-more"></use></svg></button>
     </div>
+    ${postMediaMarkup(post.media)}
     <div class="vote-row">
       <button class="vote-button alright ${post.userVote === 'alright' ? 'selected' : ''}" type="button" data-vote="alright"><span class="vote-face">☺</span><strong>ALRIGHT</strong></button>
       <b class="percent alright-percent">${alrightPercent}%</b>
@@ -268,8 +307,16 @@ function postTemplate(post, detail = false) {
       <b class="percent cringe-percent">${cringePercent}%</b>
       <button class="vote-button cringe ${post.userVote === 'cringe' ? 'selected' : ''}" type="button" data-vote="cringe"><span class="vote-face">☹</span><strong>CRINGE</strong></button>
     </div>
-    <div class="take-footer"><span>${total} ${total === 1 ? 'vote' : 'votes'}　•　${commentCount} ${commentCount === 1 ? 'comment' : 'comments'}</span>${detail ? '' : `<button class="comment-link" type="button" data-open-take="${post.id}">Open take →</button>`}</div>
+    <div class="take-footer"><span>${total} ${total === 1 ? 'vote' : 'votes'}　•　${commentCount} ${commentCount === 1 ? 'Take' : 'Takes'}</span>${detail ? '' : `<button class="comment-link" type="button" data-open-take="${post.id}">Open take →</button>`}</div>
   </article>`;
+}
+
+function postMediaMarkup(media = []) {
+  if (!media.length) return '';
+  const items = media.map(item => item.type === 'video'
+    ? `<video controls playsinline preload="metadata" src="${escapeHtml(item.url)}" aria-label="Attached short video"></video>`
+    : `<img src="${escapeHtml(item.url)}" alt="${escapeHtml(item.alt || 'Attached media')}" loading="lazy" />`).join('');
+  return `<div class="take-media media-count-${media.length}">${items}</div>`;
 }
 
 function countComments(comments = []) {
@@ -292,6 +339,7 @@ function commentNode(comment, depth = 0) {
     <div class="comment-rail"><span class="avatar comment-avatar">${avatar}</span><i></i></div>
     <div class="comment-content"><div class="comment-author"><strong>${escapeHtml(authorName)}</strong><span>•</span><time>${timeLabel(comment.createdAt)}</time></div>
       <p>${escapeHtml(comment.text)}</p>
+      ${comment.gifUrl ? `<img class="comment-gif" src="${escapeHtml(comment.gifUrl)}" alt="GIF attached to Take" loading="lazy" />` : ''}
       <div class="reddit-actions"><button type="button" data-upvote-comment="${comment.id}" class="${comment.upvoted ? 'active' : ''}">↑ ${comment.votes || 0}</button><button type="button" data-reply-comment="${comment.id}">↩ Reply</button><button type="button">•••</button></div>
       <div class="reply-slot" id="reply-${comment.id}" hidden></div>
       ${(comment.replies || []).map(reply => commentNode(reply, depth + 1)).join('')}
@@ -300,7 +348,7 @@ function commentNode(comment, depth = 0) {
 }
 
 function emptyThreadPreview() {
-  return `<div class="empty-thread"><h3>No comments yet</h3><p>Start the discussion. Replies will stack below their parent comment with a visible thread rail.</p>
+  return `<div class="empty-thread"><h3>No Takes yet</h3><p>Start the discussion. Replies will stack below their parent Take with a visible thread rail.</p>
     <div class="thread-blueprint" aria-label="Nested comment layout preview"><div><span></span><i></i><i></i></div><div class="blueprint-reply"><span></span><i></i></div></div>
   </div>`;
 }
@@ -308,8 +356,8 @@ function emptyThreadPreview() {
 function commentThreadDetail(post) {
   const comments = post.comments || [];
   return `<section class="reddit-thread">
-    <div class="comment-head"><div><span class="section-kicker">DISCUSSION</span><h2>Comments</h2></div><span class="comment-count">${countComments(comments)} comments</span></div>
-    <form class="comment-composer" id="commentForm"><span class="avatar comment-avatar">🦸🏻</span><label><span class="sr-only">Add a comment</span><textarea name="comment" required maxlength="500" placeholder="What do you think?"></textarea></label><button type="submit">Comment</button></form>
+    <div class="comment-head"><div><span class="section-kicker">DISCUSSION</span><h2>Takes</h2></div><span class="comment-count">${countComments(comments)} Takes</span></div>
+    <form class="comment-composer" id="commentForm"><span class="avatar comment-avatar">C</span><div class="comment-entry"><label class="sr-only" for="commentText">Add a Take</label><textarea id="commentText" name="comment" required maxlength="500" placeholder="Add your Take..."></textarea><span class="comment-tools"><button type="button" data-comment-emoji="🔥">🔥</button><button type="button" data-comment-emoji="😂">😂</button><button type="button" data-comment-emoji="💀">💀</button><label class="comment-gif-picker">GIF file<input type="file" name="gifFile" accept="image/gif" /></label><input type="url" name="gifUrl" aria-label="GIF URL" placeholder="or HTTPS GIF URL" /></span></div><button type="submit">Post Take</button></form>
     <div class="comment-sort"><strong>Best</strong><button type="button">Sort: Newest⌄</button></div>
     <div class="comment-stack">${comments.length ? comments.map(comment => commentNode(comment)).join('') : emptyThreadPreview()}</div>
   </section>`;
@@ -368,14 +416,13 @@ function guildsView() {
 }
 
 function leaderboardsView() {
-  const rows = state.leaderboard.map((user, index) => `<div class="ranking-row"><strong>#${index + 1}</strong><span class="ranking-user">${user.avatarUrl ? `<span class="avatar"><img src="${escapeHtml(user.avatarUrl)}" alt="" /></span>` : `<span class="avatar">${escapeHtml((user.displayName || 'C').charAt(0))}</span>`}<span><b>${escapeHtml(user.displayName)}</b><small>${escapeHtml(user.handle || '')}</small></span></span><b>${Number(user.points || 0).toLocaleString()} pts</b><small>${Number(user.postCount || 0)} posts</small></div>`).join('');
-  return `${pageHeader('RANKINGS', 'Leaderboards', 'Transparent community rankings based only on real Callout activity.')}
-    <div class="segmented-control"><button class="active" type="button">Cringiest</button><button type="button">Top Vibe</button><button type="button">Guilds</button></div>
+  const rows = state.leaderboard.map(user => `<div class="ranking-row ${String(user.id) === String(sessionUser?.id) ? 'is-you' : ''}"><strong>#${user.rank}</strong><span class="ranking-user">${user.avatarUrl ? `<span class="avatar"><img src="${escapeHtml(user.avatarUrl)}" alt="" /></span>` : `<span class="avatar">${escapeHtml((user.displayName || 'C').charAt(0))}</span>`}<span><b>${escapeHtml(user.displayName)}${String(user.id) === String(sessionUser?.id) ? ' (You)' : ''}</b><small>${escapeHtml(user.handle || '')}</small></span></span><b>${Number(user.cringeScore || 0).toLocaleString()} cringe</b><small>${escapeHtml(user.cringeBadge?.icon || '◇')} ${escapeHtml(user.cringeBadge?.name || 'Fresh Face')}</small></div>`).join('');
+  return `${pageHeader('GLOBAL CRINGE RANK', 'Leaderboard', 'A competitive ranking based only on Cringe votes received on your posts.')}
     <section class="ranking-card">
-      <div class="ranking-head"><span>RANK</span><span>USER OR GUILD</span><span>SCORE</span><span>CHANGE</span></div>
+      <div class="ranking-head"><span>RANK</span><span>USER</span><span>CRINGE</span><span>BADGE</span></div>
       ${rows || '<div class="ranking-empty"><div class="podium-outline"><i></i><i></i><i></i></div><h2>No rankings yet</h2><p>New accounts are enrolled automatically.</p></div>'}
     </section>
-    <aside class="info-callout"><strong>How ranking works</strong><p>Scores use real votes, consistency, and participation. Empty leaderboards stay empty until those signals exist.</p></aside>`;
+    <aside class="info-callout"><strong>Cringe rank vs. Vibe</strong><p>Cringe votes determine this global rank. Your Vibe score is separate and rewards posting, adding Takes, and reacting across Callout.</p></aside>`;
 }
 
 function notificationsView() {
@@ -410,7 +457,7 @@ function profileView() {
       <div class="profile-identity">${avatarMarkup('profile-avatar')}<div><div class="identity-line"><h2>${escapeHtml(profile.displayName)}</h2><i class="status-dot ${escapeHtml(profile.status)}"></i></div><p>${escapeHtml(profile.handle)}${profile.pronouns ? ` · ${escapeHtml(profile.pronouns)}` : ''}</p></div><div class="vibe-stat-card"><span>✦</span><div><strong>${Number(profile.vibeScore || 0).toLocaleString()}</strong><small>VIBE SCORE</small></div></div></div>
     </section>
     <section class="profile-summary"><div><span class="section-kicker">ABOUT ME</span><h2>${profile.bio ? escapeHtml(profile.bio) : 'No bio added yet.'}</h2><p>Status: ${escapeHtml(profile.status.toUpperCase())}</p></div><div><span class="section-kicker">SOCIAL LINKS</span><h2>Find me elsewhere</h2><div class="profile-links">${links.length ? links.join('') : '<p>No social links added yet.</p>'}</div></div></section>
-    <section class="badges-card"><div><span class="section-kicker">BADGES</span><h2>Collected badges</h2></div><div class="badge-grid"><span title="Early Adopter">🚀<strong>Early Adopter</strong></span><span class="locked" title="Locked badge">◇<strong>Locked</strong></span><span class="locked" title="Locked badge">◇<strong>Locked</strong></span></div></section>`;
+    <section class="badges-card"><div><span class="section-kicker">VIBE BADGES</span><h2>Earned through participation</h2></div><div class="badge-grid">${(profile.vibeBadges?.length ? profile.vibeBadges : [{ icon: '✦', name: 'New Voice' }]).map(badge => `<span title="${escapeHtml(badge.name)}">${escapeHtml(badge.icon)}<strong>${escapeHtml(badge.name)}</strong></span>`).join('')}<span class="locked" title="Keep building your Vibe">◇<strong>Next badge</strong></span></div></section>`;
 }
 
 function settingsView() {
@@ -487,7 +534,7 @@ function bindPostInteractions() {
     try {
       const payload = await apiFetch(`/api/posts/${post.databaseId}/vote`, { method: 'POST', body: JSON.stringify({ value: nextVote }) });
       Object.assign(post, { alrightVotes: payload.post.alrightVotes, cringeVotes: payload.post.cringeVotes, userVote: payload.post.userVote, impressions: payload.post.impressions });
-      await hydrateTrending(); renderRoute();
+      await Promise.all([hydrateTrending(), hydrateSession(), hydrateLeaderboard()]); renderRoute();
       showToast(payload.post.userVote ? `You called it ${nextVote === 'alright' ? 'Alright' : 'Cringe'}.` : 'Vote removed.');
     } catch (error) { showToast(error.message); }
   }));
@@ -529,6 +576,7 @@ function bindViewInteractions(route) {
   document.querySelector('[data-open-settings]')?.addEventListener('click', () => navigate('settings'));
   document.querySelector('[data-back-feed]')?.addEventListener('click', () => navigate('home'));
   document.querySelector('#commentForm')?.addEventListener('submit', addComment);
+  document.querySelectorAll('[data-comment-emoji]').forEach(button => button.addEventListener('click', () => { const textarea = button.closest('form').elements.comment; textarea.value += button.dataset.commentEmoji; textarea.focus(); }));
   document.querySelector('#settingsForm')?.addEventListener('submit', saveSettings);
   document.querySelectorAll('input[name="theme"], input[name="textSize"]').forEach(input => input.addEventListener('change', previewDisplaySettings));
   document.querySelector('#settingsForm')?.addEventListener('input', updateProfilePreview);
@@ -699,6 +747,7 @@ async function logoutUser() {
   sessionUser = null;
   state.profile = { ...defaultState.profile, socialLinks: { ...defaultState.profile.socialLinks } };
   state.savedPostIds = []; state.notifications = []; state.messages = [];
+  state.userStanding = null;
   updateHeaderProfile(); await hydratePosts(); renderRoute(); showToast('Signed out.');
 }
 
@@ -733,7 +782,10 @@ async function addComment(event) {
   const text = sanitizeInput(input.value);
   if (!post || !text) return;
   if (!sessionUser) { navigate('auth'); return showToast('Sign in to comment.'); }
-  try { await apiFetch('/api/comments', { method: 'POST', body: JSON.stringify({ postId: post.databaseId, text, parent: null }) }); await hydrateTake(post); await hydrateTrending(); renderRoute(); showToast('Comment added.'); }
+  const gifFile = event.currentTarget.elements.gifFile?.files?.[0];
+  if (gifFile?.size > 2 * 1024 * 1024) return showToast('Comment GIFs must be 2 MB or smaller.');
+  const gifUrl = gifFile ? await fileToDataUrl(gifFile) : String(event.currentTarget.elements.gifUrl?.value || '').trim();
+  try { await apiFetch('/api/comments', { method: 'POST', body: JSON.stringify({ postId: post.databaseId, text, parent: null, gifUrl }) }); await hydrateTake(post); await Promise.all([hydrateTrending(), hydrateSession(), hydrateLeaderboard()]); renderRoute(); showToast('Take added.'); }
   catch (error) { showToast(error.message); }
 }
 
@@ -751,7 +803,7 @@ function openReplyComposer(id) {
     const text = sanitizeInput(event.currentTarget.elements.reply.value);
     if (!parent || !text) return;
     if (!sessionUser) { navigate('auth'); return; }
-    try { await apiFetch('/api/comments', { method: 'POST', body: JSON.stringify({ postId: post.databaseId, text, parent: String(parent.id) }) }); await hydrateTake(post); renderRoute(); showToast('Reply added.'); }
+    try { await apiFetch('/api/comments', { method: 'POST', body: JSON.stringify({ postId: post.databaseId, text, parent: String(parent.id) }) }); await hydrateTake(post); await Promise.all([hydrateSession(), hydrateLeaderboard()]); renderRoute(); showToast('Reply added.'); }
     catch (error) { showToast(error.message); }
   });
 }
@@ -761,7 +813,7 @@ async function toggleCommentVote(id) {
   const comment = post && findComment(post.comments, id);
   if (!comment) return;
   if (!sessionUser) { navigate('auth'); return showToast('Sign in to vote on comments.'); }
-  try { await apiFetch(`/api/comments/${id}/vote`, { method: 'POST' }); await hydrateTake(post); renderRoute(); } catch (error) { showToast(error.message); }
+  try { await apiFetch(`/api/comments/${id}/vote`, { method: 'POST' }); await hydrateTake(post); await Promise.all([hydrateSession(), hydrateLeaderboard()]); renderRoute(); } catch (error) { showToast(error.message); }
 }
 
 function applyDisplaySettings() {
@@ -830,8 +882,64 @@ function openComposerForUser() {
   composer.showModal();
 }
 
+function fileToDataUrl(file) {
+  return new Promise((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(reader.result); reader.onerror = reject; reader.readAsDataURL(file); });
+}
+
+function loadImage(file) {
+  return new Promise((resolve, reject) => { const image = new Image(); const url = URL.createObjectURL(file); image.onload = () => { URL.revokeObjectURL(url); resolve(image); }; image.onerror = () => { URL.revokeObjectURL(url); reject(new Error('This image could not be read.')); }; image.src = url; });
+}
+
+async function prepareImage(file) {
+  if (file.type === 'image/gif') {
+    if (file.size > 2 * 1024 * 1024) throw new Error('GIF files must be 2 MB or smaller.');
+    return { type: 'gif', url: await fileToDataUrl(file), alt: file.name, duration: 0, aspectRatio: 1 };
+  }
+  const image = await loadImage(file);
+  const scale = Math.min(1, 1400 / Math.max(image.naturalWidth, image.naturalHeight));
+  const canvas = document.createElement('canvas'); canvas.width = Math.max(1, Math.round(image.naturalWidth * scale)); canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
+  canvas.getContext('2d').drawImage(image, 0, 0, canvas.width, canvas.height);
+  return { type: 'image', url: canvas.toDataURL('image/webp', .78), alt: file.name, duration: 0, aspectRatio: canvas.width / canvas.height };
+}
+
+function videoMetadata(file) {
+  return new Promise((resolve, reject) => { const video = document.createElement('video'); const url = URL.createObjectURL(file); video.preload = 'metadata'; video.onloadedmetadata = () => { const meta = { duration: video.duration, aspectRatio: video.videoWidth / video.videoHeight }; URL.revokeObjectURL(url); resolve(meta); }; video.onerror = () => { URL.revokeObjectURL(url); reject(new Error('This video could not be read.')); }; video.src = url; });
+}
+
+async function prepareVideo(file) {
+  if (file.size > 8 * 1024 * 1024) throw new Error('Short videos must be 8 MB or smaller.');
+  const meta = await videoMetadata(file);
+  if (!Number.isFinite(meta.duration) || meta.duration > 25) throw new Error('Videos must be 25 seconds or shorter.');
+  if (meta.aspectRatio < .7 || meta.aspectRatio > 1.45) throw new Error('Videos must be square or near-square.');
+  return { type: 'video', url: await fileToDataUrl(file), alt: file.name, duration: Math.round(meta.duration * 10) / 10, aspectRatio: meta.aspectRatio };
+}
+
+function renderMediaPreview() {
+  const preview = document.querySelector('#mediaPreview');
+  preview.hidden = pendingMedia.length === 0;
+  preview.innerHTML = pendingMedia.map((item, index) => `<figure>${item.type === 'video' ? `<video src="${escapeHtml(item.url)}" muted></video>` : `<img src="${escapeHtml(item.url)}" alt="" />`}<button type="button" data-remove-media="${index}" aria-label="Remove attachment">×</button><figcaption>${escapeHtml(item.type.toUpperCase())}</figcaption></figure>`).join('');
+  preview.querySelectorAll('[data-remove-media]').forEach(button => button.addEventListener('click', () => { pendingMedia.splice(Number(button.dataset.removeMedia), 1); renderMediaPreview(); }));
+}
+
+async function handleTakeMedia(event) {
+  const files = [...event.target.files]; event.target.value = '';
+  if (!files.length) return;
+  const videos = files.filter(file => file.type.startsWith('video/'));
+  if (videos.length && (files.length !== 1 || pendingMedia.length)) return showToast('Attach one short video by itself.');
+  if (!videos.length && ![1, 2, 4].includes(files.length)) return showToast('Choose exactly 1, 2, or 4 images.');
+  try {
+    pendingMedia = videos.length ? [await prepareVideo(videos[0])] : await Promise.all(files.map(prepareImage));
+    renderMediaPreview();
+  } catch (error) { pendingMedia = []; renderMediaPreview(); showToast(error.message); }
+}
+
 document.querySelector('#openComposer').addEventListener('click', openComposerForUser);
 document.querySelector('[data-close-composer]').addEventListener('click', () => composer.close());
+document.querySelector('#takeMedia').addEventListener('change', handleTakeMedia);
+document.querySelector('#addGifUrl').addEventListener('click', () => { const input = document.querySelector('#gifUrlInput'); input.hidden = !input.hidden; if (!input.hidden) input.focus(); });
+document.querySelectorAll('#postEmojiTray button').forEach(button => button.addEventListener('click', () => { const input = document.querySelector('#takeText'); input.value += button.textContent; input.dispatchEvent(new Event('input')); input.focus(); }));
+document.querySelector('#globalRankButton').addEventListener('click', event => { event.stopPropagation(); const panel = document.querySelector('#miniLeaderboard'); panel.hidden = !panel.hidden; event.currentTarget.setAttribute('aria-expanded', String(!panel.hidden)); });
+document.addEventListener('click', event => { if (!event.target.closest('.account-cluster')) { document.querySelector('#miniLeaderboard').hidden = true; document.querySelector('#globalRankButton').setAttribute('aria-expanded', 'false'); } });
 document.querySelector('[data-close-guild]').addEventListener('click', () => guildComposer.close());
 document.querySelector('#takeText').addEventListener('input', event => document.querySelector('#charCount').textContent = `${event.target.value.length} / 180`);
 document.querySelector('#composerForm').addEventListener('submit', async event => {
@@ -841,12 +949,17 @@ document.querySelector('#composerForm').addEventListener('submit', async event =
   const text = sanitizeInput(input.value);
   if (!text) return;
   const category = document.querySelector('#takeCategory').value;
+  const gifUrl = document.querySelector('#gifUrlInput').value.trim();
+  const media = gifUrl ? [...pendingMedia, { type: 'gif', url: gifUrl, alt: 'GIF attachment', duration: 0, aspectRatio: 1 }] : [...pendingMedia];
+  if (media.some(item => item.type === 'video') && media.length !== 1) return showToast('A short video must be the only attachment.');
+  if (media.length && !media.some(item => item.type === 'video') && ![1, 2, 4].includes(media.length)) return showToast('Use exactly 1, 2, or 4 images/GIFs.');
   try {
-    await apiFetch('/api/posts', { method: 'POST', body: JSON.stringify({ content: text, category }) });
+    await apiFetch('/api/posts', { method: 'POST', body: JSON.stringify({ content: text, category, media }) });
     await Promise.all([hydratePosts(), hydrateSession(), hydrateLeaderboard(), hydrateTrending()]);
   } catch (error) { return showToast(error.message); }
   persist();
   input.value = '';
+  pendingMedia = []; renderMediaPreview(); document.querySelector('#gifUrlInput').value = ''; document.querySelector('#gifUrlInput').hidden = true;
   document.querySelector('#charCount').textContent = '0 / 180';
   composer.close();
   navigate('home');

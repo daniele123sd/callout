@@ -46,9 +46,28 @@ export function publicUser(user) {
   if (!value) return null;
   const { password, refreshTokenHash, passwordResetHash, passwordResetExpiresAt, ...safe } = value;
   safe.id = String(safe._id || safe.id);
+  safe.vibeScore = Number(safe.vibeScore || 0);
+  safe.cringeScore = Number(safe.cringeScore || 0);
+  safe.vibeBadges = vibeBadges(safe.vibeScore);
   delete safe._id;
   delete safe.__v;
   return safe;
+}
+
+export function vibeBadges(score = 0) {
+  const badges = [{ key: 'new-voice', name: 'New Voice', icon: '✦', threshold: 0 }];
+  if (score >= 25) badges.push({ key: 'good-energy', name: 'Good Energy', icon: '☀', threshold: 25 });
+  if (score >= 100) badges.push({ key: 'conversation-starter', name: 'Conversation Starter', icon: '⚡', threshold: 100 });
+  if (score >= 250) badges.push({ key: 'community-spark', name: 'Community Spark', icon: '🔥', threshold: 250 });
+  if (score >= 1000) badges.push({ key: 'vibe-legend', name: 'Vibe Legend', icon: '♛', threshold: 1000 });
+  return badges;
+}
+
+async function incrementVibe(userId, amount) {
+  if (connected) return User.findByIdAndUpdate(userId, { $inc: { vibeScore: amount } }, { new: true }).exec();
+  const user = memoryUsers.get(String(userId));
+  if (user) user.vibeScore = Math.max(0, Number(user.vibeScore || 0) + amount);
+  return user || null;
 }
 
 export async function findUserByEmail(email, secrets = false) {
@@ -83,7 +102,7 @@ export async function createUser(values) {
   }
   if (connected) return User.create(userValues);
   const now = new Date();
-  const user = { id: crypto.randomUUID(), vibeScore: 0, points: 0, postCount: 0, savedPosts: [], avatarUrl: '', bio: '', bannerUrl: '', themeColor: '#ff4713', socialLinks: {}, pronouns: '', status: 'online', preferences: {}, createdAt: now, updatedAt: now, ...userValues };
+  const user = { id: crypto.randomUUID(), vibeScore: 0, cringeScore: 0, points: 0, postCount: 0, savedPosts: [], avatarUrl: '', bio: '', bannerUrl: '', themeColor: '#ff4713', socialLinks: {}, pronouns: '', status: 'online', preferences: {}, createdAt: now, updatedAt: now, ...userValues };
   memoryUsers.set(user.id, user);
   return user;
 }
@@ -145,6 +164,7 @@ export async function voteOnPost(postId, userId, value) {
   if (connected) {
     const post = await Post.findById(postId);
     if (!post) return null;
+    if (String(post.author) === String(userId)) return { forbidden: true };
     const existing = post.votes.find(vote => String(vote.user) === String(userId));
     const previousValue = existing?.value;
     if (existing?.value === value) post.votes = post.votes.filter(vote => String(vote.user) !== String(userId));
@@ -154,6 +174,7 @@ export async function voteOnPost(postId, userId, value) {
     post.cringeVotes = post.votes.filter(vote => vote.value === 'cringe').length;
     post.impressions += 1;
     await post.save();
+    if (!previousValue) await incrementVibe(userId, 1);
     if (String(post.author) !== String(userId) && previousValue !== value) {
       await Notification.create({ recipient: post.author, actor: userId, type: 'vote', post: post._id, text: `Someone voted ${value === 'alright' ? 'Alright' : 'Cringe'} on your take.` });
     }
@@ -161,6 +182,7 @@ export async function voteOnPost(postId, userId, value) {
   }
   const post = memoryPosts.get(String(postId));
   if (!post) return null;
+  if (post.author === String(userId)) return { forbidden: true };
   const existingIndex = post.votes.findIndex(vote => vote.user === String(userId));
   const previousValue = existingIndex >= 0 ? post.votes[existingIndex].value : null;
   if (existingIndex >= 0 && post.votes[existingIndex].value === value) post.votes.splice(existingIndex, 1);
@@ -169,6 +191,7 @@ export async function voteOnPost(postId, userId, value) {
   post.alrightVotes = post.votes.filter(vote => vote.value === 'alright').length;
   post.cringeVotes = post.votes.filter(vote => vote.value === 'cringe').length;
   post.impressions += 1;
+  if (!previousValue) await incrementVibe(userId, 1);
   if (post.author !== String(userId) && previousValue !== value) memoryNotifications.push({ id: crypto.randomUUID(), recipient: post.author, actor: publicUser(memoryUsers.get(String(userId))), type: 'vote', post: post.id, text: `Someone voted ${value === 'alright' ? 'Alright' : 'Cringe'} on your take.`, read: false, createdAt: new Date() });
   return serializePost(post, userId);
 }
@@ -189,24 +212,26 @@ export async function listComments(postId, userId = '') {
   return roots;
 }
 
-export async function createComment(postId, authorId, { text, parent = null }) {
+export async function createComment(postId, authorId, { text, parent = null, gifUrl = '' }) {
   if (connected) {
     const post = await Post.findByIdAndUpdate(postId, { $inc: { impressions: 1 } });
     if (!post) return null;
     if (parent && !(await Comment.exists({ _id: parent, post: postId }))) return null;
-    const comment = await Comment.create({ post: postId, author: authorId, parent, text });
+    const comment = await Comment.create({ post: postId, author: authorId, parent, text, gifUrl });
+    await incrementVibe(authorId, 4);
     const parentComment = parent ? await Comment.findById(parent) : null;
     const recipient = parentComment?.author || post.author;
-    if (String(recipient) !== String(authorId)) await Notification.create({ recipient, actor: authorId, type: parent ? 'reply' : 'comment', post: post._id, text: parent ? 'Someone replied to your comment.' : 'Someone commented on your take.' });
+    if (String(recipient) !== String(authorId)) await Notification.create({ recipient, actor: authorId, type: parent ? 'reply' : 'comment', post: post._id, text: parent ? 'Someone replied to your Take.' : 'Someone added a Take to your post.' });
     return serializeComment(await comment.populate('author', 'displayName handle avatarUrl'), authorId);
   }
   if (!memoryPosts.has(String(postId))) return null;
-  const comment = { id: crypto.randomUUID(), post: String(postId), author: String(authorId), parent, text, upvotes: [], createdAt: new Date(), updatedAt: new Date() };
+  const comment = { id: crypto.randomUUID(), post: String(postId), author: String(authorId), parent, text, gifUrl, upvotes: [], createdAt: new Date(), updatedAt: new Date() };
   memoryComments.set(comment.id, comment);
+  await incrementVibe(authorId, 4);
   const post = memoryPosts.get(String(postId)); post.impressions = (post.impressions || 0) + 1;
   const parentComment = parent ? memoryComments.get(String(parent)) : null;
   const recipient = parentComment?.author || post.author;
-  if (recipient !== String(authorId)) memoryNotifications.push({ id: crypto.randomUUID(), recipient, actor: publicUser(memoryUsers.get(String(authorId))), type: parent ? 'reply' : 'comment', post: String(postId), text: parent ? 'Someone replied to your comment.' : 'Someone commented on your take.', read: false, createdAt: new Date() });
+  if (recipient !== String(authorId)) memoryNotifications.push({ id: crypto.randomUUID(), recipient, actor: publicUser(memoryUsers.get(String(authorId))), type: parent ? 'reply' : 'comment', post: String(postId), text: parent ? 'Someone replied to your Take.' : 'Someone added a Take to your post.', read: false, createdAt: new Date() });
   return serializeComment({ ...comment, author: publicUser(memoryUsers.get(String(authorId))) }, authorId);
 }
 
@@ -217,12 +242,14 @@ export async function voteOnComment(commentId, userId) {
     const index = comment.upvotes.findIndex(id => String(id) === String(userId));
     if (index >= 0) comment.upvotes.splice(index, 1); else comment.upvotes.push(userId);
     await comment.save();
+    if (index < 0) await incrementVibe(userId, 1);
     return serializeComment(comment, userId);
   }
   const comment = memoryComments.get(String(commentId));
   if (!comment) return null;
   const index = comment.upvotes.indexOf(String(userId));
   if (index >= 0) comment.upvotes.splice(index, 1); else comment.upvotes.push(String(userId));
+  if (index < 0) await incrementVibe(userId, 1);
   return serializeComment({ ...comment, author: publicUser(memoryUsers.get(comment.author)) }, userId);
 }
 
@@ -320,8 +347,32 @@ export async function toggleGuildMembership(userId, guildId) {
 }
 
 export async function listLeaderboard() {
-  if (connected) return (await User.find().sort({ points: -1, createdAt: 1 }).select('displayName handle avatarUrl points vibeScore postCount').lean()).map((user, index) => ({ ...publicUser(user), rank: index + 1 }));
-  return [...memoryUsers.values()].sort((a, b) => (b.points || 0) - (a.points || 0)).map((user, index) => ({ ...publicUser(user), rank: index + 1 }));
+  if (connected) {
+    const [users, scores] = await Promise.all([
+      User.find().select('displayName handle avatarUrl vibeScore postCount createdAt').lean(),
+      Post.aggregate([
+        { $project: { author: 1, cringeScore: { $size: { $filter: { input: { $ifNull: ['$votes', []] }, as: 'vote', cond: { $and: [{ $eq: ['$$vote.value', 'cringe'] }, { $ne: ['$$vote.user', '$author'] }] } } } } } },
+        { $group: { _id: '$author', cringeScore: { $sum: '$cringeScore' } } }
+      ])
+    ]);
+    const scoreMap = new Map(scores.map(item => [String(item._id), Number(item.cringeScore || 0)]));
+    return users.map(user => ({ ...publicUser(user), cringeScore: scoreMap.get(String(user._id)) || 0 }))
+      .sort((a, b) => b.cringeScore - a.cringeScore || b.vibeScore - a.vibeScore || new Date(a.createdAt) - new Date(b.createdAt))
+      .map((user, index) => ({ ...user, rank: index + 1, cringeBadge: cringeBadge(index + 1, user.cringeScore) }));
+  }
+  const scoreMap = new Map();
+  for (const post of memoryPosts.values()) scoreMap.set(post.author, (scoreMap.get(post.author) || 0) + (post.votes || []).filter(vote => vote.value === 'cringe' && vote.user !== post.author).length);
+  return [...memoryUsers.values()].map(user => ({ ...publicUser(user), cringeScore: scoreMap.get(user.id) || 0 }))
+    .sort((a, b) => b.cringeScore - a.cringeScore || b.vibeScore - a.vibeScore || new Date(a.createdAt) - new Date(b.createdAt))
+    .map((user, index) => ({ ...user, rank: index + 1, cringeBadge: cringeBadge(index + 1, user.cringeScore) }));
+}
+
+function cringeBadge(rank, score) {
+  if (rank === 1 && score > 0) return { name: 'Cringe Crown', icon: '♛' };
+  if (rank <= 3 && score > 0) return { name: 'Podium Menace', icon: '🔥' };
+  if (rank <= 10 && score > 0) return { name: 'Top Ten Take', icon: '⚡' };
+  if (score > 0) return { name: 'Cringe Contender', icon: '◆' };
+  return { name: 'Fresh Face', icon: '◇' };
 }
 
 export async function searchCallout(query) {

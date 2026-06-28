@@ -27,6 +27,7 @@ const userSchema = new mongoose.Schema({
   handle: { type: String, unique: true, sparse: true, lowercase: true, trim: true, match: /^@[a-z0-9_]{3,30}$/ },
   avatarUrl: { type: String, default: '' },
   vibeScore: { type: Number, default: 0, min: 0 },
+  cringeScore: { type: Number, default: 0, min: 0, index: true },
   points: { type: Number, default: 0, min: 0, index: true },
   postCount: { type: Number, default: 0, min: 0 },
   savedPosts: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Post' }],

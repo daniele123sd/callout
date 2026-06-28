@@ -29,6 +29,22 @@ const plain = max => Joi.string().max(max).custom(cleanString, 'plain-text sanit
 const recordId = Joi.string().pattern(/^(?:[a-f\d]{24}|[a-f\d]{8}-[a-f\d]{4}-[1-5][a-f\d]{3}-[89ab][a-f\d]{3}-[a-f\d]{12})$/i);
 const optionalUrl = Joi.string().allow('').max(2048).uri({ scheme: ['http', 'https', 'data'] });
 const optionalBanner = Joi.string().allow('').max(2_800_000).pattern(/^(https?:\/\/|data:image\/(png|jpeg|gif|webp);base64,)/i);
+const mediaUrl = Joi.string().max(8_500_000).pattern(/^(https:\/\/|data:(image\/(png|jpeg|gif|webp)|video\/(mp4|webm));base64,)/i);
+const mediaItem = Joi.object({
+  type: Joi.string().valid('image', 'video', 'gif').required(),
+  url: mediaUrl.required(),
+  alt: plain(120).allow(''),
+  duration: Joi.number().min(0).max(25).default(0),
+  aspectRatio: Joi.number().min(0.1).max(10).default(1)
+});
+const mediaCollection = Joi.array().max(4).items(mediaItem).custom((items, helpers) => {
+  if (!items.length) return items;
+  const videos = items.filter(item => item.type === 'video');
+  if (videos.length && (videos.length !== 1 || items.length !== 1)) return helpers.message({ custom: 'A post can contain one short video or an image set, not both.' });
+  if (videos.some(item => item.aspectRatio < 0.7 || item.aspectRatio > 1.45)) return helpers.message({ custom: 'Short videos must use a square or near-square aspect ratio.' });
+  if (!videos.length && ![1, 2, 4].includes(items.length)) return helpers.message({ custom: 'Image posts must contain 1, 2, or 4 images/GIFs.' });
+  return items;
+}, 'media layout validation');
 
 export const schemas = {
   signup: Joi.object({
@@ -60,9 +76,9 @@ export const schemas = {
       textSize: Joi.string().valid('small', 'medium', 'large').required()
     }).required()
   }),
-  post: Joi.object({ content: plain(180).required(), category: Joi.string().valid('Movies', 'Music', 'Entertainment', 'Games', 'Life').required() }),
+  post: Joi.object({ content: plain(180).required(), category: Joi.string().valid('Movies', 'Music', 'Entertainment', 'Games', 'Life').required(), media: mediaCollection }),
   vote: Joi.object({ value: Joi.string().valid('alright', 'cringe').required() }),
-  comment: Joi.object({ postId: recordId.required(), parent: recordId.allow(null, ''), text: plain(500).required() }),
+  comment: Joi.object({ postId: recordId.required(), parent: recordId.allow(null, ''), text: plain(500).required(), gifUrl: Joi.string().allow('').max(2_800_000).pattern(/^(https:\/\/|data:image\/gif;base64,)/i) }),
   guild: Joi.object({ name: plain(60).required(), description: plain(240).allow('') }),
   message: Joi.object({ recipient: plain(254).required(), message: plain(2000).required() }),
   report: Joi.object({ reason: Joi.string().valid('spam', 'harassment', 'offensive', 'other').required(), details: plain(500).allow('') })
