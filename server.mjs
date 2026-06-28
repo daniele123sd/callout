@@ -9,6 +9,7 @@ import { rateLimit } from 'express-rate-limit';
 import helmet from 'helmet';
 import passport from 'passport';
 import { Strategy as GoogleStrategy } from 'passport-google-oauth20';
+import { featureFlags } from './server/featureFlags.mjs';
 import {
   ACCESS_COOKIE, REFRESH_COOKIE, clearAuthCookies, comparePassword, createPasswordResetToken,
   hashPassword, optionalAuth, requireAuth, schemas, setAuthCookies, signAccessToken, signRefreshToken,
@@ -16,9 +17,9 @@ import {
 } from './server/security.mjs';
 import {
   acceptFriendRequest, canAccessPost, connectDatabase, createComment, createFriendRequest, createGuild, createGuildMessage, createGuildPost, createMessage, createPost, createReport, createUser, databaseMode, deletePost,
-  findUserByEmail, findUserByGoogleId, findUserById, getGuild, getPublicProfile, listComments, listFriends, listGuildMessages, listGuildPosts, listGuilds, listLeaderboard, listMessages,
-  listNotifications, listPosts, listSavedPostIds, markNotificationsRead, publicUser, recordPostView, searchCallout,
-  toggleGuildMembership, toggleSavedPost, updateGuild, updatePost, updateUser, voteOnComment, voteOnPost
+  findUserByEmail, findUserByGoogleId, findUserById, getGuild, getPublicProfile, joinGuildByInvite, listComments, listFriends, listGuildAudit, listGuildMembers, listGuildMessages, listGuildPosts, listGuilds, listLeaderboard, listMessages,
+  deleteNotificationMute, listDrafts, listNotificationMutes, listNotifications, listPosts, listSavedPostIds, markNotificationsRead, publicUser, recordPostView, searchCallout, setNotificationMute,
+  toggleGuildMembership, toggleSavedPost, updateGuild, updateGuildMember, updateGuildRole, updatePost, updateUser, voteOnComment, voteOnPoll, voteOnPost
 } from './server/repository.mjs';
 
 dotenv.config();
@@ -27,6 +28,7 @@ const root = path.dirname(fileURLToPath(import.meta.url));
 const port = Number(process.env.PORT || 4173);
 const app = express();
 const messageStreams = new Map();
+const requireFeature = name => (_req, res, next) => featureFlags[name] ? next() : res.status(404).json({ error: 'This feature is not enabled yet.' });
 
 function pushMessageUpdate(userId) {
   for (const response of messageStreams.get(String(userId)) || []) response.write(`event: messages\ndata: ${JSON.stringify({ updated: true })}\n\n`);
@@ -100,6 +102,7 @@ app.get('/api/health', (_req, res) => {
   const healthy = process.env.NODE_ENV !== 'production' || databaseMode() === 'mongodb';
   res.status(healthy ? 200 : 503).json({ ok: healthy, database: databaseMode(), googleOAuth: googleConfigured });
 });
+app.get('/api/features', (_req, res) => res.json({ features: featureFlags }));
 
 app.post('/api/auth/signup', authLimiter, validate(schemas.signup), async (req, res, next) => {
   try {
@@ -201,6 +204,9 @@ app.get('/api/posts', optionalAuth, async (req, res, next) => {
 app.get('/api/posts/trending', optionalAuth, async (req, res, next) => {
   try { res.json({ posts: await listPosts(req.userId, { trending: true }) }); } catch (error) { next(error); }
 });
+app.get('/api/drafts', requireFeature('richComposer'), requireAuth, async (req, res, next) => {
+  try { res.json({ drafts: await listDrafts(req.userId) }); } catch (error) { next(error); }
+});
 app.post('/api/posts', requireAuth, validate(schemas.post), async (req, res, next) => {
   try { res.status(201).json({ post: await createPost(req.userId, req.body) }); } catch (error) { next(error); }
 });
@@ -227,6 +233,14 @@ app.post('/api/posts/:id/vote', requireAuth, validate(schemas.vote), async (req,
     const post = await voteOnPost(req.params.id, req.userId, req.body.value);
     if (!post) return res.status(404).json({ error: 'Post not found.' });
     if (post.forbidden) return res.status(400).json({ error: 'You cannot rank your own take.' });
+    res.json({ post });
+  } catch (error) { next(error); }
+});
+app.post('/api/posts/:id/poll-vote', requireFeature('richComposer'), requireAuth, validate(schemas.pollVote), async (req, res, next) => {
+  try {
+    if (!(await canAccessPost(req.params.id, req.userId))) return res.status(403).json({ error: 'This poll is not available to you.' });
+    const post = await voteOnPoll(req.params.id, req.userId, req.body.optionId);
+    if (!post) return res.status(404).json({ error: 'Poll or option not found, or the poll has closed.' });
     res.json({ post });
   } catch (error) { next(error); }
 });
@@ -302,9 +316,24 @@ app.post('/api/guilds/:id/membership', requireAuth, async (req, res, next) => {
     res.json(result);
   } catch (error) { next(error); }
 });
+app.post('/api/guilds/join/invite', requireFeature('creatorGuilds'), requireAuth, validate(schemas.guildInvite), async (req, res, next) => {
+  try { const guild = await joinGuildByInvite(req.userId, req.body.inviteCode); if (!guild) return res.status(404).json({ error: 'Invite is invalid or expired.' }); res.json({ guild }); } catch (error) { next(error); }
+});
+app.get('/api/guilds/:id/members', requireFeature('creatorGuilds'), requireAuth, async (req, res, next) => {
+  try { const members = await listGuildMembers(req.params.id, req.userId); if (!members) return res.status(403).json({ error: 'Guild membership is required.' }); res.json({ members }); } catch (error) { next(error); }
+});
+app.patch('/api/guilds/:id/members/:userId', requireFeature('creatorGuilds'), requireAuth, validate(schemas.guildMember), async (req, res, next) => {
+  try { const membership = await updateGuildMember(req.params.id, req.userId, req.params.userId, req.body); if (!membership) return res.status(403).json({ error: 'You cannot change this membership.' }); res.json({ membership }); } catch (error) { next(error); }
+});
+app.patch('/api/guilds/:id/roles/:roleKey', requireFeature('creatorGuilds'), requireAuth, validate(schemas.guildRole), async (req, res, next) => {
+  try { const role = await updateGuildRole(req.params.id, req.userId, req.params.roleKey, req.body.permissions); if (!role) return res.status(403).json({ error: 'You cannot change this role.' }); res.json({ role }); } catch (error) { next(error); }
+});
+app.get('/api/guilds/:id/audit', requireFeature('creatorGuilds'), requireAuth, async (req, res, next) => {
+  try { const audit = await listGuildAudit(req.params.id, req.userId); if (!audit) return res.status(403).json({ error: 'Audit access is not permitted.' }); res.json({ audit }); } catch (error) { next(error); }
+});
 
-app.get('/api/leaderboard', async (_req, res, next) => {
-  try { res.json({ users: await listLeaderboard() }); } catch (error) { next(error); }
+app.get('/api/leaderboard', async (req, res, next) => {
+  try { const period = ['weekly', 'monthly', 'all'].includes(req.query.period) ? req.query.period : 'all'; res.json({ users: await listLeaderboard(period) }); } catch (error) { next(error); }
 });
 app.get('/api/users/:id', optionalAuth, async (req, res, next) => {
   try { const user = await getPublicProfile(req.params.id, req.userId); if (!user) return res.status(404).json({ error: 'User not found.' }); res.json({ user }); } catch (error) { next(error); }
@@ -331,6 +360,15 @@ app.get('/api/notifications', requireAuth, async (req, res, next) => {
 });
 app.post('/api/notifications/read', requireAuth, async (req, res, next) => {
   try { await markNotificationsRead(req.userId); res.status(204).end(); } catch (error) { next(error); }
+});
+app.get('/api/notifications/mutes', requireFeature('notificationControls'), requireAuth, async (req, res, next) => {
+  try { res.json({ mutes: await listNotificationMutes(req.userId) }); } catch (error) { next(error); }
+});
+app.post('/api/notifications/mutes', requireFeature('notificationControls'), requireAuth, validate(schemas.notificationMute), async (req, res, next) => {
+  try { res.status(201).json({ mute: await setNotificationMute(req.userId, req.body) }); } catch (error) { next(error); }
+});
+app.delete('/api/notifications/mutes/:id', requireFeature('notificationControls'), requireAuth, async (req, res, next) => {
+  try { if (!(await deleteNotificationMute(req.userId, req.params.id))) return res.status(404).json({ error: 'Mute rule not found.' }); res.status(204).end(); } catch (error) { next(error); }
 });
 
 app.get('/api/messages', requireAuth, async (req, res, next) => {

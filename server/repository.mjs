@@ -9,6 +9,10 @@ import { Notification } from './models/Notification.mjs';
 import { Message } from './models/Message.mjs';
 import { GuildMessage } from './models/GuildMessage.mjs';
 import { Friendship } from './models/Friendship.mjs';
+import { GuildRole } from './models/GuildRole.mjs';
+import { GuildMembership } from './models/GuildMembership.mjs';
+import { GuildAudit } from './models/GuildAudit.mjs';
+import { NotificationMute } from './models/NotificationMute.mjs';
 
 let connected = false;
 const memoryUsers = new Map();
@@ -20,6 +24,20 @@ const memoryNotifications = [];
 const memoryMessages = [];
 const memoryGuildMessages = [];
 const memoryFriendships = [];
+const memoryGuildRoles = new Map();
+const memoryGuildMemberships = new Map();
+const memoryGuildAudits = [];
+const memoryNotificationMutes = [];
+
+const DEFAULT_GUILD_ROLES = [
+  { key: 'owner', name: 'Owner', color: '#ff4713', rank: 100, builtIn: true, permissions: { manageGuild: true, manageRoles: true, manageMembers: true, managePosts: true, createPosts: true, chat: true, viewAudit: true } },
+  { key: 'moderator', name: 'Moderator', color: '#7444e8', rank: 80, builtIn: true, permissions: { manageMembers: true, managePosts: true, createPosts: true, chat: true, viewAudit: true } },
+  { key: 'contributor', name: 'Contributor', color: '#0f9f78', rank: 60, builtIn: true, permissions: { createPosts: true, chat: true } },
+  { key: 'chatter', name: 'Chatter', color: '#2979ff', rank: 40, builtIn: true, permissions: { chat: true } },
+  { key: 'viewer', name: 'Viewer', color: '#6b7280', rank: 20, builtIn: true, permissions: { chat: false } }
+];
+
+const membershipKey = (guildId, userId) => `${guildId}:${userId}`;
 
 export async function connectDatabase() {
   if (!process.env.DB_URI) {
@@ -112,7 +130,7 @@ export async function createUser(values) {
   }
   if (connected) return User.create(userValues);
   const now = new Date();
-  const user = { id: crypto.randomUUID(), vibeScore: 0, cringeScore: 0, points: 0, postCount: 0, savedPosts: [], avatarUrl: '', bio: '', bannerUrl: '', themeColor: '#ff4713', socialLinks: {}, pronouns: '', status: 'online', preferences: {}, createdAt: now, updatedAt: now, ...userValues };
+  const user = { id: crypto.randomUUID(), vibeScore: 0, cringeScore: 0, points: 0, postCount: 0, savedPosts: [], avatarUrl: '', bio: '', bannerUrl: '', themeColor: '#ff4713', avatarFrame: 'none', featuredPosts: [], pinnedGuilds: [], socialLinks: {}, pronouns: '', status: 'online', preferences: {}, createdAt: now, updatedAt: now, ...userValues };
   memoryUsers.set(user.id, user);
   return user;
 }
@@ -126,15 +144,17 @@ export async function updateUser(id, values) {
 }
 
 export async function createPost(authorId, values) {
+  const publishedNow = !values.draft && (!values.scheduledPublishedAt || new Date(values.scheduledPublishedAt) <= new Date());
   if (connected) {
     const post = await Post.create({ author: authorId, ...values });
-    await User.findByIdAndUpdate(authorId, { $inc: { points: 10, vibeScore: 10, postCount: 1 } });
+    if (publishedNow) await User.findByIdAndUpdate(authorId, { $inc: { points: 10, vibeScore: 10, postCount: 1 } });
     return post;
   }
-  const post = { id: crypto.randomUUID(), author: String(authorId), alrightVotes: 0, cringeVotes: 0, impressions: 0, votes: [], createdAt: new Date(), updatedAt: new Date(), ...values };
+  const prepared = { ...values, poll: values.poll ? { ...values.poll, options: values.poll.options.map(option => ({ id: crypto.randomUUID(), text: option.text, voters: [] })) } : null };
+  const post = { id: crypto.randomUUID(), author: String(authorId), alrightVotes: 0, cringeVotes: 0, impressions: 0, votes: [], createdAt: new Date(), updatedAt: new Date(), ...prepared };
   memoryPosts.set(post.id, post);
   const user = memoryUsers.get(String(authorId));
-  if (user) { user.points = (user.points || 0) + 10; user.vibeScore = (user.vibeScore || 0) + 10; user.postCount = (user.postCount || 0) + 1; }
+  if (user && publishedNow) { user.points = (user.points || 0) + 10; user.vibeScore = (user.vibeScore || 0) + 10; user.postCount = (user.postCount || 0) + 1; }
   return post;
 }
 
@@ -142,13 +162,14 @@ const serializePost = (post, userId = '') => {
   const value = normalize(post);
   const votes = value.votes || [];
   const userVote = votes.find(vote => String(vote.user?._id || vote.user) === String(userId))?.value || null;
-  return { ...value, id: String(value._id || value.id), _id: undefined, votes: undefined, userVote };
+  const poll = value.poll?.options?.length ? { ...value.poll, options: value.poll.options.map(option => ({ id: String(option._id || option.id), text: option.text, votes: option.voters?.length || 0, voted: (option.voters || []).some(voter => String(voter) === String(userId)), voters: undefined })) } : null;
+  return { ...value, id: String(value._id || value.id), _id: undefined, votes: undefined, userVote, poll };
 };
 
 export async function listPosts(userId = '', { trending = false } = {}) {
   if (connected) {
     const sort = trending ? { impressions: -1, alrightVotes: -1, cringeVotes: -1, createdAt: -1 } : { createdAt: -1 };
-    const posts = await Post.find({ guild: null }).sort(sort).populate('author', 'displayName handle avatarUrl').lean().exec();
+    const posts = await Post.find({ guild: null, draft: { $ne: true }, visibility: { $in: ['public', null] }, $or: [{ scheduledPublishedAt: null }, { scheduledPublishedAt: { $lte: new Date() } }] }).sort(sort).populate('author', 'displayName handle avatarUrl').lean().exec();
     const counts = await Comment.aggregate([{ $match: { post: { $in: posts.map(post => post._id) } } }, { $group: { _id: '$post', count: { $sum: 1 } } }]);
     const countMap = new Map(counts.map(item => [String(item._id), item.count]));
     return posts.map(post => ({
@@ -157,10 +178,38 @@ export async function listPosts(userId = '', { trending = false } = {}) {
       author: post.author ? { ...post.author, id: String(post.author._id), _id: undefined } : null
     }));
   }
-  return [...memoryPosts.values()].filter(post => !post.guild).sort((a, b) => trending ? ((b.impressions || 0) - (a.impressions || 0) || new Date(b.createdAt) - new Date(a.createdAt)) : new Date(b.createdAt) - new Date(a.createdAt)).map(post => ({
+  return [...memoryPosts.values()].filter(post => !post.guild && !post.draft && (post.visibility || 'public') === 'public' && (!post.scheduledPublishedAt || new Date(post.scheduledPublishedAt) <= new Date())).sort((a, b) => trending ? ((b.impressions || 0) - (a.impressions || 0) || new Date(b.createdAt) - new Date(a.createdAt)) : new Date(b.createdAt) - new Date(a.createdAt)).map(post => ({
     ...serializePost(post, userId), commentCount: [...memoryComments.values()].filter(comment => comment.post === post.id).length,
     author: publicIdentity(memoryUsers.get(String(post.author)))
   }));
+}
+
+export async function listDrafts(userId) {
+  if (connected) return (await Post.find({ author: userId, draft: true }).sort({ updatedAt: -1 }).lean()).map(post => serializePost(post, userId));
+  return [...memoryPosts.values()].filter(post => post.author === String(userId) && post.draft).sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt)).map(post => serializePost(post, userId));
+}
+
+export async function voteOnPoll(postId, userId, optionId) {
+  if (connected) {
+    const post = await Post.findById(postId);
+    if (!post?.poll?.options?.length || post.poll.closesAt && post.poll.closesAt <= new Date()) return null;
+    const option = post.poll.options.id(optionId);
+    if (!option) return null;
+    post.poll.options.forEach(item => item.voters.pull(userId));
+    option.voters.addToSet(userId);
+    post.impressions += 1;
+    await post.save();
+    await incrementVibe(userId, 1);
+    return serializePost(post, userId);
+  }
+  const post = memoryPosts.get(String(postId));
+  if (!post?.poll?.options?.length || post.poll.closesAt && new Date(post.poll.closesAt) <= new Date()) return null;
+  const option = post.poll.options.find(item => String(item.id) === String(optionId));
+  if (!option) return null;
+  post.poll.options.forEach(item => { item.voters = (item.voters || []).filter(id => id !== String(userId)); });
+  option.voters ||= []; option.voters.push(String(userId)); post.impressions = (post.impressions || 0) + 1;
+  await incrementVibe(userId, 1);
+  return serializePost(post, userId);
 }
 
 export async function recordPostView(postId) {
@@ -208,7 +257,7 @@ export async function voteOnPost(postId, userId, value) {
   const previousValue = existingIndex >= 0 ? post.votes[existingIndex].value : null;
   if (existingIndex >= 0 && post.votes[existingIndex].value === value) post.votes.splice(existingIndex, 1);
   else if (existingIndex >= 0) post.votes[existingIndex].value = value;
-  else post.votes.push({ user: String(userId), value });
+  else post.votes.push({ user: String(userId), value, createdAt: new Date() });
   post.alrightVotes = post.votes.filter(vote => vote.value === 'alright').length;
   post.cringeVotes = post.votes.filter(vote => vote.value === 'cringe').length;
   post.impressions += 1;
@@ -336,8 +385,51 @@ const serializeGuild = (guild, userId = '') => {
   const creator = creatorAccount ? { id: creatorAccount.id, displayName: creatorAccount.displayName, handle: creatorAccount.handle, avatarUrl: creatorAccount.avatarUrl } : (value.creator ? { id: String(value.creator) } : null);
   const joined = members.some(member => String(member._id || member) === String(userId));
   const owner = String(creator?.id || creator?._id || value.creator) === String(userId);
-  return { ...value, id: String(value._id || value.id), _id: undefined, creator, memberCount: members.length, joined, owner, canViewContent: joined, members: undefined };
+  const result = { ...value, id: String(value._id || value.id), _id: undefined, creator, memberCount: members.length, joined, owner, canViewContent: joined, members: undefined };
+  if (!owner) delete result.inviteCode;
+  return result;
 };
+
+async function ensureGuildRoles(guildId) {
+  if (connected) {
+    const existing = new Set((await GuildRole.find({ guild: guildId }).select('key').lean()).map(role => role.key));
+    const missing = DEFAULT_GUILD_ROLES.filter(role => !existing.has(role.key)).map(role => ({ ...role, guild: guildId }));
+    if (missing.length) await GuildRole.insertMany(missing, { ordered: false }).catch(error => { if (error?.code !== 11000) throw error; });
+    return GuildRole.find({ guild: guildId }).sort({ rank: -1 }).lean();
+  }
+  if (!memoryGuildRoles.has(String(guildId))) memoryGuildRoles.set(String(guildId), DEFAULT_GUILD_ROLES.map(role => ({ id: crypto.randomUUID(), guild: String(guildId), ...structuredClone(role) })));
+  return memoryGuildRoles.get(String(guildId));
+}
+
+async function guildAccess(guildId, userId) {
+  if (!userId) return { joined: false, pending: false, roleKey: null, permissions: {} };
+  if (connected) {
+    const guild = await Guild.findById(guildId).select('creator members').lean();
+    if (!guild) return null;
+    if (String(guild.creator) === String(userId)) return { joined: true, pending: false, roleKey: 'owner', permissions: DEFAULT_GUILD_ROLES[0].permissions };
+    const membership = await GuildMembership.findOne({ guild: guildId, user: userId }).lean();
+    if (!membership) {
+      const legacyMember = (guild.members || []).some(member => String(member) === String(userId));
+      return legacyMember ? { joined: true, pending: false, roleKey: 'chatter', permissions: DEFAULT_GUILD_ROLES.find(role => role.key === 'chatter').permissions } : { joined: false, pending: false, roleKey: null, permissions: {} };
+    }
+    if (membership.status !== 'active') return { joined: false, pending: membership.status === 'pending', roleKey: membership.roleKey, permissions: {} };
+    const role = await GuildRole.findOne({ guild: guildId, key: membership.roleKey }).lean();
+    const fallback = DEFAULT_GUILD_ROLES.find(item => item.key === membership.roleKey);
+    return { joined: true, pending: false, roleKey: membership.roleKey, permissions: role?.permissions || fallback?.permissions || {} };
+  }
+  const guild = memoryGuilds.get(String(guildId));
+  if (!guild) return null;
+  if (guild.creator === String(userId)) return { joined: true, pending: false, roleKey: 'owner', permissions: DEFAULT_GUILD_ROLES[0].permissions };
+  const membership = memoryGuildMemberships.get(membershipKey(guildId, userId));
+  if (!membership) return guild.members.includes(String(userId)) ? { joined: true, pending: false, roleKey: 'chatter', permissions: DEFAULT_GUILD_ROLES.find(role => role.key === 'chatter').permissions } : { joined: false, pending: false, roleKey: null, permissions: {} };
+  const role = (await ensureGuildRoles(guildId)).find(item => item.key === membership.roleKey);
+  return membership.status === 'active' ? { joined: true, pending: false, roleKey: membership.roleKey, permissions: role?.permissions || {} } : { joined: false, pending: membership.status === 'pending', roleKey: membership.roleKey, permissions: {} };
+}
+
+async function recordGuildAudit(guildId, actorId, action, details = {}, targetUser = null) {
+  if (connected) return GuildAudit.create({ guild: guildId, actor: actorId, action, targetUser, details });
+  memoryGuildAudits.push({ id: crypto.randomUUID(), guild: String(guildId), actor: String(actorId), action, targetUser: targetUser ? String(targetUser) : null, details, createdAt: new Date() });
+}
 
 export async function listGuilds(userId = '') {
   if (connected) return (await Guild.find().sort({ createdAt: -1 }).populate('creator', 'displayName handle avatarUrl').lean()).map(guild => serializeGuild(guild, userId));
@@ -345,9 +437,19 @@ export async function listGuilds(userId = '') {
 }
 
 export async function createGuild(userId, values) {
-  if (connected) return serializeGuild(await (await Guild.create({ ...values, creator: userId, members: [userId] })).populate('creator', 'displayName handle avatarUrl'), userId);
-  const guild = { id: crypto.randomUUID(), creator: String(userId), members: [String(userId)], createdAt: new Date(), ...values };
+  const inviteCode = crypto.randomBytes(9).toString('base64url');
+  if (connected) {
+    const guild = await Guild.create({ ...values, inviteCode, creator: userId, members: [userId] });
+    await ensureGuildRoles(guild._id);
+    await GuildMembership.create({ guild: guild._id, user: userId, roleKey: 'owner', status: 'active' });
+    await recordGuildAudit(guild._id, userId, 'guild.created', { name: guild.name });
+    return serializeGuild(await guild.populate('creator', 'displayName handle avatarUrl'), userId);
+  }
+  const guild = { id: crypto.randomUUID(), creator: String(userId), members: [String(userId)], inviteCode, privacy: 'public', settings: { allowJoinRequests: true, showMemberList: true }, createdAt: new Date(), ...values };
   memoryGuilds.set(guild.id, guild);
+  await ensureGuildRoles(guild.id);
+  memoryGuildMemberships.set(membershipKey(guild.id, userId), { guild: guild.id, user: String(userId), roleKey: 'owner', status: 'active', joinedAt: new Date() });
+  await recordGuildAudit(guild.id, userId, 'guild.created', { name: guild.name });
   return serializeGuild({ ...guild, creator: memoryUsers.get(String(userId)) }, userId);
 }
 
@@ -355,41 +457,49 @@ export async function getGuild(guildId, userId = '') {
   if (connected) {
     if (!mongoose.isValidObjectId(guildId)) return null;
     const guild = await Guild.findById(guildId).populate('creator', 'displayName handle avatarUrl').lean();
-    return guild ? serializeGuild(guild, userId) : null;
+    if (!guild) return null;
+    const access = await guildAccess(guildId, userId);
+    const roles = access?.permissions?.manageRoles ? await ensureGuildRoles(guildId) : [];
+    return { ...serializeGuild(guild, userId), joined: access?.joined || false, joinPending: access?.pending || false, canViewContent: access?.joined || false, viewerRole: access?.roleKey || null, permissions: access?.permissions || {}, roles };
   }
   const guild = memoryGuilds.get(String(guildId));
-  return guild ? serializeGuild({ ...guild, creator: memoryUsers.get(guild.creator) }, userId) : null;
+  if (!guild) return null;
+  const access = await guildAccess(guildId, userId);
+  return { ...serializeGuild({ ...guild, creator: memoryUsers.get(guild.creator) }, userId), joined: access?.joined || false, joinPending: access?.pending || false, canViewContent: access?.joined || false, viewerRole: access?.roleKey || null, permissions: access?.permissions || {}, roles: access?.permissions?.manageRoles ? await ensureGuildRoles(guildId) : [] };
 }
 
 async function isGuildMember(guildId, userId) {
-  if (connected) return Boolean(await Guild.exists({ _id: guildId, members: userId }));
-  return memoryGuilds.get(String(guildId))?.members.includes(String(userId)) || false;
+  return Boolean((await guildAccess(guildId, userId))?.joined);
 }
 
 export async function updateGuild(guildId, userId, values) {
+  const access = await guildAccess(guildId, userId);
+  if (!access?.permissions?.manageGuild) return null;
   if (connected) {
-    const guild = await Guild.findOneAndUpdate({ _id: guildId, creator: userId }, values, { new: true, runValidators: true }).populate('creator', 'displayName handle avatarUrl');
+    const guild = await Guild.findByIdAndUpdate(guildId, values, { new: true, runValidators: true }).populate('creator', 'displayName handle avatarUrl');
+    if (guild) await recordGuildAudit(guildId, userId, 'guild.settings.updated', { fields: Object.keys(values) });
     return guild ? serializeGuild(guild, userId) : null;
   }
   const guild = memoryGuilds.get(String(guildId));
-  if (!guild || guild.creator !== String(userId)) return null;
+  if (!guild) return null;
   Object.assign(guild, values, { updatedAt: new Date() });
+  await recordGuildAudit(guildId, userId, 'guild.settings.updated', { fields: Object.keys(values) });
   return serializeGuild({ ...guild, creator: memoryUsers.get(guild.creator) }, userId);
 }
 
 export async function listGuildPosts(guildId, userId) {
   if (!(await isGuildMember(guildId, userId))) return null;
   if (connected) {
-    const posts = await Post.find({ guild: guildId }).sort({ createdAt: -1 }).populate('author', 'displayName handle avatarUrl').lean();
+    const posts = await Post.find({ guild: guildId, draft: { $ne: true }, $or: [{ scheduledPublishedAt: null }, { scheduledPublishedAt: { $lte: new Date() } }] }).sort({ createdAt: -1 }).populate('author', 'displayName handle avatarUrl').lean();
     const counts = await Comment.aggregate([{ $match: { post: { $in: posts.map(post => post._id) } } }, { $group: { _id: '$post', count: { $sum: 1 } } }]);
     const countMap = new Map(counts.map(item => [String(item._id), item.count]));
     return posts.map(post => ({ ...serializePost(post, userId), commentCount: countMap.get(String(post._id)) || 0, author: post.author ? publicIdentity(post.author) : null }));
   }
-  return [...memoryPosts.values()].filter(post => post.guild === String(guildId)).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)).map(post => ({ ...serializePost(post, userId), author: publicIdentity(memoryUsers.get(post.author)), commentCount: [...memoryComments.values()].filter(comment => comment.post === post.id).length }));
+  return [...memoryPosts.values()].filter(post => post.guild === String(guildId) && !post.draft && (!post.scheduledPublishedAt || new Date(post.scheduledPublishedAt) <= new Date())).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)).map(post => ({ ...serializePost(post, userId), author: publicIdentity(memoryUsers.get(post.author)), commentCount: [...memoryComments.values()].filter(comment => comment.post === post.id).length }));
 }
 
 export async function createGuildPost(guildId, userId, values) {
-  if (!(await isGuildMember(guildId, userId))) return null;
+  if (!(await guildAccess(guildId, userId))?.permissions?.createPosts) return null;
   return createPost(userId, { ...values, guild: guildId });
 }
 
@@ -405,7 +515,7 @@ export async function listGuildMessages(guildId, userId) {
 }
 
 export async function createGuildMessage(guildId, userId, text) {
-  if (!(await isGuildMember(guildId, userId))) return null;
+  if (!(await guildAccess(guildId, userId))?.permissions?.chat) return null;
   if (connected) return serializeGuildMessage(await (await GuildMessage.create({ guild: guildId, sender: userId, text })).populate('sender', 'displayName handle avatarUrl'));
   const message = { id: crypto.randomUUID(), guild: String(guildId), sender: String(userId), text, createdAt: new Date() };
   memoryGuildMessages.push(message);
@@ -416,27 +526,125 @@ export async function toggleGuildMembership(userId, guildId) {
   if (connected) {
     const guild = await Guild.findById(guildId).populate('creator', 'displayName handle avatarUrl');
     if (!guild) return null;
-    const joined = guild.members.some(member => String(member) === String(userId));
+    const access = await guildAccess(guildId, userId);
+    const joined = access?.joined;
     if (joined && String(guild.creator?._id || guild.creator) === String(userId)) return { guild: serializeGuild(guild, userId), owner: true };
-    if (joined) guild.members.pull(userId); else guild.members.push(userId);
+    if (joined) {
+      guild.members.pull(userId);
+      await GuildMembership.deleteOne({ guild: guildId, user: userId });
+      await recordGuildAudit(guildId, userId, 'member.left', {}, userId);
+    } else {
+      const pending = guild.privacy === 'private';
+      await GuildMembership.findOneAndUpdate({ guild: guildId, user: userId }, { roleKey: 'chatter', status: pending ? 'pending' : 'active', joinedAt: new Date() }, { upsert: true, new: true });
+      if (!pending) guild.members.push(userId);
+      await recordGuildAudit(guildId, userId, pending ? 'member.join_requested' : 'member.joined', {}, userId);
+    }
     await guild.save();
-    if (!joined) await Notification.create({ recipient: userId, type: 'guild', guild: guild._id, text: `You joined ${guild.name}.` });
-    return { guild: serializeGuild(guild, userId), owner: false };
+    if (!joined) await Notification.create({ recipient: userId, type: 'guild', guild: guild._id, text: guild.privacy === 'private' ? `Your request to join ${guild.name} was sent.` : `You joined ${guild.name}.` });
+    return { guild: { ...serializeGuild(guild, userId), joinPending: !joined && guild.privacy === 'private' }, owner: false };
   }
   const guild = memoryGuilds.get(String(guildId));
   if (!guild) return null;
   const index = guild.members.indexOf(String(userId));
   if (index >= 0 && guild.creator === String(userId)) return { guild: serializeGuild({ ...guild, creator: memoryUsers.get(guild.creator) }, userId), owner: true };
-  if (index >= 0) guild.members.splice(index, 1); else guild.members.push(String(userId));
-  return { guild: serializeGuild({ ...guild, creator: memoryUsers.get(guild.creator) }, userId), owner: false };
+  if (index >= 0) {
+    guild.members.splice(index, 1);
+    memoryGuildMemberships.delete(membershipKey(guildId, userId));
+    await recordGuildAudit(guildId, userId, 'member.left', {}, userId);
+  } else {
+    const pending = guild.privacy === 'private';
+    memoryGuildMemberships.set(membershipKey(guildId, userId), { guild: String(guildId), user: String(userId), roleKey: 'chatter', status: pending ? 'pending' : 'active', joinedAt: new Date() });
+    if (!pending) guild.members.push(String(userId));
+    await recordGuildAudit(guildId, userId, pending ? 'member.join_requested' : 'member.joined', {}, userId);
+  }
+  return { guild: { ...serializeGuild({ ...guild, creator: memoryUsers.get(guild.creator) }, userId), joinPending: index < 0 && guild.privacy === 'private' }, owner: false };
 }
 
-export async function listLeaderboard() {
+export async function joinGuildByInvite(userId, inviteCode) {
+  const guild = connected ? await Guild.findOne({ inviteCode }) : [...memoryGuilds.values()].find(item => item.inviteCode === inviteCode);
+  if (!guild) return null;
+  const guildId = String(guild._id || guild.id);
+  const existing = await guildAccess(guildId, userId);
+  if (!existing?.joined) {
+    if (connected) {
+      await GuildMembership.findOneAndUpdate({ guild: guildId, user: userId }, { roleKey: 'chatter', status: 'active', joinedAt: new Date() }, { upsert: true });
+      await Guild.findByIdAndUpdate(guildId, { $addToSet: { members: userId } });
+    } else {
+      memoryGuildMemberships.set(membershipKey(guildId, userId), { guild: guildId, user: String(userId), roleKey: 'chatter', status: 'active', joinedAt: new Date() });
+      if (!guild.members.includes(String(userId))) guild.members.push(String(userId));
+    }
+    await recordGuildAudit(guildId, userId, 'member.joined_by_invite', {}, userId);
+  }
+  return getGuild(guildId, userId);
+}
+
+export async function listGuildMembers(guildId, userId) {
+  const access = await guildAccess(guildId, userId);
+  if (!access?.joined) return null;
+  if (connected) {
+    const guild = await Guild.findById(guildId).select('creator members createdAt').lean();
+    if (guild) {
+      await ensureGuildRoles(guildId);
+      await Promise.all((guild.members || []).map(member => GuildMembership.updateOne({ guild: guildId, user: member }, { $setOnInsert: { guild: guildId, user: member, roleKey: String(member) === String(guild.creator) ? 'owner' : 'chatter', status: 'active', joinedAt: guild.createdAt || new Date() } }, { upsert: true })));
+    }
+    const memberships = await GuildMembership.find({ guild: guildId, ...(access.permissions.manageMembers ? {} : { status: 'active' }) }).populate('user', 'displayName handle avatarUrl status').sort({ status: 1, joinedAt: 1 }).lean();
+    return memberships.map(item => ({ id: String(item._id), user: publicIdentity(item.user), roleKey: item.roleKey, status: item.status, joinedAt: item.joinedAt }));
+  }
+  return [...memoryGuildMemberships.values()].filter(item => item.guild === String(guildId) && (access.permissions.manageMembers || item.status === 'active')).map(item => ({ ...item, user: publicIdentity(memoryUsers.get(item.user)) }));
+}
+
+export async function updateGuildMember(guildId, actorId, targetUserId, values) {
+  const access = await guildAccess(guildId, actorId);
+  if (!access?.permissions?.manageMembers || String(targetUserId) === String(actorId)) return null;
+  const roles = await ensureGuildRoles(guildId);
+  if (values.roleKey && !roles.some(role => role.key === values.roleKey && role.key !== 'owner')) return null;
+  if (connected) {
+    const membership = await GuildMembership.findOneAndUpdate({ guild: guildId, user: targetUserId }, values, { new: true, runValidators: true });
+    if (!membership) return null;
+    if (values.status === 'active') await Guild.findByIdAndUpdate(guildId, { $addToSet: { members: targetUserId } });
+    if (values.status === 'suspended') await Guild.findByIdAndUpdate(guildId, { $pull: { members: targetUserId } });
+    await recordGuildAudit(guildId, actorId, values.roleKey ? 'member.role_changed' : 'member.status_changed', values, targetUserId);
+    return membership.toObject();
+  }
+  const membership = memoryGuildMemberships.get(membershipKey(guildId, targetUserId));
+  if (!membership) return null;
+  Object.assign(membership, values);
+  const guild = memoryGuilds.get(String(guildId));
+  if (values.status === 'active' && !guild.members.includes(String(targetUserId))) guild.members.push(String(targetUserId));
+  if (values.status === 'suspended') guild.members = guild.members.filter(id => id !== String(targetUserId));
+  await recordGuildAudit(guildId, actorId, values.roleKey ? 'member.role_changed' : 'member.status_changed', values, targetUserId);
+  return membership;
+}
+
+export async function updateGuildRole(guildId, userId, roleKey, permissions) {
+  const access = await guildAccess(guildId, userId);
+  if (!access?.permissions?.manageRoles || roleKey === 'owner') return null;
+  const allowed = ['manageGuild', 'manageRoles', 'manageMembers', 'managePosts', 'createPosts', 'chat', 'viewAudit'];
+  const safePermissions = Object.fromEntries(Object.entries(permissions).filter(([key]) => allowed.includes(key)));
+  let role;
+  if (connected) role = await GuildRole.findOneAndUpdate({ guild: guildId, key: roleKey }, { permissions: safePermissions }, { new: true, runValidators: true }).lean();
+  else {
+    role = (await ensureGuildRoles(guildId)).find(item => item.key === roleKey);
+    if (role) role.permissions = { ...role.permissions, ...safePermissions };
+  }
+  if (role) await recordGuildAudit(guildId, userId, 'role.permissions_changed', { roleKey, permissions: safePermissions });
+  return role;
+}
+
+export async function listGuildAudit(guildId, userId) {
+  const access = await guildAccess(guildId, userId);
+  if (!access?.permissions?.viewAudit) return null;
+  if (connected) return (await GuildAudit.find({ guild: guildId }).sort({ createdAt: -1 }).limit(200).populate('actor targetUser', 'displayName handle avatarUrl').lean()).map(item => ({ ...item, id: String(item._id), actor: publicIdentity(item.actor), targetUser: publicIdentity(item.targetUser), _id: undefined }));
+  return memoryGuildAudits.filter(item => item.guild === String(guildId)).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)).map(item => ({ ...item, actor: publicIdentity(memoryUsers.get(item.actor)), targetUser: publicIdentity(memoryUsers.get(item.targetUser)) }));
+}
+
+export async function listLeaderboard(period = 'all') {
+  const cutoff = period === 'weekly' ? new Date(Date.now() - 7 * 86400000) : period === 'monthly' ? new Date(Date.now() - 30 * 86400000) : null;
   if (connected) {
     const [users, scores] = await Promise.all([
       User.find().select('displayName handle avatarUrl vibeScore postCount createdAt').lean(),
       Post.aggregate([
-        { $project: { author: 1, cringeScore: { $size: { $filter: { input: { $ifNull: ['$votes', []] }, as: 'vote', cond: { $and: [{ $eq: ['$$vote.value', 'cringe'] }, { $ne: ['$$vote.user', '$author'] }] } } } } } },
+        { $project: { author: 1, cringeScore: { $size: { $filter: { input: { $ifNull: ['$votes', []] }, as: 'vote', cond: { $and: [{ $eq: ['$$vote.value', 'cringe'] }, { $ne: ['$$vote.user', '$author'] }, ...(cutoff ? [{ $gte: ['$$vote.createdAt', cutoff] }] : [])] } } } } } },
         { $group: { _id: '$author', cringeScore: { $sum: '$cringeScore' } } }
       ])
     ]);
@@ -446,7 +654,7 @@ export async function listLeaderboard() {
       .map((user, index) => ({ ...user, rank: index + 1, cringeBadge: cringeBadge(index + 1, user.cringeScore) }));
   }
   const scoreMap = new Map();
-  for (const post of memoryPosts.values()) scoreMap.set(post.author, (scoreMap.get(post.author) || 0) + (post.votes || []).filter(vote => vote.value === 'cringe' && vote.user !== post.author).length);
+  for (const post of memoryPosts.values()) scoreMap.set(post.author, (scoreMap.get(post.author) || 0) + (post.votes || []).filter(vote => vote.value === 'cringe' && vote.user !== post.author && (!cutoff || vote.createdAt && new Date(vote.createdAt) >= cutoff)).length);
   return [...memoryUsers.values()].map(user => ({ ...publicIdentity(user), cringeScore: scoreMap.get(user.id) || 0 }))
     .sort((a, b) => b.cringeScore - a.cringeScore || b.vibeScore - a.vibeScore || new Date(a.createdAt) - new Date(b.createdAt))
     .map((user, index) => ({ ...user, rank: index + 1, cringeBadge: cringeBadge(index + 1, user.cringeScore) }));
@@ -479,13 +687,48 @@ export async function searchCallout(query) {
 }
 
 export async function listNotifications(userId) {
-  if (connected) return (await Notification.find({ recipient: userId }).sort({ createdAt: -1 }).limit(100).populate('actor', 'displayName handle avatarUrl').lean()).map(item => ({ ...item, id: String(item._id), _id: undefined, actor: item.actor ? publicIdentity(item.actor) : null, post: item.post ? String(item.post) : null, guild: item.guild ? String(item.guild) : null }));
-  return memoryNotifications.filter(item => item.recipient === String(userId)).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)).map(item => ({ ...item, actor: publicIdentity(item.actor) }));
+  const categoryFor = type => ({ vote: 'likes', comment: 'comments', reply: 'comments', guild: 'guild_activity', guild_invite: 'guild_activity', friend_request: 'follows', friend_accept: 'follows', message: 'dms', system: 'system' }[type] || 'system');
+  const now = new Date();
+  const mutes = connected ? await NotificationMute.find({ user: userId }).lean() : memoryNotificationMutes.filter(item => item.user === String(userId));
+  const hidden = item => mutes.some(mute => {
+    if (mute.snoozedUntil && new Date(mute.snoozedUntil) <= now) return false;
+    if (mute.scopeType === 'category') return mute.scopeId === categoryFor(item.type);
+    if (mute.scopeType === 'user') return mute.scopeId === String(item.actor?._id || item.actor?.id || item.actor || '');
+    if (mute.scopeType === 'guild') return mute.scopeId === String(item.guild?._id || item.guild || '');
+    return false;
+  });
+  if (connected) return (await Notification.find({ recipient: userId }).sort({ createdAt: -1 }).limit(100).populate('actor', 'displayName handle avatarUrl').lean()).filter(item => !hidden(item)).map(item => ({ ...item, id: String(item._id), _id: undefined, category: categoryFor(item.type), actor: item.actor ? publicIdentity(item.actor) : null, post: item.post ? String(item.post) : null, guild: item.guild ? String(item.guild) : null }));
+  return memoryNotifications.filter(item => item.recipient === String(userId) && !hidden(item)).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)).map(item => ({ ...item, category: categoryFor(item.type), actor: publicIdentity(item.actor) }));
 }
 
 export async function markNotificationsRead(userId) {
   if (connected) await Notification.updateMany({ recipient: userId, read: false }, { read: true });
   else memoryNotifications.filter(item => item.recipient === String(userId)).forEach(item => { item.read = true; });
+}
+
+export async function listNotificationMutes(userId) {
+  if (connected) return (await NotificationMute.find({ user: userId }).sort({ createdAt: -1 }).lean()).map(item => ({ ...item, id: String(item._id), _id: undefined, user: undefined }));
+  return memoryNotificationMutes.filter(item => item.user === String(userId)).map(({ user, ...item }) => item);
+}
+
+export async function setNotificationMute(userId, values) {
+  if (connected) {
+    const mute = await NotificationMute.findOneAndUpdate({ user: userId, scopeType: values.scopeType, scopeId: values.scopeId }, { ...values, user: userId }, { upsert: true, new: true, runValidators: true }).lean();
+    return { ...mute, id: String(mute._id), _id: undefined, user: undefined };
+  }
+  const index = memoryNotificationMutes.findIndex(item => item.user === String(userId) && item.scopeType === values.scopeType && item.scopeId === values.scopeId);
+  const mute = { id: index >= 0 ? memoryNotificationMutes[index].id : crypto.randomUUID(), user: String(userId), ...values, createdAt: index >= 0 ? memoryNotificationMutes[index].createdAt : new Date(), updatedAt: new Date() };
+  if (index >= 0) memoryNotificationMutes[index] = mute; else memoryNotificationMutes.push(mute);
+  const { user, ...safe } = mute;
+  return safe;
+}
+
+export async function deleteNotificationMute(userId, muteId) {
+  if (connected) return Boolean(await NotificationMute.findOneAndDelete({ _id: muteId, user: userId }));
+  const index = memoryNotificationMutes.findIndex(item => item.id === String(muteId) && item.user === String(userId));
+  if (index < 0) return false;
+  memoryNotificationMutes.splice(index, 1);
+  return true;
 }
 
 export async function createMessage(senderId, recipientQuery, text) {
@@ -572,7 +815,31 @@ export async function getPublicProfile(profileId, viewerId = '') {
   const user = await findUserById(profileId);
   if (!user) return null;
   const account = publicUser(user);
-  const profile = { id: account.id, displayName: account.displayName, handle: account.handle, avatarUrl: account.avatarUrl, bannerUrl: account.bannerUrl, themeColor: account.themeColor, bio: account.bio, socialLinks: account.socialLinks, pronouns: account.pronouns, status: account.status, vibeScore: account.vibeScore, vibeBadges: account.vibeBadges, createdAt: account.createdAt };
+  let posts;
+  let guilds;
+  let commentCount;
+  if (connected) {
+    [posts, guilds, commentCount] = await Promise.all([
+      Post.find({ author: profileId, guild: null, draft: { $ne: true }, visibility: { $in: ['public', null] } }).sort({ createdAt: -1 }).limit(50).lean(),
+      Guild.find({ members: profileId }).sort({ createdAt: -1 }).limit(20).lean(),
+      Comment.countDocuments({ author: profileId })
+    ]);
+  } else {
+    posts = [...memoryPosts.values()].filter(post => post.author === String(profileId) && !post.guild && !post.draft && (post.visibility || 'public') === 'public').sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)).slice(0, 50);
+    guilds = [...memoryGuilds.values()].filter(guild => guild.members.includes(String(profileId))).slice(0, 20);
+    commentCount = [...memoryComments.values()].filter(comment => comment.author === String(profileId)).length;
+  }
+  const serializedPosts = posts.map(post => serializePost(post, viewerId));
+  const featuredIds = new Set((account.featuredPosts || []).map(String));
+  const profile = {
+    id: account.id, displayName: account.displayName, handle: account.handle, avatarUrl: account.avatarUrl, bannerUrl: account.bannerUrl,
+    themeColor: account.themeColor, avatarFrame: account.avatarFrame || 'none', bio: account.bio, socialLinks: account.socialLinks, pronouns: account.pronouns,
+    status: account.status, vibeScore: account.vibeScore, vibeBadges: account.vibeBadges, createdAt: account.createdAt,
+    stats: { posts: serializedPosts.length, comments: commentCount, guilds: guilds.length },
+    posts: serializedPosts, media: serializedPosts.filter(post => post.media?.length),
+    featuredPosts: serializedPosts.filter(post => featuredIds.has(post.id)),
+    pinnedGuilds: guilds.filter(guild => (account.pinnedGuilds || []).some(id => String(id) === String(guild._id || guild.id))).map(guild => serializeGuild(guild, viewerId))
+  };
   if (!viewerId || String(profileId) === String(viewerId)) return { ...profile, friendship: String(profileId) === String(viewerId) ? 'self' : 'none' };
   const key = pairKey(profileId, viewerId);
   const friendship = connected ? await Friendship.findOne({ pairKey: key }).lean() : memoryFriendships.find(item => item.pairKey === key);

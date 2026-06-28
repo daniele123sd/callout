@@ -78,12 +78,11 @@
       <aside class="right-rail" id="rightRail">
         <section class="status-card rail-leaderboard" aria-label="Global Cringe leaderboard preview">
           <header><strong>🔥 CRINGE LEADERBOARD</strong><button class="text-button" type="button" data-route-button="leaderboards">See all</button></header>
+          <div class="rail-periods" aria-label="Leaderboard period"><button type="button" data-leader-period="weekly">Week</button><button type="button" data-leader-period="monthly">Month</button><button class="active" type="button" data-leader-period="all">All time</button></div>
           <div class="rail-leaderboard-rows" id="railLeaderboardRows"><p>No ranked users yet.</p></div>
           <p class="status-note" id="railRankNote">Sign in to claim your place.</p>
         </section>
-        <section class="badge-card">
-          <div><p>CRINGE BADGE</p><strong id="cringeBadgeName">FRESH FACE</strong><span id="cringeBadgeNote">The leaderboard updates from real Cringe votes.</span></div><div class="shield" id="cringeBadgeIcon">◇</div>
-        </section>
+        <div class="sidebar-widgets" id="sidebarWidgets" aria-label="Customizable sidebar widgets"></div>
         <div class="ad-slot ad-rectangle" data-ad-slot="right-rail"><ins class="adsbygoogle" style="display:block" data-ad-client="ca-pub-XXXXXXXXXXXXXXXX" data-ad-slot="RIGHT_RAIL_SLOT" data-ad-format="rectangle" data-full-width-responsive="true"></ins><span>ADVERTISEMENT</span><small>300 × 250</small></div>
         <section class="rail-guild-card" id="railGuildCard">
           <p class="eyebrow">GUILDS</p>
@@ -104,13 +103,17 @@
       <form method="dialog" id="composerForm">
         <div class="composer-head"><div><span class="brand-mini">callout 🔥</span><h2>Put your take on the line.</h2></div><button type="button" data-close-composer aria-label="Close">×</button></div>
         <label for="takeText">Your take</label>
-        <textarea id="takeText" maxlength="180" placeholder="Say something worth judging..." required></textarea>
+        <div class="rich-toolbar" aria-label="Text formatting"><button type="button" data-format="bold"><b>B</b></button><button type="button" data-format="italic"><i>I</i></button><button type="button" data-format="spoiler">Spoiler</button><button type="button" id="togglePoll">Poll</button></div>
+        <textarea id="takeText" maxlength="2000" placeholder="Say something worth judging..."></textarea>
         <div class="composer-tools" aria-label="Take attachments"><label class="media-picker" for="takeMedia">▧ Add media<input id="takeMedia" type="file" accept="image/png,image/jpeg,image/webp,image/gif,video/mp4,video/webm" multiple /></label><button type="button" id="addGifUrl">GIF link</button><div class="emoji-tray" id="postEmojiTray"><button type="button">🔥</button><button type="button">😂</button><button type="button">😭</button><button type="button">💀</button><button type="button">🤝</button><button type="button">👀</button></div></div>
         <div class="media-preview" id="mediaPreview" hidden></div>
         <input id="gifUrlInput" type="url" inputmode="url" placeholder="Paste a direct HTTPS GIF URL" hidden />
-        <p class="media-rules">Images: 1, 2, or 4 with crop/resize · Video: one square 1:1 clip, maximum 25 seconds and 8 MB · No hashtags or links in post text</p>
-        <div class="composer-meta"><select id="takeCategory" aria-label="Category"><option>Movies</option><option>Music</option><option>Entertainment</option><option>Games</option><option>Life</option></select><span id="charCount">0 / 180</span></div>
-        <button class="publish-button" value="default" type="submit">Post Take</button>
+        <section class="poll-builder" id="pollBuilder" hidden><label>Poll question<input id="pollQuestion" maxlength="240" /></label><div id="pollOptions"><input maxlength="100" placeholder="Option 1" /><input maxlength="100" placeholder="Option 2" /></div><button type="button" id="addPollOption">+ Add option</button></section>
+        <div class="composer-options"><label>Audience<select id="takeAudience"><option value="public">Public</option><option value="friends">Friends</option></select></label><label>Topics<input id="takeTopics" maxlength="120" placeholder="movies, hot takes" /></label><label>Content warning<input id="takeWarning" maxlength="160" placeholder="Optional" /></label><label>Schedule<input id="takeSchedule" type="datetime-local" /></label><label>Reactions<select id="takeReactionSet"><option value="classic">Classic</option><option value="support">Supportive</option><option value="spicy">Spicy</option></select></label></div>
+        <p class="media-rules">Up to 5 images, square videos, or GIFs. Videos: maximum 25 seconds and 8 MB. Links belong in the embed field, not post text.</p>
+        <label class="embed-field">Link embed<input id="takeEmbed" type="url" placeholder="https://example.com" /></label>
+        <div class="composer-meta"><select id="takeCategory" aria-label="Category"><option>Movies</option><option>Music</option><option>Entertainment</option><option>Games</option><option>Life</option></select><span id="charCount">0 / 2000</span></div>
+        <div class="composer-actions"><button class="quiet-action" id="saveDraft" type="button">Save draft</button><button class="publish-button" value="default" type="submit">Post Take</button></div>
       </form>
     </dialog>
 
@@ -119,6 +122,7 @@
         <div class="dialog-title"><div><span class="section-kicker">NEW GUILD</span><h2>Create a guild</h2></div><button type="button" data-close-guild aria-label="Close">×</button></div>
         <label for="guildName">Guild name</label><input id="guildName" maxlength="40" required placeholder="Name your community" />
         <label for="guildDescription">Description</label><textarea id="guildDescription" maxlength="160" required placeholder="What brings this guild together?"></textarea>
+        <label for="guildPrivacy">Privacy</label><select id="guildPrivacy"><option value="public">Public</option><option value="private">Private (join requests)</option></select>
         <button class="primary-action" type="submit">Create Guild</button>
       </form>
     </dialog>

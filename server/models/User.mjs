@@ -14,7 +14,16 @@ const preferencesSchema = new mongoose.Schema({
   notifications: {
     likes: { type: Boolean, default: true },
     comments: { type: Boolean, default: true },
-    guildInvites: { type: Boolean, default: true }
+    guildInvites: { type: Boolean, default: true },
+    mentions: { type: Boolean, default: true },
+    follows: { type: Boolean, default: true },
+    guildActivity: { type: Boolean, default: true },
+    directMessages: { type: Boolean, default: true }
+  },
+  notificationDelivery: {
+    inApp: { type: Boolean, default: true },
+    push: { type: Boolean, default: false },
+    email: { type: Boolean, default: false }
   },
   directMessages: { type: String, enum: ['everyone', 'guilds', 'nobody'], default: 'everyone' },
   textSize: { type: String, enum: ['small', 'medium', 'large'], default: 'medium' }
@@ -31,9 +40,12 @@ const userSchema = new mongoose.Schema({
   points: { type: Number, default: 0, min: 0, index: true },
   postCount: { type: Number, default: 0, min: 0 },
   savedPosts: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Post' }],
-  bio: { type: String, default: '', maxlength: 200 },
+  bio: { type: String, default: '', maxlength: 1000 },
   bannerUrl: { type: String, default: '' },
   themeColor: { type: String, default: '#ff4713', match: /^#[0-9a-fA-F]{6}$/ },
+  avatarFrame: { type: String, enum: ['none', 'spark', 'gold', 'violet', 'flame'], default: 'none' },
+  featuredPosts: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Post' }],
+  pinnedGuilds: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Guild' }],
   socialLinks: { type: socialLinksSchema, default: () => ({}) },
   pronouns: { type: String, default: '', maxlength: 40 },
   status: { type: String, enum: ['online', 'idle', 'dnd', 'invisible'], default: 'online' },

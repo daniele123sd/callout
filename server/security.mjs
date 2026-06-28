@@ -36,15 +36,13 @@ const mediaItem = Joi.object({
   duration: Joi.number().min(0).max(25).default(0),
   aspectRatio: Joi.number().min(0.1).max(10).default(1)
 });
-const mediaCollection = Joi.array().max(4).items(mediaItem).custom((items, helpers) => {
+const mediaCollection = Joi.array().max(5).items(mediaItem).custom((items, helpers) => {
   if (!items.length) return items;
   const videos = items.filter(item => item.type === 'video');
-  if (videos.length && (videos.length !== 1 || items.length !== 1)) return helpers.message({ custom: 'A post can contain one short video or an image set, not both.' });
   if (videos.some(item => item.aspectRatio < 0.95 || item.aspectRatio > 1.05)) return helpers.message({ custom: 'Short videos must use a square 1:1 aspect ratio.' });
-  if (!videos.length && ![1, 2, 4].includes(items.length)) return helpers.message({ custom: 'Image posts must contain 1, 2, or 4 images/GIFs.' });
   return items;
 }, 'media layout validation');
-const postText = plain(180).custom((value, helpers) => {
+const postText = plain(2000).custom((value, helpers) => {
   if (value.includes('#')) return helpers.message({ custom: 'Hashtags are not allowed in post text.' });
   if (/(?:https?:\/\/|www\.|\b[a-z0-9-]+\.(?:com|net|org|io|co|gg|me|tv)(?:\/|\b))/i.test(value)) return helpers.message({ custom: 'Links are not allowed in post text.' });
   return value;
@@ -63,10 +61,13 @@ export const schemas = {
   profile: Joi.object({
     displayName: plain(40).required(),
     handle: Joi.string().lowercase().pattern(/^@[a-z0-9_]{3,30}$/).required(),
-    bio: plain(200).allow(''),
+    bio: plain(1000).allow(''),
     bannerUrl: optionalBanner,
     avatarUrl: optionalBanner,
     themeColor: Joi.string().pattern(/^#[0-9a-fA-F]{6}$/).required(),
+    avatarFrame: Joi.string().valid('none', 'spark', 'gold', 'violet', 'flame').default('none'),
+    featuredPosts: Joi.array().max(3).items(recordId).default([]),
+    pinnedGuilds: Joi.array().max(5).items(recordId).default([]),
     pronouns: plain(40).allow(''),
     status: Joi.string().valid('online', 'idle', 'dnd', 'invisible').required(),
     socialLinks: Joi.object({
@@ -75,20 +76,59 @@ export const schemas = {
     }).required(),
     preferences: Joi.object({
       theme: Joi.string().valid('light', 'dark', 'system').required(),
-      notifications: Joi.object({ likes: Joi.boolean().required(), comments: Joi.boolean().required(), guildInvites: Joi.boolean().required() }).required(),
+      notifications: Joi.object({
+        likes: Joi.boolean().required(), comments: Joi.boolean().required(), guildInvites: Joi.boolean().required(),
+        mentions: Joi.boolean().default(true), follows: Joi.boolean().default(true), guildActivity: Joi.boolean().default(true), directMessages: Joi.boolean().default(true)
+      }).required(),
+      notificationDelivery: Joi.object({ inApp: Joi.boolean().default(true), push: Joi.boolean().default(false), email: Joi.boolean().default(false) }).default({ inApp: true, push: false, email: false }),
       directMessages: Joi.string().valid('everyone', 'guilds', 'nobody').required(),
       textSize: Joi.string().valid('small', 'medium', 'large').required()
     }).required()
   }),
-  post: Joi.object({ content: postText.required(), category: Joi.string().valid('Movies', 'Music', 'Entertainment', 'Games', 'Life').required(), media: mediaCollection }),
+  post: Joi.object({
+    content: postText.allow('').default(''),
+    category: Joi.string().valid('Movies', 'Music', 'Entertainment', 'Games', 'Life').required(),
+    contentType: Joi.string().valid('text', 'image', 'video', 'gif', 'poll').default('text'),
+    visibility: Joi.string().valid('public', 'guild', 'friends').default('public'),
+    draft: Joi.boolean().default(false),
+    scheduledPublishedAt: Joi.date().iso().allow(null).default(null),
+    topics: Joi.array().max(5).items(plain(40)).default([]),
+    contentWarning: plain(160).allow('').default(''),
+    reactionSet: Joi.string().valid('classic', 'support', 'spicy').default('classic'),
+    embedUrl: Joi.string().uri({ scheme: ['https'] }).max(2048).allow('').default(''),
+    poll: Joi.object({
+      question: plain(240).required(),
+      options: Joi.array().min(2).max(6).items(Joi.object({ text: plain(100).required() })).required(),
+      closesAt: Joi.date().iso().greater('now').allow(null).default(null)
+    }).allow(null).default(null),
+    media: mediaCollection.default([])
+  }).custom((value, helpers) => {
+    if (!value.draft && !value.content && !value.media.length && !value.poll) return helpers.message({ custom: 'Published posts need text, media, or a poll.' });
+    if (value.contentType === 'poll' && !value.poll) return helpers.message({ custom: 'Poll posts require a question and at least two options.' });
+    return value;
+  }, 'composer requirements'),
   vote: Joi.object({ value: Joi.string().valid('alright', 'cringe').required() }),
+  pollVote: Joi.object({ optionId: recordId.required() }),
   comment: Joi.object({ postId: recordId.required(), parent: recordId.allow(null, ''), text: plain(500).required(), gifUrl: Joi.string().allow('').max(2_800_000).pattern(/^(https:\/\/|data:image\/gif;base64,)/i) }),
-  guild: Joi.object({ name: plain(60).required(), description: plain(240).allow('') }),
+  guild: Joi.object({ name: plain(60).required(), description: plain(240).allow(''), privacy: Joi.string().valid('public', 'private').default('public') }),
   guildSettings: Joi.object({
     name: plain(60).required(), description: plain(240).allow(''), tagline: plain(100).allow(''), rules: plain(1200).allow(''),
     iconUrl: optionalBanner, bannerUrl: optionalBanner,
     themeColor: Joi.string().pattern(/^#[0-9a-fA-F]{6}$/).required(), accentColor: Joi.string().pattern(/^#[0-9a-fA-F]{6}$/).required(),
+    privacy: Joi.string().valid('public', 'private').default('public'), pinnedAnnouncement: plain(500).allow('').default(''),
+    settings: Joi.object({ allowJoinRequests: Joi.boolean().required(), showMemberList: Joi.boolean().required() }).default({ allowJoinRequests: true, showMemberList: true }),
     contentPrivacy: Joi.string().valid('members').required()
+  }),
+  guildInvite: Joi.object({ inviteCode: Joi.string().pattern(/^[A-Za-z0-9_-]{8,40}$/).required() }),
+  guildMember: Joi.object({ roleKey: Joi.string().lowercase().pattern(/^[a-z0-9_-]{2,30}$/), status: Joi.string().valid('active', 'suspended') }).or('roleKey', 'status'),
+  guildRole: Joi.object({ permissions: Joi.object({
+    manageGuild: Joi.boolean(), manageRoles: Joi.boolean(), manageMembers: Joi.boolean(), managePosts: Joi.boolean(),
+    createPosts: Joi.boolean(), chat: Joi.boolean(), viewAudit: Joi.boolean()
+  }).min(1).required() }),
+  notificationMute: Joi.object({
+    scopeType: Joi.string().valid('user', 'guild', 'category').required(),
+    scopeId: plain(80).required(),
+    snoozedUntil: Joi.date().iso().allow(null).default(null)
   }),
   guildMessage: Joi.object({ text: plain(2000).required() }),
   friend: Joi.object({ userId: recordId.required() }),

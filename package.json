@@ -10,7 +10,8 @@
   "scripts": {
     "start": "node server.mjs",
     "dev": "node --watch server.mjs",
-    "test": "node --test"
+    "test": "node --test",
+    "migrate:creator": "node scripts/migrate-creator-features.mjs"
   },
   "dependencies": {
     "bcrypt": "^6.0.0",

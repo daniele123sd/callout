@@ -19,10 +19,11 @@ test('comment validation supports MongoDB and local fallback record ids', () => 
   assert.equal(schemas.comment.validate({ postId: '507f1f77bcf86cd799439011', parent: null, text: 'GIF Take', gifUrl: 'data:image/gif;base64,AA==' }).error, undefined);
 });
 
-test('media validation enforces supported post layouts and short video rules', () => {
+test('media validation accepts five mixed attachments and enforces short video rules', () => {
   const image = { type: 'image', url: 'data:image/webp;base64,AA==', alt: 'image', duration: 0, aspectRatio: 1.8 };
   assert.equal(schemas.post.validate({ content: 'Image take', category: 'Life', media: [image, image] }).error, undefined);
-  assert.ok(schemas.post.validate({ content: 'Bad layout', category: 'Life', media: [image, image, image] }).error);
+  assert.equal(schemas.post.validate({ content: 'Flexible layout', category: 'Life', media: [image, image, image, image, image] }).error, undefined);
+  assert.ok(schemas.post.validate({ content: 'Too many', category: 'Life', media: [image, image, image, image, image, image] }).error);
   assert.equal(schemas.post.validate({ content: 'Video take', category: 'Life', media: [{ type: 'video', url: 'data:video/mp4;base64,AA==', alt: '', duration: 25, aspectRatio: 1 }] }).error, undefined);
   assert.ok(schemas.post.validate({ content: 'Long video', category: 'Life', media: [{ type: 'video', url: 'data:video/mp4;base64,AA==', alt: '', duration: 26, aspectRatio: 1 }] }).error);
   assert.ok(schemas.post.validate({ content: 'Wide video', category: 'Life', media: [{ type: 'video', url: 'data:video/mp4;base64,AA==', alt: '', duration: 10, aspectRatio: 1.8 }] }).error);

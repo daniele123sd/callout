@@ -11,6 +11,9 @@ const defaultState = {
     avatarUrl: '',
     bannerUrl: '',
     themeColor: '#ff4713',
+    avatarFrame: 'none',
+    featuredPosts: [],
+    pinnedGuilds: [],
     socialLinks: { twitter: '', instagram: '', discord: '', youtube: '', twitch: '', custom: '' },
     pronouns: '',
     status: 'online',
@@ -20,10 +23,13 @@ const defaultState = {
   settings: {
     appearanceVersion: 2,
     theme: 'light',
-    notifications: { likes: true, comments: true, guildInvites: true },
+    notifications: { likes: true, comments: true, guildInvites: true, mentions: true, follows: true, guildActivity: true, directMessages: true },
+    notificationDelivery: { inApp: true, push: false, email: false },
     directMessages: 'everyone',
     textSize: 'medium',
-    blockedUsers: []
+    blockedUsers: [],
+    widgetOrder: ['trending-guilds', 'activity', 'achievements'],
+    leaderboardPeriod: 'all'
   }
 };
 
@@ -63,6 +69,8 @@ const state = {
   activeGuild: null,
   guildPosts: [],
   guildMessages: [],
+  guildMembers: [],
+  guildAudit: [],
   publicProfile: null,
   notificationFilter: 'all'
 };
@@ -132,10 +140,14 @@ function applySessionUser(user) {
     handle: user.handle || state.profile.handle,
     avatarUrl: user.avatarUrl || state.profile.avatarUrl,
     vibeScore: Number(user.vibeScore ?? state.profile.vibeScore),
+    postCount: Number(user.postCount ?? state.profile.postCount ?? 0),
     vibeBadges: user.vibeBadges || state.profile.vibeBadges,
     bio: user.bio ?? state.profile.bio,
     bannerUrl: user.bannerUrl ?? state.profile.bannerUrl,
     themeColor: user.themeColor || state.profile.themeColor,
+    avatarFrame: user.avatarFrame || state.profile.avatarFrame,
+    featuredPosts: user.featuredPosts || state.profile.featuredPosts,
+    pinnedGuilds: user.pinnedGuilds || state.profile.pinnedGuilds,
     socialLinks: { ...state.profile.socialLinks, ...(user.socialLinks || {}) },
     pronouns: user.pronouns ?? state.profile.pronouns,
     status: user.status || state.profile.status
@@ -145,6 +157,7 @@ function applySessionUser(user) {
       ...state.settings,
       ...user.preferences,
       notifications: { ...state.settings.notifications, ...(user.preferences.notifications || {}) }
+      , notificationDelivery: { ...state.settings.notificationDelivery, ...(user.preferences.notificationDelivery || {}) }
     };
   }
   persist();
@@ -197,11 +210,26 @@ function updateAccountChrome() {
   const track = document.querySelector('#vibeProgress');
   track.setAttribute('aria-valuenow', String(score)); track.setAttribute('aria-valuemax', String(milestone.next)); track.querySelector('span').style.width = `${progress}%`; track.querySelector('i').style.left = `${Math.max(2, progress - 3)}%`;
   document.querySelector('#railRankNote').textContent = standing ? `${standing.cringeScore.toLocaleString()} Cringe ${standing.cringeScore === 1 ? 'vote' : 'votes'} received.` : 'Sign in to claim your place.';
-  document.querySelector('#cringeBadgeName').textContent = (standing?.cringeBadge?.name || 'Fresh Face').toUpperCase();
-  document.querySelector('#cringeBadgeIcon').textContent = standing?.cringeBadge?.icon || '◇';
   const mini = document.querySelector('#railLeaderboardRows');
   mini.innerHTML = state.leaderboard.slice(0, 5).map(user => `<button type="button" data-rail-user="${user.id}"><b>${user.rank}</b><span class="avatar">${user.avatarUrl ? `<img src="${escapeHtml(user.avatarUrl)}" alt="" />` : escapeHtml((user.displayName || 'C').charAt(0))}</span><span><strong>${escapeHtml(user.displayName)}</strong><small>${escapeHtml(user.handle || '')}</small></span><em>${Number(user.cringeScore || 0).toLocaleString()}</em></button>`).join('') || '<p>No ranked users yet.</p>';
   mini.querySelectorAll('[data-rail-user]').forEach(button => button.addEventListener('click', () => navigate(`user/${button.dataset.railUser}`)));
+  renderSidebarWidgets();
+}
+
+function renderSidebarWidgets() {
+  const container = document.querySelector('#sidebarWidgets');
+  if (!container) return;
+  const order = Array.isArray(state.settings.widgetOrder) ? state.settings.widgetOrder : defaultState.settings.widgetOrder;
+  const joined = state.guilds.filter(guild => guild.joined).slice(0, 3);
+  const definitions = {
+    'trending-guilds': { title: 'Trending guilds', body: joined.length ? joined.map(guild => `<button type="button" data-widget-guild="${guild.id}"><span>${guild.iconUrl ? `<img src="${escapeHtml(guild.iconUrl)}" alt="" />` : escapeHtml(guild.name.charAt(0))}</span><b>${escapeHtml(guild.name)}</b><small>${Number(guild.memberCount || 0)} members</small></button>`).join('') : '<p>Guild activity will appear as communities grow.</p>' },
+    activity: { title: 'Your activity', body: `<div class="widget-stat"><strong>${Number(state.profile.vibeScore || 0).toLocaleString()}</strong><span>Vibe</span></div><div class="widget-stat"><strong>${Number(state.profile.postCount || 0).toLocaleString()}</strong><span>Posts</span></div>` },
+    achievements: { title: 'Streaks & achievements', body: `<p>${state.profile.vibeBadges?.length ? `${state.profile.vibeBadges.length} Vibe badge${state.profile.vibeBadges.length === 1 ? '' : 's'} earned.` : 'Interact with Callout to begin your first streak.'}</p><button type="button" data-widget-progress>View progress</button>` }
+  };
+  container.innerHTML = order.map((key, index) => `<section class="sidebar-widget" data-widget="${key}"><header><strong>${definitions[key].title}</strong><span><button type="button" data-widget-move="${index}" data-direction="-1" aria-label="Move up" ${index === 0 ? 'disabled' : ''}>↑</button><button type="button" data-widget-move="${index}" data-direction="1" aria-label="Move down" ${index === order.length - 1 ? 'disabled' : ''}>↓</button></span></header><div>${definitions[key].body}</div></section>`).join('');
+  container.querySelectorAll('[data-widget-move]').forEach(button => button.addEventListener('click', () => { const from = Number(button.dataset.widgetMove); const to = from + Number(button.dataset.direction); [order[from], order[to]] = [order[to], order[from]]; state.settings.widgetOrder = order; persist(); renderSidebarWidgets(); }));
+  container.querySelectorAll('[data-widget-guild]').forEach(button => button.addEventListener('click', () => navigate(`guild/${button.dataset.widgetGuild}/public`)));
+  container.querySelector('[data-widget-progress]')?.addEventListener('click', () => navigate('vibe-progress'));
 }
 
 function updateGuildChrome() {
@@ -233,7 +261,8 @@ function mapPost(post) {
     id, databaseId: id,
     authorId: String(post.author?.id || post.author?._id || post.author || ''),
     authorHandle: post.author?.handle || '@member', authorName: post.author?.displayName || 'Callout member',
-    authorAvatarUrl: post.author?.avatarUrl || '', text: String(post.content || '').toUpperCase(), category: post.category, media: Array.isArray(post.media) ? post.media : [],
+    authorAvatarUrl: post.author?.avatarUrl || '', text: String(post.content || ''), category: post.category, media: Array.isArray(post.media) ? post.media : [],
+    poll: post.poll || null, topics: post.topics || [], contentWarning: post.contentWarning || '', embedUrl: post.embedUrl || '', reactionSet: post.reactionSet || 'classic', visibility: post.visibility || 'public',
     alrightVotes: Number(post.alrightVotes || 0), cringeVotes: Number(post.cringeVotes || 0), impressions: Number(post.impressions || 0),
     userVote: post.userVote || null, commentCount: Number(post.commentCount || 0), comments: Array.isArray(post.comments) ? post.comments : [],
     createdAt: new Date(post.createdAt || Date.now()).getTime()
@@ -259,7 +288,7 @@ async function hydrateApp() {
 }
 
 async function hydrateGuilds() { try { state.guilds = (await apiFetch('/api/guilds', {}, false)).guilds || []; updateGuildChrome(); } catch (error) { console.error(error); } }
-async function hydrateLeaderboard() { try { state.leaderboard = (await apiFetch('/api/leaderboard', {}, false)).users || []; state.userStanding = sessionUser ? state.leaderboard.find(user => String(user.id) === String(sessionUser.id)) || null : null; updateAccountChrome(); } catch (error) { console.error(error); } }
+async function hydrateLeaderboard() { try { state.leaderboard = (await apiFetch(`/api/leaderboard?period=${encodeURIComponent(state.settings.leaderboardPeriod || 'all')}`, {}, false)).users || []; state.userStanding = sessionUser ? state.leaderboard.find(user => String(user.id) === String(sessionUser.id)) || null : null; updateAccountChrome(); } catch (error) { console.error(error); } }
 async function hydrateTrending() { try { state.trendingPosts = ((await apiFetch('/api/posts/trending', {}, false)).posts || []).map(mapPost); } catch (error) { console.error(error); } }
 async function hydrateGuildDetail() {
   const id = decodeURIComponent(location.hash.split('/')[1] || '');
@@ -267,8 +296,10 @@ async function hydrateGuildDetail() {
   try {
     state.activeGuild = (await apiFetch(`/api/guilds/${id}`, {}, false)).guild;
     if (state.activeGuild.canViewContent && sessionUser) {
-      const [posts, messages] = await Promise.all([apiFetch(`/api/guilds/${id}/posts`), apiFetch(`/api/guilds/${id}/messages`)]);
-      state.guildPosts = (posts.posts || []).map(mapPost); state.guildMessages = messages.messages || [];
+      const requests = [apiFetch(`/api/guilds/${id}/posts`), state.activeGuild.permissions?.chat ? apiFetch(`/api/guilds/${id}/messages`) : Promise.resolve({ messages: [] }), apiFetch(`/api/guilds/${id}/members`)];
+      if (state.activeGuild.permissions?.viewAudit) requests.push(apiFetch(`/api/guilds/${id}/audit`));
+      const [posts, messages, members, audit] = await Promise.all(requests);
+      state.guildPosts = (posts.posts || []).map(mapPost); state.guildMessages = messages.messages || []; state.guildMembers = members.members || []; state.guildAudit = audit?.audit || [];
     } else { state.guildPosts = []; state.guildMessages = []; }
   } catch (error) { state.activeGuild = null; showToast(error.message); }
 }
@@ -302,7 +333,8 @@ function currentUserId() {
 }
 
 function avatarMarkup(className = '') {
-  return state.profile.avatarUrl ? `<span class="avatar ${className}"><img src="${escapeHtml(state.profile.avatarUrl)}" alt="" /></span>` : `<span class="avatar ${className}">🦸🏻</span>`;
+  const frame = `avatar-frame-${escapeHtml(state.profile.avatarFrame || 'none')}`;
+  return state.profile.avatarUrl ? `<span class="avatar ${className} ${frame}"><img src="${escapeHtml(state.profile.avatarUrl)}" alt="" /></span>` : `<span class="avatar ${className} ${frame}">🦸🏻</span>`;
 }
 
 function postAvatarMarkup(post) {
@@ -345,12 +377,15 @@ function postTemplate(post, detail = false) {
       ${postAvatarMarkup(post)}
       <div class="take-content" ${detail ? '' : `data-open-take="${post.id}" role="link" tabindex="0" aria-label="Open take: ${escapeHtml(post.text)}"`}>
         <div class="take-byline"><strong>${escapeHtml(post.authorHandle || '@member')}</strong><small>${timeLabel(post.createdAt || Date.now())} in ${escapeHtml(post.category)}</small></div>
-        <h2>${escapeHtml(post.text)}</h2>
+        ${post.contentWarning ? `<details class="content-warning"><summary>Content warning: ${escapeHtml(post.contentWarning)}</summary><h2>${formatPostContent(post.text)}</h2></details>` : `<h2>${formatPostContent(post.text)}</h2>`}
+        ${post.topics?.length ? `<div class="post-topics">${post.topics.map(topic => `<span>${escapeHtml(topic)}</span>`).join('')}</div>` : ''}
       </div>
       <button class="icon-button save-button ${isSaved ? 'saved' : ''}" type="button" data-save-post="${post.id}" aria-label="${isSaved ? 'Remove from saved' : 'Save take'}"><svg><use href="#i-bookmark"></use></svg></button>
       <button class="icon-button" type="button" data-post-menu="${post.id}" aria-label="Post options"><svg><use href="#i-more"></use></svg></button>
     </div>
     ${postMediaMarkup(post.media)}
+    ${post.poll ? pollMarkup(post) : ''}
+    ${post.embedUrl ? `<a class="link-embed" href="${escapeHtml(post.embedUrl)}" target="_blank" rel="noopener noreferrer"><strong>Open attached link</strong><small>${escapeHtml(new URL(post.embedUrl).hostname)}</small></a>` : ''}
     <div class="vote-row">
       <button class="vote-button alright ${post.userVote === 'alright' ? 'selected' : ''}" type="button" data-vote="alright"><span class="vote-face">☺</span><strong>ALRIGHT</strong></button>
       <b class="percent alright-percent">${alrightPercent}%</b>
@@ -362,6 +397,15 @@ function postTemplate(post, detail = false) {
     </div>
     <div class="take-footer"><span>${total} ${total === 1 ? 'vote' : 'votes'}　•　${commentCount} ${commentCount === 1 ? 'Take' : 'Takes'}</span>${detail ? '' : `<button class="comment-link" type="button" data-open-take="${post.id}">Open take →</button>`}</div>
   </article>`;
+}
+
+function formatPostContent(value = '') {
+  return escapeHtml(value).replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>').replace(/\*([^*]+)\*/g, '<em>$1</em>').replace(/\|\|([^|]+)\|\|/g, '<span class="spoiler-text" tabindex="0">$1</span>').replace(/\n/g, '<br>');
+}
+
+function pollMarkup(post) {
+  const total = post.poll.options.reduce((sum, option) => sum + Number(option.votes || 0), 0);
+  return `<section class="post-poll"><strong>${escapeHtml(post.poll.question || 'Poll')}</strong>${post.poll.options.map(option => { const percent = total ? Math.round(Number(option.votes || 0) / total * 100) : 0; return `<button type="button" data-poll-post="${post.id}" data-poll-option="${option.id}" class="${option.voted ? 'selected' : ''}" style="--poll:${percent}%"><span>${escapeHtml(option.text)}</span><b>${percent}%</b></button>`; }).join('')}<small>${total} vote${total === 1 ? '' : 's'}</small></section>`;
 }
 
 function postMediaMarkup(media = []) {
@@ -494,14 +538,17 @@ function guildDetailView() {
   const guild = state.activeGuild?.id === id ? state.activeGuild : null;
   if (!guild) return `${pageHeader('GUILD', 'Loading guild…', 'Opening the public guild profile.')}`;
   const tab = location.hash.split('/')[2] || (guild.joined ? 'feed' : 'public');
-  const tabs = `<nav class="guild-tabs"><button data-guild-tab="public" class="${tab === 'public' ? 'active' : ''}">Public profile</button><button data-guild-tab="feed" class="${tab === 'feed' ? 'active' : ''}">Member feed</button><button data-guild-tab="chat" class="${tab === 'chat' ? 'active' : ''}">Group chat</button>${guild.owner ? `<button data-guild-tab="settings" class="${tab === 'settings' ? 'active' : ''}">Settings</button>` : ''}</nav>`;
+  const tabs = `<nav class="guild-tabs"><button data-guild-tab="public" class="${tab === 'public' ? 'active' : ''}">Public profile</button><button data-guild-tab="feed" class="${tab === 'feed' ? 'active' : ''}">Member feed</button><button data-guild-tab="chat" class="${tab === 'chat' ? 'active' : ''}">Group chat</button>${guild.joined ? `<button data-guild-tab="members" class="${tab === 'members' ? 'active' : ''}">Members</button>` : ''}${guild.permissions?.manageRoles ? `<button data-guild-tab="roles" class="${tab === 'roles' ? 'active' : ''}">Roles</button>` : ''}${guild.permissions?.viewAudit ? `<button data-guild-tab="audit" class="${tab === 'audit' ? 'active' : ''}">Audit</button>` : ''}${guild.permissions?.manageGuild ? `<button data-guild-tab="settings" class="${tab === 'settings' ? 'active' : ''}">Settings</button>` : ''}</nav>`;
   const hero = `<section class="guild-hero" style="--guild-theme:${escapeHtml(guild.themeColor || '#7444e8')};--guild-accent:${escapeHtml(guild.accentColor || '#ff4713')}"><div class="guild-cover">${guild.bannerUrl ? `<img src="${escapeHtml(guild.bannerUrl)}" alt="" />` : ''}</div><div class="guild-hero-body"><span class="guild-profile-icon">${guild.iconUrl ? `<img src="${escapeHtml(guild.iconUrl)}" alt="" />` : escapeHtml(guild.name.charAt(0))}</span><div><span class="section-kicker">${guild.memberCount} MEMBERS</span><h1>${escapeHtml(guild.name)}</h1><p>${escapeHtml(guild.tagline || guild.description)}</p></div><button class="${guild.joined ? 'quiet-action' : 'primary-action'}" type="button" data-toggle-guild="${guild.id}" ${guild.owner ? 'disabled' : ''}>${guild.owner ? 'Owner' : guild.joined ? 'Leave guild' : 'Join guild'}</button></div></section>`;
   let body = '';
-  if (tab === 'public') body = `<section class="guild-public-grid"><article><span class="section-kicker">ABOUT</span><h2>${escapeHtml(guild.description || 'No description yet.')}</h2></article><article><span class="section-kicker">RULES</span><div class="formatted-copy">${escapeHtml(guild.rules || 'Guild rules have not been added yet.').replace(/\n/g, '<br>')}</div></article></section>`;
+  if (tab === 'public') body = `${guild.pinnedAnnouncement ? `<aside class="guild-announcement"><strong>Pinned announcement</strong><p>${escapeHtml(guild.pinnedAnnouncement)}</p></aside>` : ''}<section class="guild-public-grid"><article><span class="section-kicker">ABOUT</span><h2>${escapeHtml(guild.description || 'No description yet.')}</h2></article><article><span class="section-kicker">RULES</span><div class="formatted-copy">${escapeHtml(guild.rules || 'Guild rules have not been added yet.').replace(/\n/g, '<br>')}</div></article></section>`;
   else if (!guild.canViewContent) body = emptyState('🔒', 'Members-only area', 'This guild is public from the outside, but its feed and group chat are visible only to members.', `<button class="primary-action" type="button" data-toggle-guild="${guild.id}">Join guild</button>`);
-  else if (tab === 'feed') body = `<form class="guild-post-composer" id="guildPostForm"><textarea name="content" maxlength="180" required placeholder="Share something with ${escapeHtml(guild.name)}…"></textarea><select name="category"><option>Life</option><option>Entertainment</option><option>Movies</option><option>Music</option><option>Games</option></select><button class="primary-action" type="submit">Post to guild</button></form>${state.guildPosts.length ? feedMarkup(state.guildPosts) : emptyState('✦', 'No guild posts yet', 'Members can start the first conversation here.')}`;
-  else if (tab === 'chat') body = `<section class="guild-chat"><div class="chat-stream">${state.guildMessages.length ? state.guildMessages.map(message => `<article><span class="avatar">${escapeHtml((message.sender?.displayName || 'C').charAt(0))}</span><div><strong>${escapeHtml(message.sender?.displayName || 'Member')}</strong><small>${timeLabel(new Date(message.createdAt).getTime())}</small><p>${escapeHtml(message.text)}</p></div></article>`).join('') : '<div class="stage-empty"><h2>No messages yet</h2><p>Start the guild group chat.</p></div>'}</div><form id="guildChatForm"><textarea name="text" maxlength="2000" required placeholder="Message the guild…"></textarea><button class="primary-action" type="submit">Send</button></form></section>`;
-  else body = `<form class="guild-settings-form" id="guildSettingsForm"><div class="form-grid"><label>Guild name<input name="name" maxlength="60" value="${escapeHtml(guild.name)}" required /></label><label>Tagline<input name="tagline" maxlength="100" value="${escapeHtml(guild.tagline || '')}" /></label></div><label>Description<textarea name="description" maxlength="240">${escapeHtml(guild.description || '')}</textarea></label><label>Rules<textarea name="rules" maxlength="1200">${escapeHtml(guild.rules || '')}</textarea></label><div class="form-grid"><label>Icon image<input name="iconFile" type="file" accept="image/png,image/jpeg,image/webp,image/gif" /></label><label>Banner image<input name="bannerFile" type="file" accept="image/png,image/jpeg,image/webp,image/gif" /></label><label>Theme color<input name="themeColor" type="color" value="${escapeHtml(guild.themeColor || '#7444e8')}" /></label><label>Accent color<input name="accentColor" type="color" value="${escapeHtml(guild.accentColor || '#ff4713')}" /></label></div><input type="hidden" name="iconUrl" value="${escapeHtml(guild.iconUrl || '')}" /><input type="hidden" name="bannerUrl" value="${escapeHtml(guild.bannerUrl || '')}" /><input type="hidden" name="contentPrivacy" value="members" /><button class="primary-action" type="submit">Save guild</button></form>`;
+  else if (tab === 'feed') body = `${guild.permissions?.createPosts ? `<form class="guild-post-composer" id="guildPostForm"><textarea name="content" maxlength="2000" required placeholder="Share something with ${escapeHtml(guild.name)}…"></textarea><select name="category"><option>Life</option><option>Entertainment</option><option>Movies</option><option>Music</option><option>Games</option></select><button class="primary-action" type="submit">Post to guild</button></form>` : '<aside class="info-callout"><strong>Read-only role</strong><p>The owner must grant Contributor posting permission before you can publish here.</p></aside>'}${state.guildPosts.length ? feedMarkup(state.guildPosts) : emptyState('✦', 'No guild posts yet', 'Permitted contributors can start the first conversation here.')}`;
+  else if (tab === 'chat') body = guild.permissions?.chat ? `<section class="guild-chat"><div class="chat-stream">${state.guildMessages.length ? state.guildMessages.map(message => `<article><span class="avatar">${message.sender?.avatarUrl ? `<img src="${escapeHtml(message.sender.avatarUrl)}" alt="" />` : escapeHtml((message.sender?.displayName || 'C').charAt(0))}</span><div><strong>${escapeHtml(message.sender?.displayName || 'Member')}</strong><small>${timeLabel(new Date(message.createdAt).getTime())}</small><p>${escapeHtml(message.text)}</p></div></article>`).join('') : '<div class="stage-empty"><h2>No messages yet</h2><p>Start the guild group chat.</p></div>'}</div><form id="guildChatForm"><textarea name="text" maxlength="2000" required placeholder="Message the guild…"></textarea><button class="primary-action" type="submit">Send</button></form></section>` : emptyState('🔒', 'Chat permission required', 'Ask a guild moderator to grant a role with chat access.');
+  else if (tab === 'members') body = `<section class="guild-member-list">${state.guildMembers.map(member => `<article><span class="avatar">${member.user?.avatarUrl ? `<img src="${escapeHtml(member.user.avatarUrl)}" alt="" />` : escapeHtml((member.user?.displayName || 'C').charAt(0))}</span><div><strong>${escapeHtml(member.user?.displayName || 'Member')}</strong><small><i class="status-dot ${escapeHtml(member.user?.status || 'invisible')}"></i> ${escapeHtml(member.roleKey)} · ${escapeHtml(member.status)}</small></div>${guild.permissions?.manageMembers && member.roleKey !== 'owner' ? `<select data-member-role="${member.user.id}">${['moderator','contributor','chatter','viewer'].map(role => `<option value="${role}" ${member.roleKey === role ? 'selected' : ''}>${role}</option>`).join('')}</select>${member.status === 'pending' ? `<button data-approve-member="${member.user.id}">Approve</button>` : ''}` : ''}</article>`).join('') || '<p>No members yet.</p>'}</section>`;
+  else if (tab === 'roles') body = `<section class="role-editor">${(guild.roles || []).filter(role => role.key !== 'owner').map(role => `<form data-role-form="${role.key}"><header><strong style="color:${escapeHtml(role.color)}">${escapeHtml(role.name)}</strong><small>${escapeHtml(role.key)}</small></header><div>${['manageGuild','manageRoles','manageMembers','managePosts','createPosts','chat','viewAudit'].map(permission => `<label><input type="checkbox" name="${permission}" ${role.permissions?.[permission] ? 'checked' : ''} />${permission.replace(/([A-Z])/g, ' $1')}</label>`).join('')}</div><button class="quiet-action" type="submit">Save role</button></form>`).join('')}</section>`;
+  else if (tab === 'audit') body = `<section class="audit-list">${state.guildAudit.map(item => `<article><strong>${escapeHtml(item.actor?.displayName || 'Member')}</strong><span>${escapeHtml(item.action)}</span><small>${new Date(item.createdAt).toLocaleString()}</small></article>`).join('') || '<p>No audited changes yet.</p>'}</section>`;
+  else body = `<form class="guild-settings-form" id="guildSettingsForm"><div class="form-grid"><label>Guild name<input name="name" maxlength="60" value="${escapeHtml(guild.name)}" required /></label><label>Tagline<input name="tagline" maxlength="100" value="${escapeHtml(guild.tagline || '')}" /></label></div><label>Description<textarea name="description" maxlength="240">${escapeHtml(guild.description || '')}</textarea></label><label>Pinned announcement<textarea name="pinnedAnnouncement" maxlength="500">${escapeHtml(guild.pinnedAnnouncement || '')}</textarea></label><label>Rules<textarea name="rules" maxlength="1200">${escapeHtml(guild.rules || '')}</textarea></label><div class="form-grid"><label>Privacy<select name="privacy"><option value="public" ${guild.privacy !== 'private' ? 'selected' : ''}>Public</option><option value="private" ${guild.privacy === 'private' ? 'selected' : ''}>Private</option></select></label><label>Invite code<input value="${escapeHtml(guild.inviteCode || '')}" readonly /></label><label>Icon image<input name="iconFile" type="file" accept="image/png,image/jpeg,image/webp,image/gif" /></label><label>Banner image<input name="bannerFile" type="file" accept="image/png,image/jpeg,image/webp,image/gif" /></label><label>Theme color<input name="themeColor" type="color" value="${escapeHtml(guild.themeColor || '#7444e8')}" /></label><label>Accent color<input name="accentColor" type="color" value="${escapeHtml(guild.accentColor || '#ff4713')}" /></label></div><label><input name="allowJoinRequests" type="checkbox" ${guild.settings?.allowJoinRequests !== false ? 'checked' : ''} /> Allow join requests</label><label><input name="showMemberList" type="checkbox" ${guild.settings?.showMemberList !== false ? 'checked' : ''} /> Show member list</label><input type="hidden" name="iconUrl" value="${escapeHtml(guild.iconUrl || '')}" /><input type="hidden" name="bannerUrl" value="${escapeHtml(guild.bannerUrl || '')}" /><input type="hidden" name="contentPrivacy" value="members" /><button class="primary-action" type="submit">Save guild</button></form>`;
   return `${hero}${tabs}<div class="guild-workspace">${body}</div>`;
 }
 
@@ -515,7 +562,9 @@ function notificationCategory(item) {
 
 function notificationsView() {
   const filtered = state.notificationFilter === 'all' ? state.notifications : state.notifications.filter(item => notificationCategory(item) === state.notificationFilter);
-  const content = filtered.length ? `<section class="activity-list">${filtered.map(item => `<article class="activity-item ${item.read ? '' : 'unread'}"><span class="avatar">${escapeHtml((item.actor?.displayName || 'C').charAt(0))}</span><div><span class="notification-kind">${notificationCategory(item).toUpperCase()}</span><strong>${escapeHtml(item.text)}</strong><small>${item.actor ? `${escapeHtml(item.actor.displayName)} · ` : ''}${timeLabel(new Date(item.createdAt).getTime())}</small></div><div class="notification-actions">${item.type === 'friend_request' ? `<button type="button" data-notification-user="${escapeHtml(item.actor?.id || '')}">View request</button>` : ''}${item.post ? `<button type="button" data-notification-post="${item.post}">Open</button>` : ''}${item.guild ? `<button type="button" data-notification-guild="${item.guild}">Open</button>` : ''}${item.type === 'message' && item.actor?.id ? `<button type="button" data-notification-message="${item.actor.id}">Chat</button>` : ''}</div></article>`).join('')}</section>` : emptyState('♢', 'Nothing in this category', 'Specific account activity will appear here when it happens.');
+  const grouped = Object.groupBy ? Object.groupBy(filtered, notificationCategory) : filtered.reduce((groups, item) => { (groups[notificationCategory(item)] ||= []).push(item); return groups; }, {});
+  const row = item => `<article class="activity-item ${item.read ? '' : 'unread'}"><span class="avatar">${item.actor?.avatarUrl ? `<img src="${escapeHtml(item.actor.avatarUrl)}" alt="${escapeHtml(item.actor.displayName || 'Sender')}" />` : escapeHtml((item.actor?.displayName || 'C').charAt(0))}</span><div><span class="notification-kind">${notificationCategory(item).toUpperCase()}</span><strong>${escapeHtml(item.text)}</strong><small>${item.actor ? `${escapeHtml(item.actor.displayName)} · ` : ''}${timeLabel(new Date(item.createdAt).getTime())}</small></div><div class="notification-actions">${item.type === 'friend_request' ? `<button type="button" data-notification-user="${escapeHtml(item.actor?.id || '')}">View request</button>` : ''}${item.post ? `<button type="button" data-notification-post="${item.post}">Open</button>` : ''}${item.guild ? `<button type="button" data-notification-guild="${item.guild}">Open</button>` : ''}${item.type === 'message' && item.actor?.id ? `<button type="button" data-notification-message="${item.actor.id}">Chat</button>` : ''}${item.actor?.id ? `<button type="button" data-mute-notification="user" data-mute-id="${item.actor.id}">Mute</button>` : item.guild ? `<button type="button" data-mute-notification="guild" data-mute-id="${item.guild}">Mute</button>` : `<button type="button" data-mute-notification="category" data-mute-id="${item.category || notificationCategory(item)}">Mute</button>`}</div></article>`;
+  const content = filtered.length ? `<section class="notification-groups">${Object.entries(grouped).map(([category, items]) => `<section><h2>${escapeHtml(category)}</h2><div class="activity-list">${items.map(row).join('')}</div></section>`).join('')}</section>` : emptyState('♢', 'Nothing in this category', 'Specific account activity will appear here when it happens.');
   return `${pageHeader('INBOX', 'Notifications', 'Votes, replies, guild activity, and system updates in one place.', '<button class="quiet-action" type="button" data-mark-read>Mark all as read</button>')}
     <div class="segmented-control notification-filters">${[['all','All'],['takes','Takes'],['messages','Messages'],['social','Friends'],['guilds','Guilds'],['system','System']].map(([key,label]) => `<button class="${state.notificationFilter === key ? 'active' : ''}" type="button" data-notification-filter="${key}">${label}</button>`).join('')}</div>
     ${content}`;
@@ -560,7 +609,8 @@ function profileView() {
       <div class="profile-cover">${profile.bannerUrl ? `<img src="${escapeHtml(profile.bannerUrl)}" alt="Profile banner" />` : '<span>CALL IT LIKE YOU SEE IT.</span>'}</div>
       <div class="profile-identity">${avatarMarkup('profile-avatar')}<div><div class="identity-line"><h2>${escapeHtml(profile.displayName)}</h2><i class="status-dot ${escapeHtml(profile.status)}"></i></div><p>${escapeHtml(profile.handle)}${profile.pronouns ? ` · ${escapeHtml(profile.pronouns)}` : ''}</p></div><div class="vibe-stat-card"><span>✦</span><div><strong>${Number(profile.vibeScore || 0).toLocaleString()}</strong><small>VIBE SCORE</small></div></div></div>
     </section>
-    <section class="profile-summary"><div><span class="section-kicker">ABOUT ME</span><div class="formatted-copy">${formatBio(profile.bio || 'No bio added yet.')}</div><p>Status: ${escapeHtml(profile.status.toUpperCase())}</p></div><div><span class="section-kicker">SOCIAL LINKS</span><h2>Find me elsewhere</h2><div class="profile-links">${links.length ? links.join('') : '<p>No social links added yet.</p>'}</div></div></section>
+    <nav class="profile-tabs" aria-label="Profile sections"><button class="active">Posts</button><button>About</button><button>Guilds</button><button>Achievements</button><button>Media</button></nav>
+    <section class="profile-summary"><div><span class="section-kicker">ABOUT ME</span><div class="formatted-copy">${formatBio(profile.bio || 'No bio added yet.')}</div><p>Status: ${escapeHtml(profile.status.toUpperCase())}</p></div><div><span class="section-kicker">ACTIVITY</span><div class="profile-stats"><span><strong>${Number(profile.postCount || 0)}</strong> Posts</span><span><strong>${Number(profile.vibeScore || 0).toLocaleString()}</strong> Vibe</span><span><strong>${profile.vibeBadges?.length || 0}</strong> Badges</span></div><div class="profile-links">${links.length ? links.join('') : '<p>No social links added yet.</p>'}</div></div></section>
     <section class="badges-card"><div><span class="section-kicker">VIBE BADGES</span><h2>Earned through participation</h2></div><div class="badge-grid">${(profile.vibeBadges?.length ? profile.vibeBadges : [{ icon: '✦', name: 'New Voice' }]).map(badge => `<span title="${escapeHtml(badge.name)}">${escapeHtml(badge.icon)}<strong>${escapeHtml(badge.name)}</strong></span>`).join('')}<span class="locked" title="Keep building your Vibe">◇<strong>Next badge</strong></span></div></section>`;
 }
 
@@ -574,7 +624,7 @@ function publicUserView() {
   if (!user || String(user.id) !== id) return `${pageHeader('PROFILE', 'Loading profile…', 'Fetching the latest public account details.')}`;
   const badges = user.vibeBadges || [];
   const friendButton = user.requestIncoming ? `<button class="quiet-action" type="button" data-accept-friend="${user.friendshipId}">Accept friend</button>` : `<button class="quiet-action" type="button" data-friend-user="${user.id}" ${['accepted','pending'].includes(user.friendship) ? 'disabled' : ''}>${user.friendship === 'accepted' ? 'Friends ✓' : user.friendship === 'pending' ? 'Request pending' : 'Add friend'}</button>`;
-  return `<section class="public-user-card" style="--profile-accent:${escapeHtml(user.themeColor || '#ff4713')}"><div class="public-user-banner">${user.bannerUrl ? `<img src="${escapeHtml(user.bannerUrl)}" alt="" />` : ''}</div><div class="public-user-main"><span class="avatar">${user.avatarUrl ? `<img src="${escapeHtml(user.avatarUrl)}" alt="" />` : escapeHtml((user.displayName || 'C').charAt(0))}</span><div><h1>${escapeHtml(user.displayName)}</h1><p>${escapeHtml(user.handle || '')}${user.pronouns ? ` · ${escapeHtml(user.pronouns)}` : ''}</p></div><div class="public-user-actions">${user.friendship === 'self' ? '<button class="quiet-action" data-open-settings>Edit profile</button>' : `${friendButton}<button class="primary-action" type="button" data-message-user="${user.id}">Message</button>`}</div></div><div class="public-user-body"><article><span class="section-kicker">ABOUT ME</span><div class="formatted-copy">${formatBio(user.bio || 'No bio added yet.')}</div></article><article><span class="section-kicker">VIBE</span><h2>✦ ${Number(user.vibeScore || 0).toLocaleString()}</h2><div class="mini-badges">${badges.map(badge => `<span>${escapeHtml(badge.icon)} ${escapeHtml(badge.name)}</span>`).join('')}</div></article></div></section>`;
+  return `<section class="public-user-card" style="--profile-accent:${escapeHtml(user.themeColor || '#ff4713')}"><div class="public-user-banner">${user.bannerUrl ? `<img src="${escapeHtml(user.bannerUrl)}" alt="" />` : ''}</div><div class="public-user-main"><span class="avatar avatar-frame-${escapeHtml(user.avatarFrame || 'none')}">${user.avatarUrl ? `<img src="${escapeHtml(user.avatarUrl)}" alt="" />` : escapeHtml((user.displayName || 'C').charAt(0))}</span><div><h1>${escapeHtml(user.displayName)}</h1><p>${escapeHtml(user.handle || '')}${user.pronouns ? ` · ${escapeHtml(user.pronouns)}` : ''}</p></div><div class="public-user-actions">${user.friendship === 'self' ? '<button class="quiet-action" data-open-settings>Edit profile</button>' : `${friendButton}<button class="primary-action" type="button" data-message-user="${user.id}">Message</button>`}</div></div><nav class="profile-tabs"><button class="active">Posts</button><button>About</button><button>Guilds</button><button>Achievements</button><button>Media</button></nav><div class="public-user-body"><article><span class="section-kicker">ABOUT ME</span><div class="formatted-copy">${formatBio(user.bio || 'No bio added yet.')}</div><div class="profile-stats"><span><strong>${user.stats?.posts || 0}</strong> Posts</span><span><strong>${user.stats?.comments || 0}</strong> Takes</span><span><strong>${user.stats?.guilds || 0}</strong> Guilds</span></div></article><article><span class="section-kicker">VIBE</span><h2>✦ ${Number(user.vibeScore || 0).toLocaleString()}</h2><div class="mini-badges">${badges.map(badge => `<span>${escapeHtml(badge.icon)} ${escapeHtml(badge.name)}</span>`).join('')}</div></article></div>${user.featuredPosts?.length ? `<section class="featured-profile-posts"><span class="section-kicker">FEATURED POSTS</span>${user.featuredPosts.map(post => `<article><strong>${escapeHtml(post.content || '')}</strong></article>`).join('')}</section>` : ''}</section>`;
 }
 
 function settingsView() {
@@ -586,7 +636,7 @@ function settingsView() {
         <div class="theme-options" role="radiogroup" aria-label="Theme"><label><input type="radio" name="theme" value="light" ${checked(settings.theme === 'light')} /><span>☀<strong>Light</strong><small>Bright and crisp</small></span></label><label><input type="radio" name="theme" value="dark" ${checked(settings.theme === 'dark')} /><span>◐<strong>Dark</strong><small>Easy on the eyes</small></span></label><label><input type="radio" name="theme" value="system" ${checked(settings.theme === 'system')} /><span>◫<strong>System</strong><small>Match your device</small></span></label></div>
       </section>
       <section class="settings-section"><div class="settings-section-head"><div><span class="settings-icon">♢</span><div><h2>Notification preferences</h2><p>Choose what deserves your attention.</p></div></div></div>
-        <div class="setting-rows"><label class="setting-row"><span><strong>Likes</strong><small>When someone votes Alright on your post</small></span><input class="switch-input" type="checkbox" name="notifyLikes" ${checked(settings.notifications.likes)} /><i></i></label><label class="setting-row"><span><strong>Takes</strong><small>Replies and new Takes on your posts</small></span><input class="switch-input" type="checkbox" name="notifyComments" ${checked(settings.notifications.comments)} /><i></i></label><label class="setting-row"><span><strong>Guild invites</strong><small>Invitations to join a community</small></span><input class="switch-input" type="checkbox" name="notifyGuildInvites" ${checked(settings.notifications.guildInvites)} /><i></i></label></div>
+        <div class="setting-rows"><label class="setting-row"><span><strong>Likes</strong><small>Votes on your posts</small></span><input class="switch-input" type="checkbox" name="notifyLikes" ${checked(settings.notifications.likes)} /><i></i></label><label class="setting-row"><span><strong>Takes</strong><small>Replies and comments</small></span><input class="switch-input" type="checkbox" name="notifyComments" ${checked(settings.notifications.comments)} /><i></i></label><label class="setting-row"><span><strong>Guild activity</strong><small>Invites and community updates</small></span><input class="switch-input" type="checkbox" name="notifyGuildInvites" ${checked(settings.notifications.guildInvites)} /><i></i></label><label class="setting-row"><span><strong>In-app delivery</strong></span><input class="switch-input" type="checkbox" name="deliveryInApp" ${checked(settings.notificationDelivery?.inApp)} /><i></i></label><label class="setting-row"><span><strong>Push delivery</strong></span><input class="switch-input" type="checkbox" name="deliveryPush" ${checked(settings.notificationDelivery?.push)} /><i></i></label><label class="setting-row"><span><strong>Email delivery</strong></span><input class="switch-input" type="checkbox" name="deliveryEmail" ${checked(settings.notificationDelivery?.email)} /><i></i></label></div>
       </section>
       <section class="settings-section"><div class="settings-section-head"><div><span class="settings-icon">⌁</span><div><h2>Privacy</h2><p>Control who can reach you directly.</p></div></div></div>
         <label class="select-setting">Who can send you Direct Messages?<select name="directMessages"><option value="everyone" ${settings.directMessages === 'everyone' ? 'selected' : ''}>Everyone</option><option value="guilds" ${settings.directMessages === 'guilds' ? 'selected' : ''}>Guild Members Only</option><option value="nobody" ${settings.directMessages === 'nobody' ? 'selected' : ''}>Nobody</option></select></label>
@@ -597,9 +647,9 @@ function settingsView() {
       <section class="settings-section"><div class="settings-section-head"><div><span class="settings-icon">✎</span><div><h2>Profile customization</h2><p>Build a profile that feels distinctly yours.</p></div></div></div>
         <div class="profile-live-preview" id="profilePreview" style="--profile-accent:${escapeHtml(state.profile.themeColor)}"><div class="preview-banner" id="bannerPreview">${state.profile.bannerUrl ? `<img src="${escapeHtml(state.profile.bannerUrl)}" alt="Banner preview" />` : ''}</div><div>${avatarMarkup('preview-avatar')}<span><strong id="previewName">${escapeHtml(state.profile.displayName)}</strong><small id="previewStatus">${escapeHtml(state.profile.status)}</small></span><b>✦ ${Number(state.profile.vibeScore || 0).toLocaleString()}</b></div></div>
         <div class="form-grid"><label>Display name<input name="displayName" maxlength="40" value="${escapeHtml(state.profile.displayName)}" required /></label><label>Username<input name="handle" maxlength="30" value="${escapeHtml(state.profile.handle)}" required /></label><label>Pronouns<input name="pronouns" maxlength="40" value="${escapeHtml(state.profile.pronouns)}" placeholder="e.g. they/them" /></label><label>Online status<select name="status"><option value="online" ${state.profile.status === 'online' ? 'selected' : ''}>Online</option><option value="idle" ${state.profile.status === 'idle' ? 'selected' : ''}>Idle</option><option value="dnd" ${state.profile.status === 'dnd' ? 'selected' : ''}>Do Not Disturb</option><option value="invisible" ${state.profile.status === 'invisible' ? 'selected' : ''}>Invisible</option></select></label></div>
-        <div class="form-grid"><label>Profile banner<input id="bannerUpload" type="file" accept="image/*" /><small>PNG, JPG, GIF, or WebP. Maximum 2 MB.</small></label><label>Avatar or animated GIF<input id="avatarUpload" type="file" accept="image/png,image/jpeg,image/webp,image/gif" /><small>Animated GIF avatars are supported. Maximum 2 MB.</small></label><label>Theme color<div class="color-control"><input name="themeColor" type="color" value="${escapeHtml(state.profile.themeColor)}" /><output id="colorHex">${escapeHtml(state.profile.themeColor)}</output></div></label></div>
+        <div class="form-grid"><label>Profile banner<input id="bannerUpload" type="file" accept="image/*" /><small>PNG, JPG, GIF, or WebP. Maximum 2 MB.</small></label><label>Avatar or animated GIF<input id="avatarUpload" type="file" accept="image/png,image/jpeg,image/webp,image/gif" /><small>Animated GIF avatars are supported. Maximum 2 MB.</small></label><label>Theme color<div class="color-control"><input name="themeColor" type="color" value="${escapeHtml(state.profile.themeColor)}" /><output id="colorHex">${escapeHtml(state.profile.themeColor)}</output></div></label><label>Avatar frame<select name="avatarFrame">${['none','spark','gold','violet','flame'].map(frame => `<option value="${frame}" ${state.profile.avatarFrame === frame ? 'selected' : ''}>${frame}</option>`).join('')}</select></label></div>
         <input type="hidden" name="bannerUrl" value="${escapeHtml(state.profile.bannerUrl)}" /><input type="hidden" name="avatarUrl" value="${escapeHtml(state.profile.avatarUrl)}" />
-        <label>About Me <span class="field-counter" id="bioCounter">${state.profile.bio.length} / 200</span><textarea name="bio" maxlength="200" placeholder="Tell people what kind of takes you bring.">${escapeHtml(state.profile.bio)}</textarea></label>
+        <label>About Me <span class="field-counter" id="bioCounter">${state.profile.bio.length} / 1000</span><textarea name="bio" maxlength="1000" placeholder="Use **bold**, *italic*, and line breaks to tell your story.">${escapeHtml(state.profile.bio)}</textarea></label>
         <div class="social-fields"><h3>Social media</h3><label><span>𝕏</span><input name="twitter" value="${escapeHtml(state.profile.socialLinks.twitter)}" placeholder="x.com/username" /></label><label><span>◎</span><input name="instagram" value="${escapeHtml(state.profile.socialLinks.instagram)}" placeholder="instagram.com/username" /></label><label><span>◈</span><input name="discord" value="${escapeHtml(state.profile.socialLinks.discord)}" placeholder="Discord username" /></label><label><span>▶</span><input name="youtube" value="${escapeHtml(state.profile.socialLinks.youtube)}" placeholder="youtube.com/@channel" /></label><label><span>◉</span><input name="twitch" value="${escapeHtml(state.profile.socialLinks.twitch)}" placeholder="twitch.tv/username" /></label><label><span>↗</span><input name="custom" value="${escapeHtml(state.profile.socialLinks.custom)}" placeholder="https://your-site.example" /></label></div>
       </section>
       <section class="settings-section"><div class="settings-section-head"><div><span class="settings-icon">⊘</span><div><h2>Blocked & muted users</h2><p>Accounts you have restricted will be listed here.</p></div></div></div>
@@ -671,6 +721,11 @@ function bindPostInteractions() {
     element.addEventListener('keydown', event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); open(); } });
   });
   document.querySelectorAll('[data-post-menu]').forEach(button => button.addEventListener('click', event => { event.stopPropagation(); openPostMenu(button.dataset.postMenu); }));
+  document.querySelectorAll('[data-poll-option]').forEach(button => button.addEventListener('click', async () => {
+    if (!sessionUser) { navigate('auth'); return showToast('Sign in to vote in polls.'); }
+    try { const payload = await apiFetch(`/api/posts/${button.dataset.pollPost}/poll-vote`, { method: 'POST', body: JSON.stringify({ optionId: button.dataset.pollOption }) }); Object.assign(findPostById(button.dataset.pollPost), mapPost(payload.post)); renderRoute(); }
+    catch (error) { showToast(error.message); }
+  }));
 }
 
 function bindViewInteractions(route) {
@@ -715,11 +770,15 @@ function bindViewInteractions(route) {
   document.querySelector('#guildPostForm')?.addEventListener('submit', createGuildFeedPost);
   document.querySelector('#guildChatForm')?.addEventListener('submit', sendGuildChatMessage);
   document.querySelector('#guildSettingsForm')?.addEventListener('submit', saveGuildSettings);
+  document.querySelectorAll('[data-role-form]').forEach(form => form.addEventListener('submit', saveGuildRole));
+  document.querySelectorAll('[data-member-role]').forEach(select => select.addEventListener('change', updateGuildMemberRole));
+  document.querySelectorAll('[data-approve-member]').forEach(button => button.addEventListener('click', approveGuildMember));
   document.querySelectorAll('[data-notification-filter]').forEach(button => button.addEventListener('click', () => { state.notificationFilter = button.dataset.notificationFilter; renderRoute(); }));
   document.querySelectorAll('[data-notification-post]').forEach(button => button.addEventListener('click', () => navigate(`take/${button.dataset.notificationPost}`)));
   document.querySelectorAll('[data-notification-guild]').forEach(button => button.addEventListener('click', () => navigate(`guild/${button.dataset.notificationGuild}/public`)));
   document.querySelectorAll('[data-notification-message]').forEach(button => button.addEventListener('click', () => navigate(`messages/${button.dataset.notificationMessage}`)));
   document.querySelectorAll('[data-notification-user]').forEach(button => button.addEventListener('click', () => navigate(`user/${button.dataset.notificationUser}`)));
+  document.querySelectorAll('[data-mute-notification]').forEach(button => button.addEventListener('click', () => openNotificationMute(button.dataset.muteNotification, button.dataset.muteId)));
   document.querySelectorAll('[data-conversation]').forEach(button => button.addEventListener('click', () => navigate(`messages/${button.dataset.conversation}`)));
   document.querySelector('#dmChatForm')?.addEventListener('submit', sendDirectMessage);
   document.querySelectorAll('[data-open-user]').forEach(button => button.addEventListener('click', () => navigate(`user/${button.dataset.openUser}`)));
@@ -732,6 +791,15 @@ function bindViewInteractions(route) {
   document.querySelector('#resetRequestForm')?.addEventListener('submit', requestPasswordReset);
   document.querySelector('#resetConfirmForm')?.addEventListener('submit', confirmPasswordReset);
   document.querySelector('[data-logout]')?.addEventListener('click', logoutUser);
+}
+
+function openNotificationMute(scopeType, scopeId) {
+  showActionDialog(actionDialogShell('NOTIFICATION CONTROLS', 'Mute or snooze', `<p>Hide matching notifications until you change this rule.</p><div class="dialog-actions"><button class="quiet-action" type="button" data-mute-duration="day">Snooze 24 hours</button><button class="primary-action" type="button" data-mute-duration="forever">Mute</button></div>`));
+  document.querySelectorAll('[data-mute-duration]').forEach(button => button.addEventListener('click', async () => {
+    const snoozedUntil = button.dataset.muteDuration === 'day' ? new Date(Date.now() + 86400000).toISOString() : null;
+    try { await apiFetch('/api/notifications/mutes', { method: 'POST', body: JSON.stringify({ scopeType, scopeId, snoozedUntil }) }); closeActionDialog(); await hydrateAccountData(); renderRoute(); showToast(snoozedUntil ? 'Notifications snoozed for 24 hours.' : 'Notifications muted.'); }
+    catch (error) { showToast(error.message); }
+  }));
 }
 
 function postTextError(text) {
@@ -764,9 +832,26 @@ async function saveGuildSettings(event) {
   event.preventDefault(); const form = event.currentTarget; const data = new FormData(form);
   try {
     const [iconUrl, bannerUrl] = await Promise.all([imageFieldValue(form.elements.iconFile.files[0], data.get('iconUrl')), imageFieldValue(form.elements.bannerFile.files[0], data.get('bannerUrl'))]);
-    await apiFetch(`/api/guilds/${state.activeGuild.id}`, { method: 'PATCH', body: JSON.stringify({ name: sanitizeInput(data.get('name')), description: sanitizeInput(data.get('description')), tagline: sanitizeInput(data.get('tagline')), rules: sanitizeInput(data.get('rules')), iconUrl, bannerUrl, themeColor: data.get('themeColor'), accentColor: data.get('accentColor'), contentPrivacy: 'members' }) });
+    await apiFetch(`/api/guilds/${state.activeGuild.id}`, { method: 'PATCH', body: JSON.stringify({ name: sanitizeInput(data.get('name')), description: sanitizeInput(data.get('description')), tagline: sanitizeInput(data.get('tagline')), pinnedAnnouncement: sanitizeInput(data.get('pinnedAnnouncement')), rules: sanitizeInput(data.get('rules')), iconUrl, bannerUrl, themeColor: data.get('themeColor'), accentColor: data.get('accentColor'), privacy: data.get('privacy'), settings: { allowJoinRequests: data.has('allowJoinRequests'), showMemberList: data.has('showMemberList') }, contentPrivacy: 'members' }) });
     await Promise.all([hydrateGuilds(), hydrateGuildDetail()]); renderRoute(); showToast('Guild settings saved.');
   } catch (error) { showToast(error.message); }
+}
+
+async function saveGuildRole(event) {
+  event.preventDefault(); const form = event.currentTarget;
+  const permissions = Object.fromEntries(['manageGuild','manageRoles','manageMembers','managePosts','createPosts','chat','viewAudit'].map(key => [key, form.elements[key].checked]));
+  try { await apiFetch(`/api/guilds/${state.activeGuild.id}/roles/${form.dataset.roleForm}`, { method: 'PATCH', body: JSON.stringify({ permissions }) }); await hydrateGuildDetail(); renderRoute(); showToast('Role permissions saved.'); }
+  catch (error) { showToast(error.message); }
+}
+
+async function updateGuildMemberRole(event) {
+  try { await apiFetch(`/api/guilds/${state.activeGuild.id}/members/${event.currentTarget.dataset.memberRole}`, { method: 'PATCH', body: JSON.stringify({ roleKey: event.currentTarget.value }) }); await hydrateGuildDetail(); renderRoute(); showToast('Member role updated.'); }
+  catch (error) { showToast(error.message); }
+}
+
+async function approveGuildMember(event) {
+  try { await apiFetch(`/api/guilds/${state.activeGuild.id}/members/${event.currentTarget.dataset.approveMember}`, { method: 'PATCH', body: JSON.stringify({ status: 'active' }) }); await hydrateGuildDetail(); renderRoute(); showToast('Join request approved.'); }
+  catch (error) { showToast(error.message); }
 }
 
 async function sendDirectMessage(event) {
@@ -880,7 +965,7 @@ function updateProfilePreview(event) {
   if (event.target.name === 'displayName') document.querySelector('#previewName').textContent = sanitizeInput(event.target.value) || 'Display name';
   if (event.target.name === 'status') document.querySelector('#previewStatus').textContent = event.target.value;
   if (event.target.name === 'themeColor') { document.querySelector('#profilePreview').style.setProperty('--profile-accent', event.target.value); document.querySelector('#colorHex').textContent = event.target.value; }
-  if (event.target.name === 'bio') document.querySelector('#bioCounter').textContent = `${event.target.value.length} / 200`;
+  if (event.target.name === 'bio') document.querySelector('#bioCounter').textContent = `${event.target.value.length} / 1000`;
   if (form.elements.bannerUrl?.value) document.querySelector('#bannerPreview').dataset.hasImage = 'true';
 }
 
@@ -1044,6 +1129,7 @@ async function saveSettings(event) {
   state.settings.textSize = formData.get('textSize');
   state.settings.directMessages = formData.get('directMessages');
   state.settings.notifications = { likes: formData.has('notifyLikes'), comments: formData.has('notifyComments'), guildInvites: formData.has('notifyGuildInvites') };
+  state.settings.notificationDelivery = { inApp: formData.has('deliveryInApp'), push: formData.has('deliveryPush'), email: formData.has('deliveryEmail') };
   state.profile = {
     ...state.profile,
     displayName: sanitizeInput(formData.get('displayName')),
@@ -1052,6 +1138,7 @@ async function saveSettings(event) {
     avatarUrl: formData.get('avatarUrl') || state.profile.avatarUrl,
     bannerUrl: formData.get('bannerUrl') || '',
     themeColor: formData.get('themeColor'),
+    avatarFrame: formData.get('avatarFrame'),
     pronouns: sanitizeInput(formData.get('pronouns')),
     status: formData.get('status'),
     socialLinks: {
@@ -1063,7 +1150,7 @@ async function saveSettings(event) {
   state.profile.handle = `@${state.profile.handle.slice(1).replace(/[^a-z0-9_]/g, '').slice(0, 29)}`;
   try {
     if (sessionUser) {
-      const payload = await apiFetch('/api/profile', { method: 'PATCH', body: JSON.stringify({ displayName: state.profile.displayName, handle: state.profile.handle, avatarUrl: state.profile.avatarUrl, bio: state.profile.bio, bannerUrl: state.profile.bannerUrl, themeColor: state.profile.themeColor, socialLinks: state.profile.socialLinks, pronouns: state.profile.pronouns, status: state.profile.status, preferences: { theme: state.settings.theme, notifications: state.settings.notifications, directMessages: state.settings.directMessages, textSize: state.settings.textSize } }) });
+      const payload = await apiFetch('/api/profile', { method: 'PATCH', body: JSON.stringify({ displayName: state.profile.displayName, handle: state.profile.handle, avatarUrl: state.profile.avatarUrl, bio: state.profile.bio, bannerUrl: state.profile.bannerUrl, themeColor: state.profile.themeColor, avatarFrame: state.profile.avatarFrame, featuredPosts: state.profile.featuredPosts || [], pinnedGuilds: state.profile.pinnedGuilds || [], socialLinks: state.profile.socialLinks, pronouns: state.profile.pronouns, status: state.profile.status, preferences: { theme: state.settings.theme, notifications: state.settings.notifications, notificationDelivery: state.settings.notificationDelivery, directMessages: state.settings.directMessages, textSize: state.settings.textSize } }) });
       applySessionUser(payload.user);
     }
     persist(); applyDisplaySettings(); document.querySelector('#headerName').textContent = state.profile.displayName; renderRoute(); showToast('Settings saved.');
@@ -1080,6 +1167,13 @@ document.querySelectorAll('[data-route]').forEach(link => link.addEventListener(
   navigate(link.dataset.route);
 }));
 document.querySelectorAll('[data-route-button]').forEach(button => button.addEventListener('click', () => navigate(button.dataset.routeButton)));
+document.querySelectorAll('[data-leader-period]').forEach(button => button.addEventListener('click', async () => {
+  state.settings.leaderboardPeriod = button.dataset.leaderPeriod;
+  document.querySelectorAll('[data-leader-period]').forEach(item => item.classList.toggle('active', item === button));
+  persist();
+  await hydrateLeaderboard();
+  if (currentRoute() === 'leaderboards') renderRoute();
+}));
 document.querySelector('#profileButton').addEventListener('click', () => navigate('profile'));
 document.querySelector('#mobileMenu').addEventListener('click', () => document.querySelector('#sidebar').classList.toggle('open'));
 function openComposerForUser() {
@@ -1150,13 +1244,12 @@ function openImageEditor(index) {
 async function handleTakeMedia(event) {
   const files = [...event.target.files]; event.target.value = '';
   if (!files.length) return;
-  const videos = files.filter(file => file.type.startsWith('video/'));
-  if (videos.length && (files.length !== 1 || pendingMedia.length)) return showToast('Attach one short video by itself.');
-  if (!videos.length && ![1, 2, 4].includes(files.length)) return showToast('Choose exactly 1, 2, or 4 images.');
+  if (pendingMedia.length + files.length > 5) return showToast('A take can contain up to 5 media items.');
   try {
-    pendingMedia = videos.length ? [await prepareVideo(videos[0])] : await Promise.all(files.map(prepareImage));
+    const prepared = await Promise.all(files.map(file => file.type.startsWith('video/') ? prepareVideo(file) : prepareImage(file)));
+    pendingMedia.push(...prepared);
     renderMediaPreview();
-  } catch (error) { pendingMedia = []; renderMediaPreview(); showToast(error.message); }
+  } catch (error) { renderMediaPreview(); showToast(error.message); }
 }
 
 document.querySelector('#openComposer').addEventListener('click', openComposerForUser);
@@ -1171,32 +1264,57 @@ document.querySelector('#imageEditorForm').addEventListener('submit', event => {
 document.querySelector('#addGifUrl').addEventListener('click', () => { const input = document.querySelector('#gifUrlInput'); input.hidden = !input.hidden; if (!input.hidden) input.focus(); });
 document.querySelectorAll('#postEmojiTray button').forEach(button => button.addEventListener('click', () => { const input = document.querySelector('#takeText'); input.value += button.textContent; input.dispatchEvent(new Event('input')); input.focus(); }));
 document.querySelector('[data-close-guild]').addEventListener('click', () => guildComposer.close());
-document.querySelector('#takeText').addEventListener('input', event => document.querySelector('#charCount').textContent = `${event.target.value.length} / 180`);
-document.querySelector('#composerForm').addEventListener('submit', async event => {
-  event.preventDefault();
+document.querySelector('#takeText').addEventListener('input', event => document.querySelector('#charCount').textContent = `${event.target.value.length} / 2000`);
+document.querySelectorAll('[data-format]').forEach(button => button.addEventListener('click', () => {
+  const input = document.querySelector('#takeText');
+  const wrappers = { bold: ['**', '**'], italic: ['*', '*'], spoiler: ['||', '||'] };
+  const [before, after] = wrappers[button.dataset.format]; const start = input.selectionStart; const end = input.selectionEnd;
+  input.setRangeText(`${before}${input.value.slice(start, end) || 'text'}${after}`, start, end, 'end'); input.dispatchEvent(new Event('input')); input.focus();
+}));
+document.querySelector('#togglePoll').addEventListener('click', () => { const builder = document.querySelector('#pollBuilder'); builder.hidden = !builder.hidden; });
+document.querySelector('#addPollOption').addEventListener('click', () => { const options = document.querySelector('#pollOptions'); if (options.children.length >= 6) return showToast('Polls support up to 6 choices.'); const input = document.createElement('input'); input.maxLength = 100; input.placeholder = `Option ${options.children.length + 1}`; options.appendChild(input); });
+
+async function submitComposer(draft = false) {
   if (!sessionUser) { composer.close(); navigate('auth'); return showToast('Sign in to publish a take.'); }
   const input = document.querySelector('#takeText');
   const text = sanitizeInput(input.value);
-  if (!text) return;
-  const validationError = postTextError(text); if (validationError) return showToast(validationError);
+  const pollBuilder = document.querySelector('#pollBuilder');
+  const pollOptions = [...document.querySelectorAll('#pollOptions input')].map(option => sanitizeInput(option.value)).filter(Boolean);
+  const poll = pollBuilder.hidden ? null : { question: sanitizeInput(document.querySelector('#pollQuestion').value), options: pollOptions.map(option => ({ text: option })), closesAt: null };
+  if (!draft && !text && !pendingMedia.length && !poll) return showToast('Add text, media, or a poll first.');
+  if (poll && (!poll.question || pollOptions.length < 2)) return showToast('A poll needs a question and at least 2 options.');
+  const validationError = text ? postTextError(text) : ''; if (validationError) return showToast(validationError);
   const category = document.querySelector('#takeCategory').value;
   const gifUrl = document.querySelector('#gifUrlInput').value.trim();
   const media = gifUrl ? [...pendingMedia, { type: 'gif', url: gifUrl, alt: 'GIF attachment', duration: 0, aspectRatio: 1 }] : [...pendingMedia];
-  if (media.some(item => item.type === 'video') && media.length !== 1) return showToast('A short video must be the only attachment.');
-  if (media.length && !media.some(item => item.type === 'video') && ![1, 2, 4].includes(media.length)) return showToast('Use exactly 1, 2, or 4 images/GIFs.');
+  if (media.length > 5) return showToast('A take can contain up to 5 media items.');
+  const scheduledValue = document.querySelector('#takeSchedule').value;
+  const payload = {
+    content: text, category, media, draft, poll, contentType: poll ? 'poll' : media[0]?.type || 'text',
+    visibility: document.querySelector('#takeAudience').value,
+    topics: document.querySelector('#takeTopics').value.split(',').map(value => sanitizeInput(value)).filter(Boolean).slice(0, 5),
+    contentWarning: sanitizeInput(document.querySelector('#takeWarning').value), reactionSet: document.querySelector('#takeReactionSet').value,
+    embedUrl: document.querySelector('#takeEmbed').value.trim(), scheduledPublishedAt: scheduledValue ? new Date(scheduledValue).toISOString() : null
+  };
   try {
-    await apiFetch('/api/posts', { method: 'POST', body: JSON.stringify({ content: text, category, media }) });
-    await Promise.all([hydratePosts(), hydrateSession(), hydrateLeaderboard(), hydrateTrending()]);
+    await apiFetch('/api/posts', { method: 'POST', body: JSON.stringify(payload) });
+    if (!draft) await Promise.all([hydratePosts(), hydrateSession(), hydrateLeaderboard(), hydrateTrending()]);
   } catch (error) { return showToast(error.message); }
   persist();
   input.value = '';
   pendingMedia = []; renderMediaPreview(); document.querySelector('#gifUrlInput').value = ''; document.querySelector('#gifUrlInput').hidden = true;
-  document.querySelector('#charCount').textContent = '0 / 180';
+  document.querySelector('#charCount').textContent = '0 / 2000';
+  document.querySelector('#composerForm').reset(); document.querySelector('#pollBuilder').hidden = true;
   composer.close();
-  navigate('home');
-  renderRoute();
-  showToast('Your take is live.');
+  if (!draft) { navigate('home'); renderRoute(); }
+  showToast(draft ? 'Draft saved.' : scheduledValue ? 'Take scheduled.' : 'Your take is live.');
+}
+
+document.querySelector('#composerForm').addEventListener('submit', async event => {
+  event.preventDefault();
+  await submitComposer(false);
 });
+document.querySelector('#saveDraft').addEventListener('click', () => submitComposer(true));
 document.querySelector('#guildForm').addEventListener('submit', async event => {
   event.preventDefault();
   const form = event.currentTarget;
@@ -1204,7 +1322,7 @@ document.querySelector('#guildForm').addEventListener('submit', async event => {
   const description = sanitizeInput(document.querySelector('#guildDescription').value);
   if (!name || !description) return;
   if (!sessionUser) { guildComposer.close(); navigate('auth'); return showToast('Sign in to create a guild.'); }
-  try { await apiFetch('/api/guilds', { method: 'POST', body: JSON.stringify({ name, description }) }); await hydrateGuilds(); }
+  try { await apiFetch('/api/guilds', { method: 'POST', body: JSON.stringify({ name, description, privacy: document.querySelector('#guildPrivacy').value }) }); await hydrateGuilds(); }
   catch (error) { return showToast(error.message); }
   form.reset();
   guildComposer.close();

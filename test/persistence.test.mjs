@@ -4,7 +4,7 @@ import {
   acceptFriendRequest, canAccessPost, createComment, createFriendRequest, createGuild, createGuildMessage, createGuildPost, createMessage, createPost, createUser, findUserById, getGuild, getPublicProfile,
   listComments, listFriends, listGuildMessages, listGuildPosts, listGuilds, listLeaderboard, listMessages, listNotifications,
   listPosts, listSavedPostIds, searchCallout, toggleGuildMembership,
-  toggleSavedPost, updateGuild, voteOnPost
+  toggleSavedPost, updateGuild, updateGuildMember, voteOnPost
 } from '../server/repository.mjs';
 
 async function accounts() {
@@ -65,6 +65,8 @@ test('guild content stays private while profiles, settings, feed and chat work',
   assert.equal(await listGuildPosts(guild.id, reader.id), null);
 
   await toggleGuildMembership(reader.id, guild.id);
+  assert.equal(await createGuildPost(guild.id, reader.id, { content: 'Blocked by role', category: 'Life', media: [] }), null);
+  await updateGuildMember(guild.id, author.id, reader.id, { roleKey: 'contributor' });
   const guildPost = await createGuildPost(guild.id, reader.id, { content: 'Members only', category: 'Life', media: [] });
   assert.equal(await canAccessPost(guildPost.id, author.id), true);
   assert.equal((await listGuildPosts(guild.id, reader.id))[0].content, 'Members only');

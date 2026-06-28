@@ -7,6 +7,7 @@ const notificationSchema = new mongoose.Schema({
   text: { type: String, required: true, maxlength: 240 },
   post: { type: mongoose.Schema.Types.ObjectId, ref: 'Post', default: null },
   guild: { type: mongoose.Schema.Types.ObjectId, ref: 'Guild', default: null },
+  payload: { type: mongoose.Schema.Types.Mixed, default: {} },
   read: { type: Boolean, default: false }
 }, { timestamps: true });
 
