@@ -26,6 +26,11 @@ dotenv.config();
 const root = path.dirname(fileURLToPath(import.meta.url));
 const port = Number(process.env.PORT || 4173);
 const app = express();
+const messageStreams = new Map();
+
+function pushMessageUpdate(userId) {
+  for (const response of messageStreams.get(String(userId)) || []) response.write(`event: messages\ndata: ${JSON.stringify({ updated: true })}\n\n`);
+}
 
 app.disable('x-powered-by');
 app.set('trust proxy', 1);
@@ -331,11 +336,19 @@ app.post('/api/notifications/read', requireAuth, async (req, res, next) => {
 app.get('/api/messages', requireAuth, async (req, res, next) => {
   try { res.json({ messages: await listMessages(req.userId) }); } catch (error) { next(error); }
 });
+app.get('/api/messages/stream', requireAuth, (req, res) => {
+  res.set({ 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache, no-transform', Connection: 'keep-alive' });
+  res.flushHeaders(); res.write('event: ready\ndata: {}\n\n');
+  const key = String(req.userId); const clients = messageStreams.get(key) || new Set(); clients.add(res); messageStreams.set(key, clients);
+  const heartbeat = setInterval(() => res.write(': keep-alive\n\n'), 25000);
+  req.on('close', () => { clearInterval(heartbeat); clients.delete(res); if (!clients.size) messageStreams.delete(key); });
+});
 app.post('/api/messages', requireAuth, validate(schemas.message), async (req, res, next) => {
   try {
     const message = await createMessage(req.userId, req.body.recipient, req.body.message);
     if (!message) return res.status(404).json({ error: 'Recipient not found. Use their @username or email.' });
     if (message.forbidden) return res.status(403).json({ error: message.reason });
+    pushMessageUpdate(req.userId); pushMessageUpdate(message.recipient?.id);
     res.status(201).json({ message });
   } catch (error) { next(error); }
 });

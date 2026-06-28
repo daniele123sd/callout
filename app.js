@@ -79,6 +79,7 @@ const guildComposer = document.querySelector('#guildComposer');
 const actionDialog = document.querySelector('#actionDialog');
 let sessionUser = null;
 let pendingMedia = [];
+let messageStream = null;
 
 function sanitizeInput(value) {
   const source = String(value || '');
@@ -148,6 +149,17 @@ function applySessionUser(user) {
   }
   persist();
   updateHeaderProfile();
+  startMessageStream();
+}
+
+function startMessageStream() {
+  if (!sessionUser || messageStream) return;
+  messageStream = new EventSource('/api/messages/stream');
+  messageStream.addEventListener('messages', async () => {
+    if (document.activeElement?.matches('textarea,input')) return;
+    await hydrateAccountData();
+    if (currentRoute() === 'messages' || currentRoute() === 'notifications') renderRoute();
+  });
 }
 
 function updateHeaderProfile() {
@@ -936,6 +948,7 @@ async function confirmPasswordReset(event) {
 async function logoutUser() {
   try { await apiFetch('/api/auth/logout', { method: 'POST' }, false); } catch { /* clear local session regardless */ }
   sessionUser = null;
+  messageStream?.close(); messageStream = null;
   state.profile = { ...defaultState.profile, socialLinks: { ...defaultState.profile.socialLinks } };
   state.savedPostIds = []; state.notifications = []; state.messages = []; state.friendships = [];
   state.userStanding = null; state.activeGuild = null; state.guildPosts = []; state.guildMessages = []; state.publicProfile = null;
