@@ -11,12 +11,14 @@ import passport from 'passport';
 import { Strategy as GoogleStrategy } from 'passport-google-oauth20';
 import {
   ACCESS_COOKIE, REFRESH_COOKIE, clearAuthCookies, comparePassword, createPasswordResetToken,
-  hashPassword, requireAuth, schemas, setAuthCookies, signAccessToken, signRefreshToken,
+  hashPassword, optionalAuth, requireAuth, schemas, setAuthCookies, signAccessToken, signRefreshToken,
   validate, verifyRefreshToken
 } from './server/security.mjs';
 import {
-  connectDatabase, createPost, createReport, createUser, databaseMode, deletePost,
-  findUserByEmail, findUserByGoogleId, findUserById, listPosts, publicUser, updatePost, updateUser
+  connectDatabase, createComment, createGuild, createMessage, createPost, createReport, createUser, databaseMode, deletePost,
+  findUserByEmail, findUserByGoogleId, findUserById, listComments, listGuilds, listLeaderboard, listMessages,
+  listNotifications, listPosts, listSavedPostIds, markNotificationsRead, publicUser, recordPostView, searchCallout,
+  toggleGuildMembership, toggleSavedPost, updatePost, updateUser, voteOnComment, voteOnPost
 } from './server/repository.mjs';
 
 dotenv.config();
@@ -187,8 +189,11 @@ app.patch('/api/profile', requireAuth, validate(schemas.profile), async (req, re
   try { res.json({ user: publicUser(await updateUser(req.userId, req.body)) }); } catch (error) { next(error); }
 });
 
-app.get('/api/posts', async (_req, res, next) => {
-  try { res.json({ posts: await listPosts() }); } catch (error) { next(error); }
+app.get('/api/posts', optionalAuth, async (req, res, next) => {
+  try { res.json({ posts: await listPosts(req.userId) }); } catch (error) { next(error); }
+});
+app.get('/api/posts/trending', optionalAuth, async (req, res, next) => {
+  try { res.json({ posts: await listPosts(req.userId, { trending: true }) }); } catch (error) { next(error); }
 });
 app.post('/api/posts', requireAuth, validate(schemas.post), async (req, res, next) => {
   try { res.status(201).json({ post: await createPost(req.userId, req.body) }); } catch (error) { next(error); }
@@ -210,9 +215,93 @@ app.delete('/api/posts/:id', requireAuth, async (req, res, next) => {
 app.post('/api/posts/:id/reports', requireAuth, validate(schemas.report), async (req, res, next) => {
   try { res.status(201).json({ report: await createReport(req.userId, req.params.id, req.body) }); } catch (error) { next(error); }
 });
+app.post('/api/posts/:id/vote', requireAuth, validate(schemas.vote), async (req, res, next) => {
+  try {
+    const post = await voteOnPost(req.params.id, req.userId, req.body.value);
+    if (!post) return res.status(404).json({ error: 'Post not found.' });
+    res.json({ post });
+  } catch (error) { next(error); }
+});
+app.post('/api/posts/:id/view', optionalAuth, async (req, res, next) => {
+  try {
+    const post = await recordPostView(req.params.id);
+    if (!post) return res.status(404).json({ error: 'Post not found.' });
+    res.status(204).end();
+  } catch (error) { next(error); }
+});
+app.get('/api/posts/:id/comments', optionalAuth, async (req, res, next) => {
+  try { res.json({ comments: await listComments(req.params.id, req.userId) }); } catch (error) { next(error); }
+});
 
-app.post('/api/comments', requireAuth, validate(schemas.comment), (req, res) => res.status(201).json({ comment: req.body }));
-app.post('/api/messages', requireAuth, validate(schemas.message), (req, res) => res.status(202).json({ message: 'Message accepted.', sanitized: req.body }));
+app.post('/api/comments', requireAuth, validate(schemas.comment), async (req, res, next) => {
+  try {
+    const comment = await createComment(req.body.postId, req.userId, req.body);
+    if (!comment) return res.status(404).json({ error: 'Post or parent comment not found.' });
+    res.status(201).json({ comment });
+  } catch (error) { next(error); }
+});
+app.post('/api/comments/:id/vote', requireAuth, async (req, res, next) => {
+  try {
+    const comment = await voteOnComment(req.params.id, req.userId);
+    if (!comment) return res.status(404).json({ error: 'Comment not found.' });
+    res.json({ comment });
+  } catch (error) { next(error); }
+});
+
+app.get('/api/saved', requireAuth, async (req, res, next) => {
+  try { res.json({ savedPostIds: await listSavedPostIds(req.userId) }); } catch (error) { next(error); }
+});
+app.post('/api/posts/:id/save', requireAuth, async (req, res, next) => {
+  try {
+    const saved = await toggleSavedPost(req.userId, req.params.id);
+    if (!saved) return res.status(404).json({ error: 'Post not found.' });
+    res.json(saved);
+  } catch (error) { next(error); }
+});
+
+app.get('/api/guilds', optionalAuth, async (req, res, next) => {
+  try { res.json({ guilds: await listGuilds(req.userId) }); } catch (error) { next(error); }
+});
+app.post('/api/guilds', requireAuth, validate(schemas.guild), async (req, res, next) => {
+  try { res.status(201).json({ guild: await createGuild(req.userId, req.body) }); } catch (error) { next(error); }
+});
+app.post('/api/guilds/:id/membership', requireAuth, async (req, res, next) => {
+  try {
+    const result = await toggleGuildMembership(req.userId, req.params.id);
+    if (!result) return res.status(404).json({ error: 'Guild not found.' });
+    if (result.owner) return res.status(409).json({ error: 'Guild owners cannot leave their own guild.' });
+    res.json(result);
+  } catch (error) { next(error); }
+});
+
+app.get('/api/leaderboard', async (_req, res, next) => {
+  try { res.json({ users: await listLeaderboard() }); } catch (error) { next(error); }
+});
+app.get('/api/search', async (req, res, next) => {
+  try {
+    const query = String(req.query.q || '').trim().slice(0, 80);
+    if (query.length < 2) return res.json({ users: [], posts: [], guilds: [] });
+    res.json(await searchCallout(query));
+  } catch (error) { next(error); }
+});
+
+app.get('/api/notifications', requireAuth, async (req, res, next) => {
+  try { res.json({ notifications: await listNotifications(req.userId) }); } catch (error) { next(error); }
+});
+app.post('/api/notifications/read', requireAuth, async (req, res, next) => {
+  try { await markNotificationsRead(req.userId); res.status(204).end(); } catch (error) { next(error); }
+});
+
+app.get('/api/messages', requireAuth, async (req, res, next) => {
+  try { res.json({ messages: await listMessages(req.userId) }); } catch (error) { next(error); }
+});
+app.post('/api/messages', requireAuth, validate(schemas.message), async (req, res, next) => {
+  try {
+    const message = await createMessage(req.userId, req.body.recipient, req.body.message);
+    if (!message) return res.status(404).json({ error: 'Recipient not found. Use their @username or email.' });
+    res.status(201).json({ message });
+  } catch (error) { next(error); }
+});
 
 app.get('/vendor/dompurify.min.js', (_req, res) => res.sendFile(path.join(root, 'node_modules', 'dompurify', 'dist', 'purify.min.js')));
 app.get('/privacy', (_req, res) => res.sendFile(path.join(root, 'privacy.html')));

@@ -52,7 +52,11 @@ const state = {
   },
   posts: Array.isArray(storedState?.posts) ? storedState.posts.map(post => ({ ...post, id: String(post.id), authorId: String(post.authorId || 'local-user'), comments: Array.isArray(post.comments) ? post.comments : [] })) : [],
   guilds: Array.isArray(storedState?.guilds) ? storedState.guilds : [],
-  savedPostIds: Array.isArray(storedState?.savedPostIds) ? storedState.savedPostIds : []
+  savedPostIds: Array.isArray(storedState?.savedPostIds) ? storedState.savedPostIds.map(String) : [],
+  trendingPosts: [],
+  leaderboard: [],
+  notifications: [],
+  messages: []
 };
 
 if (storedState?.settings?.appearanceVersion !== 2) {
@@ -111,7 +115,7 @@ async function apiFetch(url, options = {}, retry = true) {
 
 function applySessionUser(user) {
   sessionUser = user;
-  if (!user) return;
+  if (!user) { updateHeaderProfile(); return; }
   state.profile = {
     ...state.profile,
     displayName: user.displayName || state.profile.displayName,
@@ -133,34 +137,40 @@ function applySessionUser(user) {
     };
   }
   persist();
-  document.querySelector('#headerName').textContent = state.profile.displayName;
+  updateHeaderProfile();
+}
+
+function updateHeaderProfile() {
+  const profile = sessionUser ? state.profile : defaultState.profile;
+  document.querySelector('#headerName').textContent = profile.displayName;
+  document.querySelector('#headerHandle').textContent = profile.handle;
+  const avatar = document.querySelector('#headerAvatar');
+  avatar.innerHTML = profile.avatarUrl
+    ? `<img src="${escapeHtml(profile.avatarUrl)}" alt="${escapeHtml(profile.displayName)}" />`
+    : escapeHtml((profile.displayName || 'C').charAt(0).toUpperCase());
 }
 
 async function hydrateSession() {
-  try { const payload = await apiFetch('/api/auth/me', {}, false); applySessionUser(payload.user); if (currentRoute() === 'profile' || currentRoute() === 'auth') renderRoute(); } catch { sessionUser = null; }
+  try { const payload = await apiFetch('/api/auth/me', {}, false); applySessionUser(payload.user); } catch { sessionUser = null; updateHeaderProfile(); }
+}
+
+function mapPost(post) {
+  const id = String(post.id || post._id);
+  return {
+    id, databaseId: id,
+    authorId: String(post.author?.id || post.author?._id || post.author || ''),
+    authorHandle: post.author?.handle || '@member', authorName: post.author?.displayName || 'Callout member',
+    authorAvatarUrl: post.author?.avatarUrl || '', text: String(post.content || '').toUpperCase(), category: post.category,
+    alrightVotes: Number(post.alrightVotes || 0), cringeVotes: Number(post.cringeVotes || 0), impressions: Number(post.impressions || 0),
+    userVote: post.userVote || null, commentCount: Number(post.commentCount || 0), comments: Array.isArray(post.comments) ? post.comments : [],
+    createdAt: new Date(post.createdAt || Date.now()).getTime()
+  };
 }
 
 async function hydratePosts() {
   try {
     const payload = await apiFetch('/api/posts', {}, false);
-    state.posts = (payload.posts || []).map(post => {
-      const id = String(post.id || post._id);
-      return {
-        id,
-        databaseId: id,
-        authorId: String(post.author?.id || post.author?._id || post.author || ''),
-        authorHandle: post.author?.handle || '@member',
-        authorName: post.author?.displayName || 'Callout member',
-        authorAvatarUrl: post.author?.avatarUrl || '',
-        text: String(post.content || '').toUpperCase(),
-        category: post.category,
-        alrightVotes: Number(post.alrightVotes || 0),
-        cringeVotes: Number(post.cringeVotes || 0),
-        userVote: null,
-        comments: [],
-        createdAt: new Date(post.createdAt || Date.now()).getTime()
-      };
-    });
+    state.posts = (payload.posts || []).map(mapPost);
     persist();
     renderRoute();
   } catch (error) { console.error('Unable to load posts:', error); }
@@ -168,7 +178,22 @@ async function hydratePosts() {
 
 async function hydrateApp() {
   await hydrateSession();
-  await hydratePosts();
+  await Promise.all([hydratePosts(), hydrateGuilds(), hydrateLeaderboard(), hydrateTrending(), hydrateAccountData()]);
+  if (currentRoute() === 'take') await hydrateTake(activeTake());
+  renderRoute();
+}
+
+async function hydrateGuilds() { try { state.guilds = (await apiFetch('/api/guilds', {}, false)).guilds || []; } catch (error) { console.error(error); } }
+async function hydrateLeaderboard() { try { state.leaderboard = (await apiFetch('/api/leaderboard', {}, false)).users || []; } catch (error) { console.error(error); } }
+async function hydrateTrending() { try { state.trendingPosts = ((await apiFetch('/api/posts/trending', {}, false)).posts || []).map(mapPost); } catch (error) { console.error(error); } }
+async function hydrateAccountData() {
+  if (!sessionUser) { state.savedPostIds = []; state.notifications = []; state.messages = []; return; }
+  try {
+    const [saved, notifications, messages] = await Promise.all([apiFetch('/api/saved'), apiFetch('/api/notifications'), apiFetch('/api/messages')]);
+    state.savedPostIds = (saved.savedPostIds || []).map(String); state.notifications = notifications.notifications || []; state.messages = messages.messages || [];
+    const unread = state.notifications.filter(item => !item.read).length;
+    const badge = document.querySelector('#notificationBadge'); badge.textContent = unread; badge.hidden = unread === 0;
+  } catch (error) { console.error(error); }
 }
 
 function currentRoute() {
@@ -223,7 +248,7 @@ function postTemplate(post, detail = false) {
   const alrightPercent = total ? Math.round((post.alrightVotes / total) * 100) : 50;
   const cringePercent = 100 - alrightPercent;
   const isSaved = state.savedPostIds.includes(post.id);
-  const commentCount = countComments(post.comments || []);
+  const commentCount = post.comments?.length ? countComments(post.comments) : Number(post.commentCount || 0);
   return `<article class="take-card ${detail ? 'take-card-detail' : 'take-card-feed'}" data-post-id="${post.id}">
     <div class="take-top">
       ${postAvatarMarkup(post)}
@@ -260,9 +285,12 @@ function timeLabel(timestamp) {
 }
 
 function commentNode(comment, depth = 0) {
+  const author = comment.author || {};
+  const authorName = typeof author === 'string' ? author : (author.handle || author.displayName || '@member');
+  const avatar = typeof author === 'object' && author.avatarUrl ? `<img src="${escapeHtml(author.avatarUrl)}" alt="" />` : escapeHtml(authorName.charAt(0).toUpperCase());
   return `<article class="reddit-comment" style="--depth:${Math.min(depth, 5)}" data-comment-id="${comment.id}">
-    <div class="comment-rail"><span class="avatar comment-avatar">🦸🏻</span><i></i></div>
-    <div class="comment-content"><div class="comment-author"><strong>${escapeHtml(comment.author)}</strong><span>•</span><time>${timeLabel(comment.createdAt)}</time></div>
+    <div class="comment-rail"><span class="avatar comment-avatar">${avatar}</span><i></i></div>
+    <div class="comment-content"><div class="comment-author"><strong>${escapeHtml(authorName)}</strong><span>•</span><time>${timeLabel(comment.createdAt)}</time></div>
       <p>${escapeHtml(comment.text)}</p>
       <div class="reddit-actions"><button type="button" data-upvote-comment="${comment.id}" class="${comment.upvoted ? 'active' : ''}">↑ ${comment.votes || 0}</button><button type="button" data-reply-comment="${comment.id}">↩ Reply</button><button type="button">•••</button></div>
       <div class="reply-slot" id="reply-${comment.id}" hidden></div>
@@ -316,15 +344,18 @@ function homeView() {
 }
 
 function trendingView() {
+  const posts = state.trendingPosts;
+  const interactions = posts.reduce((sum, post) => sum + post.alrightVotes + post.cringeVotes + Number(post.commentCount || 0), 0);
+  const closeCalls = posts.filter(post => { const total = post.alrightVotes + post.cringeVotes; return total && Math.abs((post.alrightVotes / total) - .5) <= .1; }).length;
   return `${pageHeader('DISCOVER', 'Trending', 'Fast-moving takes and conversations will surface here as community activity grows.')}
     ${adBanner('trending-banner')}
     <div class="segmented-control"><button class="active" type="button">Takes</button><button type="button">Topics</button><button type="button">Guilds</button></div>
-    <section class="trend-stats"><div><span>LIVE SIGNAL</span><strong>—</strong><small>Active debates</small></div><div><span>MOMENTUM</span><strong>—</strong><small>Votes this hour</small></div><div><span>CLOSE CALLS</span><strong>—</strong><small>Near 50/50</small></div></section>
-    ${emptyState('↗', 'Nothing is trending yet', 'This page will rank activity using real vote velocity, comment growth, and debate balance. No simulated trends are shown.')}`;
+    <section class="trend-stats"><div><span>LIVE SIGNAL</span><strong>${posts.length}</strong><small>Active debates</small></div><div><span>MOMENTUM</span><strong>${interactions}</strong><small>Total interactions</small></div><div><span>CLOSE CALLS</span><strong>${closeCalls}</strong><small>Near 50/50</small></div></section>
+    ${posts.length ? feedMarkup(posts) : emptyState('↗', 'Nothing is trending yet', 'The first real post will appear here. Ranking is based on views and interactions.')}`;
 }
 
 function guildCard(guild) {
-  return `<article class="created-guild"><div class="guild-monogram">${escapeHtml(guild.name.charAt(0).toUpperCase())}</div><div><span class="section-kicker">NEW GUILD</span><h2>${escapeHtml(guild.name)}</h2><p>${escapeHtml(guild.description)}</p><small>1 member · No posts yet</small></div><button type="button" data-open-guild="${guild.id}">Open</button></article>`;
+  return `<article class="created-guild"><div class="guild-monogram">${escapeHtml(guild.name.charAt(0).toUpperCase())}</div><div><span class="section-kicker">PUBLIC GUILD</span><h2>${escapeHtml(guild.name)}</h2><p>${escapeHtml(guild.description)}</p><small>${Number(guild.memberCount || 0)} members</small></div><button type="button" data-open-guild="${guild.id}">${guild.joined ? 'Leave' : 'Join'}</button></article>`;
 }
 
 function guildsView() {
@@ -337,25 +368,28 @@ function guildsView() {
 }
 
 function leaderboardsView() {
+  const rows = state.leaderboard.map((user, index) => `<div class="ranking-row"><strong>#${index + 1}</strong><span class="ranking-user">${user.avatarUrl ? `<span class="avatar"><img src="${escapeHtml(user.avatarUrl)}" alt="" /></span>` : `<span class="avatar">${escapeHtml((user.displayName || 'C').charAt(0))}</span>`}<span><b>${escapeHtml(user.displayName)}</b><small>${escapeHtml(user.handle || '')}</small></span></span><b>${Number(user.points || 0).toLocaleString()} pts</b><small>${Number(user.postCount || 0)} posts</small></div>`).join('');
   return `${pageHeader('RANKINGS', 'Leaderboards', 'Transparent community rankings based only on real Callout activity.')}
     <div class="segmented-control"><button class="active" type="button">Cringiest</button><button type="button">Top Vibe</button><button type="button">Guilds</button></div>
     <section class="ranking-card">
       <div class="ranking-head"><span>RANK</span><span>USER OR GUILD</span><span>SCORE</span><span>CHANGE</span></div>
-      <div class="ranking-empty"><div class="podium-outline"><i></i><i></i><i></i></div><h2>No rankings yet</h2><p>Leaderboard positions will populate after verified votes and community activity.</p></div>
+      ${rows || '<div class="ranking-empty"><div class="podium-outline"><i></i><i></i><i></i></div><h2>No rankings yet</h2><p>New accounts are enrolled automatically.</p></div>'}
     </section>
     <aside class="info-callout"><strong>How ranking works</strong><p>Scores use real votes, consistency, and participation. Empty leaderboards stay empty until those signals exist.</p></aside>`;
 }
 
 function notificationsView() {
+  const content = state.notifications.length ? `<section class="activity-list">${state.notifications.map(item => `<article class="activity-item ${item.read ? '' : 'unread'}"><span class="avatar">${escapeHtml((item.actor?.displayName || 'C').charAt(0))}</span><div><strong>${escapeHtml(item.text)}</strong><small>${timeLabel(new Date(item.createdAt).getTime())}</small></div></article>`).join('')}</section>` : emptyState('♢', 'You’re all caught up', 'New activity will appear here. There are no synthetic notifications in your inbox.');
   return `${pageHeader('INBOX', 'Notifications', 'Votes, replies, guild activity, and system updates in one place.', '<button class="quiet-action" type="button" data-mark-read>Mark all as read</button>')}
     <div class="segmented-control"><button class="active" type="button">All</button><button type="button">Replies</button><button type="button">Votes</button><button type="button">Guilds</button></div>
-    ${emptyState('♢', 'You’re all caught up', 'New activity will appear here. There are no synthetic notifications in your inbox.')}`;
+    ${content}`;
 }
 
 function messagesView() {
+  const items = state.messages.map(message => { const other = String(message.sender?.id) === String(sessionUser?.id) ? message.recipient : message.sender; return `<article class="message-item"><span class="avatar">${escapeHtml((other?.displayName || 'C').charAt(0))}</span><div><strong>${escapeHtml(other?.displayName || 'Member')}</strong><p>${escapeHtml(message.text)}</p><small>${timeLabel(new Date(message.createdAt).getTime())}</small></div></article>`; }).join('');
   return `${pageHeader('DIRECT MESSAGES', 'Messages', 'Private conversations with people you connect with on Callout.', '<button class="primary-action" type="button" data-new-message>＋ New message</button>')}
     <section class="messages-layout">
-      <aside class="conversation-list"><label><svg><use href="#i-search"></use></svg><input type="search" placeholder="Search messages" aria-label="Search messages" /></label><div class="mini-empty"><span>✉</span><strong>No conversations</strong><p>Your message history will appear here.</p></div></aside>
+      <aside class="conversation-list"><label><svg><use href="#i-search"></use></svg><input type="search" placeholder="Search messages" aria-label="Search messages" /></label>${items || '<div class="mini-empty"><span>✉</span><strong>No conversations</strong><p>Your message history will appear here.</p></div>'}</aside>
       <div class="conversation-stage" id="conversationStage"><div class="stage-empty"><div class="empty-icon">✉</div><h2>Select a conversation</h2><p>Or start a new message when you have someone to contact.</p></div></div>
     </section>`;
 }
@@ -444,26 +478,24 @@ function renderFilteredPosts(category = 'All', search = '') {
 }
 
 function bindPostInteractions() {
-  document.querySelectorAll('[data-vote]').forEach(button => button.addEventListener('click', () => {
+  document.querySelectorAll('[data-vote]').forEach(button => button.addEventListener('click', async () => {
     const card = button.closest('[data-post-id]');
     const post = state.posts.find(item => String(item.id) === card.dataset.postId);
     if (!post) return;
+    if (!sessionUser) { navigate('auth'); return showToast('Sign in to vote.'); }
     const nextVote = button.dataset.vote;
-    if (post.userVote === nextVote) return showToast('You already called this one.');
-    if (post.userVote === 'alright') post.alrightVotes = Math.max(0, post.alrightVotes - 1);
-    if (post.userVote === 'cringe') post.cringeVotes = Math.max(0, post.cringeVotes - 1);
-    if (nextVote === 'alright') post.alrightVotes += 1;
-    if (nextVote === 'cringe') post.cringeVotes += 1;
-    post.userVote = nextVote;
-    persist();
-    renderRoute();
-    showToast(nextVote === 'alright' ? 'You called it Alright.' : 'You called it Cringe.');
+    try {
+      const payload = await apiFetch(`/api/posts/${post.databaseId}/vote`, { method: 'POST', body: JSON.stringify({ value: nextVote }) });
+      Object.assign(post, { alrightVotes: payload.post.alrightVotes, cringeVotes: payload.post.cringeVotes, userVote: payload.post.userVote, impressions: payload.post.impressions });
+      await hydrateTrending(); renderRoute();
+      showToast(payload.post.userVote ? `You called it ${nextVote === 'alright' ? 'Alright' : 'Cringe'}.` : 'Vote removed.');
+    } catch (error) { showToast(error.message); }
   }));
-  document.querySelectorAll('[data-save-post]').forEach(button => button.addEventListener('click', () => {
+  document.querySelectorAll('[data-save-post]').forEach(button => button.addEventListener('click', async () => {
     const id = button.dataset.savePost;
-    const index = state.savedPostIds.indexOf(id);
-    if (index >= 0) state.savedPostIds.splice(index, 1); else state.savedPostIds.push(id);
-    persist(); renderRoute(); showToast(index >= 0 ? 'Removed from saved.' : 'Saved for later.');
+    if (!sessionUser) { navigate('auth'); return showToast('Sign in to save posts.'); }
+    try { const payload = await apiFetch(`/api/posts/${id}/save`, { method: 'POST' }); state.savedPostIds = payload.savedPostIds.map(String); persist(); renderRoute(); showToast(payload.saved ? 'Saved for later.' : 'Removed from saved.'); }
+    catch (error) { showToast(error.message); }
   }));
   document.querySelectorAll('[data-open-take]').forEach(element => {
     const open = () => navigate(`take/${element.dataset.openTake}`);
@@ -492,7 +524,7 @@ function bindViewInteractions(route) {
     button.classList.add('active');
     renderFilteredPosts(button.dataset.category);
   }));
-  document.querySelector('[data-mark-read]')?.addEventListener('click', () => showToast('No unread notifications.'));
+  document.querySelector('[data-mark-read]')?.addEventListener('click', async () => { try { await apiFetch('/api/notifications/read', { method: 'POST' }); state.notifications.forEach(item => { item.read = true; }); renderRoute(); showToast('Notifications marked as read.'); } catch (error) { showToast(error.message); } });
   document.querySelector('[data-new-message]')?.addEventListener('click', renderMessageComposer);
   document.querySelector('[data-open-settings]')?.addEventListener('click', () => navigate('settings'));
   document.querySelector('[data-back-feed]')?.addEventListener('click', () => navigate('home'));
@@ -504,7 +536,10 @@ function bindViewInteractions(route) {
   document.querySelectorAll('[data-reply-comment]').forEach(button => button.addEventListener('click', () => openReplyComposer(button.dataset.replyComment)));
   document.querySelectorAll('[data-upvote-comment]').forEach(button => button.addEventListener('click', () => toggleCommentVote(button.dataset.upvoteComment)));
   document.querySelectorAll('[data-unblock]').forEach(button => button.addEventListener('click', () => unblockUser(button.dataset.unblock)));
-  document.querySelectorAll('[data-open-guild]').forEach(button => button.addEventListener('click', () => showToast('Guild workspace ready for member activity.')));
+  document.querySelectorAll('[data-open-guild]').forEach(button => button.addEventListener('click', async () => {
+    if (!sessionUser) { navigate('auth'); return showToast('Sign in to join a guild.'); }
+    try { await apiFetch(`/api/guilds/${button.dataset.openGuild}/membership`, { method: 'POST' }); await hydrateGuilds(); renderRoute(); showToast('Guild membership updated.'); } catch (error) { showToast(error.message); }
+  }));
   document.querySelector('#loginForm')?.addEventListener('submit', loginUser);
   document.querySelector('#signupForm')?.addEventListener('submit', signupUser);
   document.querySelector('#resetRequestForm')?.addEventListener('submit', requestPasswordReset);
@@ -520,7 +555,8 @@ function renderMessageComposer() {
     const recipient = sanitizeInput(event.currentTarget.elements.recipient.value);
     const message = sanitizeInput(event.currentTarget.elements.message.value);
     if (!recipient || !message) return;
-    try { if (sessionUser) await apiFetch('/api/messages', { method: 'POST', body: JSON.stringify({ recipient, message }) }); showToast('Message accepted.'); }
+    if (!sessionUser) { navigate('auth'); return; }
+    try { await apiFetch('/api/messages', { method: 'POST', body: JSON.stringify({ recipient, message }) }); await hydrateAccountData(); renderRoute(); showToast('Message sent.'); }
     catch (error) { showToast(error.message); }
   });
 }
@@ -625,7 +661,7 @@ async function loginUser(event) {
   const form = event.currentTarget;
   try {
     const payload = await apiFetch('/api/auth/login', { method: 'POST', body: JSON.stringify({ email: sanitizeInput(form.elements.email.value), password: form.elements.password.value }) }, false);
-    applySessionUser(payload.user); navigate('home'); await hydratePosts(); showToast('Signed in securely.');
+    applySessionUser(payload.user); await Promise.all([hydratePosts(), hydrateAccountData(), hydrateGuilds(), hydrateLeaderboard()]); navigate('home'); showToast('Signed in securely.');
   } catch (error) { showToast(error.message); }
 }
 
@@ -634,7 +670,7 @@ async function signupUser(event) {
   const form = event.currentTarget;
   try {
     const payload = await apiFetch('/api/auth/signup', { method: 'POST', body: JSON.stringify({ displayName: sanitizeInput(form.elements.displayName.value), email: sanitizeInput(form.elements.email.value), password: form.elements.password.value, ageConfirmed: form.elements.ageConfirmed.checked }) }, false);
-    applySessionUser(payload.user); navigate('settings'); showToast('Account created. Customize your profile.');
+    applySessionUser(payload.user); await Promise.all([hydrateAccountData(), hydrateLeaderboard()]); navigate('settings'); showToast('Account created. Customize your profile.');
   } catch (error) { showToast(error.message); }
 }
 
@@ -662,7 +698,8 @@ async function logoutUser() {
   try { await apiFetch('/api/auth/logout', { method: 'POST' }, false); } catch { /* clear local session regardless */ }
   sessionUser = null;
   state.profile = { ...defaultState.profile, socialLinks: { ...defaultState.profile.socialLinks } };
-  persist(); renderRoute(); showToast('Signed out.');
+  state.savedPostIds = []; state.notifications = []; state.messages = [];
+  updateHeaderProfile(); await hydratePosts(); renderRoute(); showToast('Signed out.');
 }
 
 function activeTake() {
@@ -670,9 +707,19 @@ function activeTake() {
   return state.posts.find(post => String(post.id) === id);
 }
 
+async function hydrateTake(post) {
+  if (!post?.databaseId) return;
+  try {
+    await apiFetch(`/api/posts/${post.databaseId}/view`, { method: 'POST' }, false);
+    const payload = await apiFetch(`/api/posts/${post.databaseId}/comments`, {}, false);
+    post.comments = payload.comments || [];
+    post.commentCount = countComments(post.comments);
+  } catch (error) { console.error('Unable to load take:', error); }
+}
+
 function findComment(comments, id) {
   for (const comment of comments) {
-    if (comment.id === Number(id)) return comment;
+    if (String(comment.id) === String(id)) return comment;
     const nested = findComment(comment.replies || [], id);
     if (nested) return nested;
   }
@@ -685,7 +732,8 @@ async function addComment(event) {
   const input = event.currentTarget.elements.comment;
   const text = sanitizeInput(input.value);
   if (!post || !text) return;
-  try { if (sessionUser) await apiFetch('/api/comments', { method: 'POST', body: JSON.stringify({ text }) }); post.comments.push({ id: Date.now(), author: state.profile.handle, text, createdAt: Date.now(), votes: 0, upvoted: false, replies: [] }); persist(); renderRoute(); showToast('Comment added.'); }
+  if (!sessionUser) { navigate('auth'); return showToast('Sign in to comment.'); }
+  try { await apiFetch('/api/comments', { method: 'POST', body: JSON.stringify({ postId: post.databaseId, text, parent: null }) }); await hydrateTake(post); await hydrateTrending(); renderRoute(); showToast('Comment added.'); }
   catch (error) { showToast(error.message); }
 }
 
@@ -702,18 +750,18 @@ function openReplyComposer(id) {
     const parent = post && findComment(post.comments, id);
     const text = sanitizeInput(event.currentTarget.elements.reply.value);
     if (!parent || !text) return;
-    try { if (sessionUser) await apiFetch('/api/comments', { method: 'POST', body: JSON.stringify({ text }) }); parent.replies.push({ id: Date.now(), author: state.profile.handle, text, createdAt: Date.now(), votes: 0, upvoted: false, replies: [] }); persist(); renderRoute(); showToast('Reply added.'); }
+    if (!sessionUser) { navigate('auth'); return; }
+    try { await apiFetch('/api/comments', { method: 'POST', body: JSON.stringify({ postId: post.databaseId, text, parent: String(parent.id) }) }); await hydrateTake(post); renderRoute(); showToast('Reply added.'); }
     catch (error) { showToast(error.message); }
   });
 }
 
-function toggleCommentVote(id) {
+async function toggleCommentVote(id) {
   const post = activeTake();
   const comment = post && findComment(post.comments, id);
   if (!comment) return;
-  comment.upvoted = !comment.upvoted;
-  comment.votes = Math.max(0, (comment.votes || 0) + (comment.upvoted ? 1 : -1));
-  persist(); renderRoute();
+  if (!sessionUser) { navigate('auth'); return showToast('Sign in to vote on comments.'); }
+  try { await apiFetch(`/api/comments/${id}/vote`, { method: 'POST' }); await hydrateTake(post); renderRoute(); } catch (error) { showToast(error.message); }
 }
 
 function applyDisplaySettings() {
@@ -793,13 +841,10 @@ document.querySelector('#composerForm').addEventListener('submit', async event =
   const text = sanitizeInput(input.value);
   if (!text) return;
   const category = document.querySelector('#takeCategory').value;
-  const post = { id: String(Date.now()), authorId: currentUserId(), authorHandle: state.profile.handle, authorName: state.profile.displayName, authorAvatarUrl: state.profile.avatarUrl, text: text.toUpperCase(), category, alrightVotes: 0, cringeVotes: 0, userVote: null, comments: [], createdAt: Date.now() };
   try {
-    const payload = await apiFetch('/api/posts', { method: 'POST', body: JSON.stringify({ content: text, category }) });
-    post.databaseId = String(payload.post._id || payload.post.id);
-    post.id = post.databaseId;
+    await apiFetch('/api/posts', { method: 'POST', body: JSON.stringify({ content: text, category }) });
+    await Promise.all([hydratePosts(), hydrateSession(), hydrateLeaderboard(), hydrateTrending()]);
   } catch (error) { return showToast(error.message); }
-  state.posts.unshift(post);
   persist();
   input.value = '';
   document.querySelector('#charCount').textContent = '0 / 180';
@@ -808,22 +853,39 @@ document.querySelector('#composerForm').addEventListener('submit', async event =
   renderRoute();
   showToast('Your take is live.');
 });
-document.querySelector('#guildForm').addEventListener('submit', event => {
+document.querySelector('#guildForm').addEventListener('submit', async event => {
   event.preventDefault();
   const name = sanitizeInput(document.querySelector('#guildName').value);
   const description = sanitizeInput(document.querySelector('#guildDescription').value);
   if (!name || !description) return;
-  state.guilds.push({ id: Date.now(), name, description });
-  persist();
+  if (!sessionUser) { guildComposer.close(); navigate('auth'); return showToast('Sign in to create a guild.'); }
+  try { await apiFetch('/api/guilds', { method: 'POST', body: JSON.stringify({ name, description }) }); await hydrateGuilds(); }
+  catch (error) { return showToast(error.message); }
   event.currentTarget.reset();
   guildComposer.close();
   navigate('guilds');
   renderRoute();
   showToast('Guild created.');
 });
+let searchTimer;
 document.querySelector('#globalSearch').addEventListener('input', event => {
-  if (currentRoute() !== 'home') navigate('home');
-  renderFilteredPosts('All', event.target.value.trim());
+  clearTimeout(searchTimer);
+  const query = event.target.value.trim();
+  const panel = document.querySelector('#globalSearchResults');
+  if (query.length < 2) { panel.hidden = true; panel.innerHTML = ''; return; }
+  searchTimer = setTimeout(async () => {
+    try {
+      const result = await apiFetch(`/api/search?q=${encodeURIComponent(query)}`, {}, false);
+      const users = (result.users || []).map(user => `<button type="button" data-search-profile><span class="avatar">${user.avatarUrl ? `<img src="${escapeHtml(user.avatarUrl)}" alt="" />` : escapeHtml((user.displayName || 'C').charAt(0))}</span><span><strong>${escapeHtml(user.displayName)}</strong><small>${escapeHtml(user.handle || '')}</small></span></button>`).join('');
+      const posts = (result.posts || []).map(post => `<button type="button" data-search-take="${escapeHtml(post.id)}"><span>↗</span><span><strong>${escapeHtml(post.content)}</strong><small>Take</small></span></button>`).join('');
+      const guilds = (result.guilds || []).map(guild => `<button type="button" data-search-guild><span>⚔</span><span><strong>${escapeHtml(guild.name)}</strong><small>Guild</small></span></button>`).join('');
+      panel.innerHTML = users || posts || guilds ? `${users}${posts}${guilds}` : '<p>No people, takes, or guilds found.</p>';
+      panel.hidden = false;
+      panel.querySelectorAll('[data-search-take]').forEach(button => button.addEventListener('click', () => { panel.hidden = true; navigate(`take/${button.dataset.searchTake}`); }));
+      panel.querySelectorAll('[data-search-guild]').forEach(button => button.addEventListener('click', () => { panel.hidden = true; navigate('guilds'); }));
+      panel.querySelectorAll('[data-search-profile]').forEach(button => button.addEventListener('click', () => showToast('Public profile view is coming next.')));
+    } catch (error) { showToast(error.message); }
+  }, 220);
 });
 document.addEventListener('keydown', event => {
   if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
@@ -837,9 +899,14 @@ if (window.matchMedia) {
   if (themeMedia.addEventListener) themeMedia.addEventListener('change', handleSystemThemeChange);
   else if (themeMedia.addListener) themeMedia.addListener(handleSystemThemeChange);
 }
-window.addEventListener('hashchange', renderRoute);
+window.addEventListener('hashchange', async () => {
+  renderRoute();
+  if (currentRoute() === 'take') { await hydrateTake(activeTake()); renderRoute(); }
+  if (currentRoute() === 'trending') { await hydrateTrending(); renderRoute(); }
+  if (currentRoute() === 'notifications' || currentRoute() === 'messages') { await hydrateAccountData(); renderRoute(); }
+});
 
-document.querySelector('#headerName').textContent = state.profile.displayName;
+updateHeaderProfile();
 applyDisplaySettings();
 if (!location.hash) history.replaceState(null, '', '#home');
 renderRoute();

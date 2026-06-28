@@ -26,6 +26,7 @@ const cleanString = (value, helpers) => {
 };
 
 const plain = max => Joi.string().max(max).custom(cleanString, 'plain-text sanitizer');
+const recordId = Joi.string().pattern(/^(?:[a-f\d]{24}|[a-f\d]{8}-[a-f\d]{4}-[1-5][a-f\d]{3}-[89ab][a-f\d]{3}-[a-f\d]{12})$/i);
 const optionalUrl = Joi.string().allow('').max(2048).uri({ scheme: ['http', 'https', 'data'] });
 const optionalBanner = Joi.string().allow('').max(2_800_000).pattern(/^(https?:\/\/|data:image\/(png|jpeg|gif|webp);base64,)/i);
 
@@ -60,8 +61,10 @@ export const schemas = {
     }).required()
   }),
   post: Joi.object({ content: plain(180).required(), category: Joi.string().valid('Movies', 'Music', 'Entertainment', 'Games', 'Life').required() }),
-  comment: Joi.object({ text: plain(500).required() }),
-  message: Joi.object({ recipient: plain(50).required(), message: plain(2000).required() }),
+  vote: Joi.object({ value: Joi.string().valid('alright', 'cringe').required() }),
+  comment: Joi.object({ postId: recordId.required(), parent: recordId.allow(null, ''), text: plain(500).required() }),
+  guild: Joi.object({ name: plain(60).required(), description: plain(240).allow('') }),
+  message: Joi.object({ recipient: plain(254).required(), message: plain(2000).required() }),
   report: Joi.object({ reason: Joi.string().valid('spam', 'harassment', 'offensive', 'other').required(), details: plain(500).allow('') })
 };
 
@@ -109,6 +112,16 @@ export function requireAuth(req, res, next) {
   } catch {
     res.status(401).json({ error: 'Session expired' });
   }
+}
+
+export function optionalAuth(req, _res, next) {
+  const token = req.cookies?.[ACCESS_COOKIE];
+  if (!token) return next();
+  try {
+    const payload = jwt.verify(token, accessSecret(), { issuer: 'callout' });
+    if (payload.type === 'access') req.userId = payload.sub;
+  } catch { /* public routes remain available to signed-out visitors */ }
+  next();
 }
 
 export async function hashPassword(password) {

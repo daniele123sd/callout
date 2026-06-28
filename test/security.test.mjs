@@ -13,6 +13,11 @@ test('signup validation enforces the 13+ confirmation', () => {
   assert.ok(result.error);
 });
 
+test('comment validation supports MongoDB and local fallback record ids', () => {
+  assert.equal(schemas.comment.validate({ postId: '507f1f77bcf86cd799439011', parent: null, text: 'Mongo comment' }).error, undefined);
+  assert.equal(schemas.comment.validate({ postId: '123e4567-e89b-42d3-a456-426614174000', parent: '', text: 'Local comment' }).error, undefined);
+});
+
 test('passwords use bcrypt with twelve salt rounds', async () => {
   const hash = await hashPassword('SecurePass123!');
   assert.equal(BCRYPT_ROUNDS, 12);
