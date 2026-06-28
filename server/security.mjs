@@ -27,7 +27,6 @@ const cleanString = (value, helpers) => {
 
 const plain = max => Joi.string().max(max).custom(cleanString, 'plain-text sanitizer');
 const recordId = Joi.string().pattern(/^(?:[a-f\d]{24}|[a-f\d]{8}-[a-f\d]{4}-[1-5][a-f\d]{3}-[89ab][a-f\d]{3}-[a-f\d]{12})$/i);
-const optionalUrl = Joi.string().allow('').max(2048).uri({ scheme: ['http', 'https', 'data'] });
 const optionalBanner = Joi.string().allow('').max(2_800_000).pattern(/^(https?:\/\/|data:image\/(png|jpeg|gif|webp);base64,)/i);
 const mediaUrl = Joi.string().max(8_500_000).pattern(/^(https:\/\/|data:(image\/(png|jpeg|gif|webp)|video\/(mp4|webm));base64,)/i);
 const mediaItem = Joi.object({
@@ -41,10 +40,15 @@ const mediaCollection = Joi.array().max(4).items(mediaItem).custom((items, helpe
   if (!items.length) return items;
   const videos = items.filter(item => item.type === 'video');
   if (videos.length && (videos.length !== 1 || items.length !== 1)) return helpers.message({ custom: 'A post can contain one short video or an image set, not both.' });
-  if (videos.some(item => item.aspectRatio < 0.7 || item.aspectRatio > 1.45)) return helpers.message({ custom: 'Short videos must use a square or near-square aspect ratio.' });
+  if (videos.some(item => item.aspectRatio < 0.95 || item.aspectRatio > 1.05)) return helpers.message({ custom: 'Short videos must use a square 1:1 aspect ratio.' });
   if (!videos.length && ![1, 2, 4].includes(items.length)) return helpers.message({ custom: 'Image posts must contain 1, 2, or 4 images/GIFs.' });
   return items;
 }, 'media layout validation');
+const postText = plain(180).custom((value, helpers) => {
+  if (value.includes('#')) return helpers.message({ custom: 'Hashtags are not allowed in post text.' });
+  if (/(?:https?:\/\/|www\.|\b[a-z0-9-]+\.(?:com|net|org|io|co|gg|me|tv)(?:\/|\b))/i.test(value)) return helpers.message({ custom: 'Links are not allowed in post text.' });
+  return value;
+}, 'post content rules');
 
 export const schemas = {
   signup: Joi.object({
@@ -61,7 +65,7 @@ export const schemas = {
     handle: Joi.string().lowercase().pattern(/^@[a-z0-9_]{3,30}$/).required(),
     bio: plain(200).allow(''),
     bannerUrl: optionalBanner,
-    avatarUrl: optionalUrl,
+    avatarUrl: optionalBanner,
     themeColor: Joi.string().pattern(/^#[0-9a-fA-F]{6}$/).required(),
     pronouns: plain(40).allow(''),
     status: Joi.string().valid('online', 'idle', 'dnd', 'invisible').required(),
@@ -76,10 +80,18 @@ export const schemas = {
       textSize: Joi.string().valid('small', 'medium', 'large').required()
     }).required()
   }),
-  post: Joi.object({ content: plain(180).required(), category: Joi.string().valid('Movies', 'Music', 'Entertainment', 'Games', 'Life').required(), media: mediaCollection }),
+  post: Joi.object({ content: postText.required(), category: Joi.string().valid('Movies', 'Music', 'Entertainment', 'Games', 'Life').required(), media: mediaCollection }),
   vote: Joi.object({ value: Joi.string().valid('alright', 'cringe').required() }),
   comment: Joi.object({ postId: recordId.required(), parent: recordId.allow(null, ''), text: plain(500).required(), gifUrl: Joi.string().allow('').max(2_800_000).pattern(/^(https:\/\/|data:image\/gif;base64,)/i) }),
   guild: Joi.object({ name: plain(60).required(), description: plain(240).allow('') }),
+  guildSettings: Joi.object({
+    name: plain(60).required(), description: plain(240).allow(''), tagline: plain(100).allow(''), rules: plain(1200).allow(''),
+    iconUrl: optionalBanner, bannerUrl: optionalBanner,
+    themeColor: Joi.string().pattern(/^#[0-9a-fA-F]{6}$/).required(), accentColor: Joi.string().pattern(/^#[0-9a-fA-F]{6}$/).required(),
+    contentPrivacy: Joi.string().valid('members').required()
+  }),
+  guildMessage: Joi.object({ text: plain(2000).required() }),
+  friend: Joi.object({ userId: recordId.required() }),
   message: Joi.object({ recipient: plain(254).required(), message: plain(2000).required() }),
   report: Joi.object({ reason: Joi.string().valid('spam', 'harassment', 'offensive', 'other').required(), details: plain(500).allow('') })
 };

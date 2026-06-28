@@ -28,6 +28,12 @@ test('media validation enforces supported post layouts and short video rules', (
   assert.ok(schemas.post.validate({ content: 'Wide video', category: 'Life', media: [{ type: 'video', url: 'data:video/mp4;base64,AA==', alt: '', duration: 10, aspectRatio: 1.8 }] }).error);
 });
 
+test('post text rejects hashtags and links while GIF attachment links stay valid', () => {
+  assert.ok(schemas.post.validate({ content: 'No #hashtags here', category: 'Life', media: [] }).error);
+  assert.ok(schemas.post.validate({ content: 'Visit https://example.com', category: 'Life', media: [] }).error);
+  assert.equal(schemas.post.validate({ content: 'A plain take', category: 'Life', media: [{ type: 'gif', url: 'https://example.com/reaction.gif', alt: '', duration: 0, aspectRatio: 1 }] }).error, undefined);
+});
+
 test('passwords use bcrypt with twelve salt rounds', async () => {
   const hash = await hashPassword('SecurePass123!');
   assert.equal(BCRYPT_ROUNDS, 12);

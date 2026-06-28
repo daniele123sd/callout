@@ -15,10 +15,10 @@ import {
   validate, verifyRefreshToken
 } from './server/security.mjs';
 import {
-  connectDatabase, createComment, createGuild, createMessage, createPost, createReport, createUser, databaseMode, deletePost,
-  findUserByEmail, findUserByGoogleId, findUserById, listComments, listGuilds, listLeaderboard, listMessages,
+  acceptFriendRequest, canAccessPost, connectDatabase, createComment, createFriendRequest, createGuild, createGuildMessage, createGuildPost, createMessage, createPost, createReport, createUser, databaseMode, deletePost,
+  findUserByEmail, findUserByGoogleId, findUserById, getGuild, getPublicProfile, listComments, listFriends, listGuildMessages, listGuildPosts, listGuilds, listLeaderboard, listMessages,
   listNotifications, listPosts, listSavedPostIds, markNotificationsRead, publicUser, recordPostView, searchCallout,
-  toggleGuildMembership, toggleSavedPost, updatePost, updateUser, voteOnComment, voteOnPost
+  toggleGuildMembership, toggleSavedPost, updateGuild, updatePost, updateUser, voteOnComment, voteOnPost
 } from './server/repository.mjs';
 
 dotenv.config();
@@ -218,6 +218,7 @@ app.post('/api/posts/:id/reports', requireAuth, validate(schemas.report), async 
 });
 app.post('/api/posts/:id/vote', requireAuth, validate(schemas.vote), async (req, res, next) => {
   try {
+    if (!(await canAccessPost(req.params.id, req.userId))) return res.status(403).json({ error: 'This post is not available to you.' });
     const post = await voteOnPost(req.params.id, req.userId, req.body.value);
     if (!post) return res.status(404).json({ error: 'Post not found.' });
     if (post.forbidden) return res.status(400).json({ error: 'You cannot rank your own take.' });
@@ -226,17 +227,19 @@ app.post('/api/posts/:id/vote', requireAuth, validate(schemas.vote), async (req,
 });
 app.post('/api/posts/:id/view', optionalAuth, async (req, res, next) => {
   try {
+    if (!(await canAccessPost(req.params.id, req.userId))) return res.status(403).json({ error: 'This post is not available to you.' });
     const post = await recordPostView(req.params.id);
     if (!post) return res.status(404).json({ error: 'Post not found.' });
     res.status(204).end();
   } catch (error) { next(error); }
 });
 app.get('/api/posts/:id/comments', optionalAuth, async (req, res, next) => {
-  try { res.json({ comments: await listComments(req.params.id, req.userId) }); } catch (error) { next(error); }
+  try { if (!(await canAccessPost(req.params.id, req.userId))) return res.status(403).json({ error: 'This discussion is members-only.' }); res.json({ comments: await listComments(req.params.id, req.userId) }); } catch (error) { next(error); }
 });
 
 app.post('/api/comments', requireAuth, validate(schemas.comment), async (req, res, next) => {
   try {
+    if (!(await canAccessPost(req.body.postId, req.userId))) return res.status(403).json({ error: 'This discussion is members-only.' });
     const comment = await createComment(req.body.postId, req.userId, req.body);
     if (!comment) return res.status(404).json({ error: 'Post or parent comment not found.' });
     res.status(201).json({ comment });
@@ -255,6 +258,7 @@ app.get('/api/saved', requireAuth, async (req, res, next) => {
 });
 app.post('/api/posts/:id/save', requireAuth, async (req, res, next) => {
   try {
+    if (!(await canAccessPost(req.params.id, req.userId))) return res.status(403).json({ error: 'This post is not available to you.' });
     const saved = await toggleSavedPost(req.userId, req.params.id);
     if (!saved) return res.status(404).json({ error: 'Post not found.' });
     res.json(saved);
@@ -267,6 +271,24 @@ app.get('/api/guilds', optionalAuth, async (req, res, next) => {
 app.post('/api/guilds', requireAuth, validate(schemas.guild), async (req, res, next) => {
   try { res.status(201).json({ guild: await createGuild(req.userId, req.body) }); } catch (error) { next(error); }
 });
+app.get('/api/guilds/:id', optionalAuth, async (req, res, next) => {
+  try { const guild = await getGuild(req.params.id, req.userId); if (!guild) return res.status(404).json({ error: 'Guild not found.' }); res.json({ guild }); } catch (error) { next(error); }
+});
+app.patch('/api/guilds/:id', requireAuth, validate(schemas.guildSettings), async (req, res, next) => {
+  try { const guild = await updateGuild(req.params.id, req.userId, req.body); if (!guild) return res.status(403).json({ error: 'Only the guild creator can change these settings.' }); res.json({ guild }); } catch (error) { next(error); }
+});
+app.get('/api/guilds/:id/posts', requireAuth, async (req, res, next) => {
+  try { const posts = await listGuildPosts(req.params.id, req.userId); if (!posts) return res.status(403).json({ error: 'Join this guild to view its feed.' }); res.json({ posts }); } catch (error) { next(error); }
+});
+app.post('/api/guilds/:id/posts', requireAuth, validate(schemas.post), async (req, res, next) => {
+  try { const post = await createGuildPost(req.params.id, req.userId, req.body); if (!post) return res.status(403).json({ error: 'Join this guild to post.' }); res.status(201).json({ post }); } catch (error) { next(error); }
+});
+app.get('/api/guilds/:id/messages', requireAuth, async (req, res, next) => {
+  try { const messages = await listGuildMessages(req.params.id, req.userId); if (!messages) return res.status(403).json({ error: 'Join this guild to open its group chat.' }); res.json({ messages }); } catch (error) { next(error); }
+});
+app.post('/api/guilds/:id/messages', requireAuth, validate(schemas.guildMessage), async (req, res, next) => {
+  try { const message = await createGuildMessage(req.params.id, req.userId, req.body.text); if (!message) return res.status(403).json({ error: 'Join this guild to use its group chat.' }); res.status(201).json({ message }); } catch (error) { next(error); }
+});
 app.post('/api/guilds/:id/membership', requireAuth, async (req, res, next) => {
   try {
     const result = await toggleGuildMembership(req.userId, req.params.id);
@@ -278,6 +300,18 @@ app.post('/api/guilds/:id/membership', requireAuth, async (req, res, next) => {
 
 app.get('/api/leaderboard', async (_req, res, next) => {
   try { res.json({ users: await listLeaderboard() }); } catch (error) { next(error); }
+});
+app.get('/api/users/:id', optionalAuth, async (req, res, next) => {
+  try { const user = await getPublicProfile(req.params.id, req.userId); if (!user) return res.status(404).json({ error: 'User not found.' }); res.json({ user }); } catch (error) { next(error); }
+});
+app.get('/api/friends', requireAuth, async (req, res, next) => {
+  try { res.json({ friendships: await listFriends(req.userId) }); } catch (error) { next(error); }
+});
+app.post('/api/friends', requireAuth, validate(schemas.friend), async (req, res, next) => {
+  try { const friendship = await createFriendRequest(req.userId, req.body.userId); if (!friendship) return res.status(400).json({ error: 'Friend request could not be created.' }); res.status(201).json({ friendship }); } catch (error) { next(error); }
+});
+app.post('/api/friends/:id/accept', requireAuth, async (req, res, next) => {
+  try { const friendship = await acceptFriendRequest(req.params.id, req.userId); if (!friendship) return res.status(404).json({ error: 'Friend request not found.' }); res.json({ friendship }); } catch (error) { next(error); }
 });
 app.get('/api/search', async (req, res, next) => {
   try {
@@ -301,6 +335,7 @@ app.post('/api/messages', requireAuth, validate(schemas.message), async (req, re
   try {
     const message = await createMessage(req.userId, req.body.recipient, req.body.message);
     if (!message) return res.status(404).json({ error: 'Recipient not found. Use their @username or email.' });
+    if (message.forbidden) return res.status(403).json({ error: message.reason });
     res.status(201).json({ message });
   } catch (error) { next(error); }
 });

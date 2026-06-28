@@ -36,14 +36,11 @@
           <div class="global-search-results" id="globalSearchResults" hidden></div>
           <kbd>⌘ K</kbd>
         </div>
-        <div class="account-cluster">
-          <button class="profile-button" id="profileButton" type="button" aria-label="Open profile">
-            <span class="avatar avatar-bruce" id="headerAvatar">C</span>
-            <span class="profile-copy"><strong id="headerName">Guest</strong><small><span id="headerHandle">@guest</span><b id="headerVibe">✦ 0</b></small></span>
-          </button>
-          <button class="global-rank-button" id="globalRankButton" type="button" aria-expanded="false" aria-controls="miniLeaderboard"><small>GLOBAL</small><strong id="headerGlobalRank">—</strong></button>
-          <section class="mini-leaderboard" id="miniLeaderboard" hidden aria-label="Global Cringe leaderboard preview"><header><span>🔥 CRINGE LEADERBOARD</span><button type="button" data-route-button="leaderboards">See all</button></header><div id="miniLeaderboardRows"></div></section>
-        </div>
+        <button class="profile-button" id="profileButton" type="button" aria-label="Open profile">
+          <span class="avatar avatar-bruce" id="headerAvatar">C</span>
+          <span class="profile-copy"><strong id="headerName">Guest</strong><small><span id="headerHandle">@guest</span><b id="headerVibe">✦ 0</b></small></span>
+          <span class="chevron">›</span>
+        </button>
         <button class="mobile-menu" id="mobileMenu" type="button" aria-label="Open navigation">☰</button>
       </header>
 
@@ -69,7 +66,7 @@
           <hr />
           <div class="rank-row"><span id="vibeBadgeIcon">✦</span><strong id="vibeBadgeName">New Voice</strong></div>
           <p id="vibeProgressText">0 / 25</p>
-          <a href="#profile" data-route="profile">View progress →</a>
+          <a href="#vibe-progress" data-route="vibe-progress">View progress →</a>
         </section>
         <div class="ad-slot ad-sidebar" data-ad-slot="sidebar-rail"><span>ADVERTISEMENT</span><small>160 × 600</small></div>
       </aside>
@@ -77,21 +74,21 @@
       <main class="main-content" id="mainContent" tabindex="-1"></main>
 
       <aside class="right-rail" id="rightRail">
-        <section class="status-card">
-          <div class="status-top"><span>🔥</span><div><p>GLOBAL CRINGE RANK</p><strong id="railGlobalRank">—</strong></div></div>
+        <section class="status-card rail-leaderboard" aria-label="Global Cringe leaderboard preview">
+          <header><strong>🔥 CRINGE LEADERBOARD</strong><button class="text-button" type="button" data-route-button="leaderboards">See all</button></header>
+          <div class="rail-leaderboard-rows" id="railLeaderboardRows"><p>No ranked users yet.</p></div>
           <p class="status-note" id="railRankNote">Sign in to claim your place.</p>
-          <button class="text-button" type="button" data-route-button="leaderboards">View leaderboards →</button>
         </section>
         <section class="badge-card">
           <div><p>CRINGE BADGE</p><strong id="cringeBadgeName">FRESH FACE</strong><span id="cringeBadgeNote">The leaderboard updates from real Cringe votes.</span></div><div class="shield" id="cringeBadgeIcon">◇</div>
         </section>
         <div class="ad-slot ad-rectangle" data-ad-slot="right-rail"><ins class="adsbygoogle" style="display:block" data-ad-client="ca-pub-XXXXXXXXXXXXXXXX" data-ad-slot="RIGHT_RAIL_SLOT" data-ad-format="rectangle" data-full-width-responsive="true"></ins><span>ADVERTISEMENT</span><small>300 × 250</small></div>
-        <section class="rail-guild-card">
+        <section class="rail-guild-card" id="railGuildCard">
           <p class="eyebrow">GUILDS</p>
-          <div class="guild-art">⚔</div>
-          <strong>Find your people</strong>
-          <p>Join communities built around shared interests and stronger takes.</p>
-          <button type="button" data-route-button="guilds">View Guilds</button>
+          <div class="guild-art" id="railGuildArt">⚔</div>
+          <strong id="railGuildName">Find your people</strong>
+          <p id="railGuildDescription">Join communities built around shared interests and stronger takes.</p>
+          <div id="railGuildActions"><button type="button" data-route-button="guilds">View Guilds</button></div>
         </section>
       </aside>
 
@@ -109,7 +106,7 @@
         <div class="composer-tools" aria-label="Take attachments"><label class="media-picker" for="takeMedia">▧ Add media<input id="takeMedia" type="file" accept="image/png,image/jpeg,image/webp,image/gif,video/mp4,video/webm" multiple /></label><button type="button" id="addGifUrl">GIF link</button><div class="emoji-tray" id="postEmojiTray"><button type="button">🔥</button><button type="button">😂</button><button type="button">😭</button><button type="button">💀</button><button type="button">🤝</button><button type="button">👀</button></div></div>
         <div class="media-preview" id="mediaPreview" hidden></div>
         <input id="gifUrlInput" type="url" inputmode="url" placeholder="Paste a direct HTTPS GIF URL" hidden />
-        <p class="media-rules">Images: 1, 2, or 4 · Video: one square/near-square clip, maximum 25 seconds and 8 MB</p>
+        <p class="media-rules">Images: 1, 2, or 4 with crop/resize · Video: one square 1:1 clip, maximum 25 seconds and 8 MB · No hashtags or links in post text</p>
         <div class="composer-meta"><select id="takeCategory" aria-label="Category"><option>Movies</option><option>Music</option><option>Entertainment</option><option>Games</option><option>Life</option></select><span id="charCount">0 / 180</span></div>
         <button class="publish-button" value="default" type="submit">Post Take</button>
       </form>
@@ -122,6 +119,10 @@
         <label for="guildDescription">Description</label><textarea id="guildDescription" maxlength="160" required placeholder="What brings this guild together?"></textarea>
         <button class="primary-action" type="submit">Create Guild</button>
       </form>
+    </dialog>
+
+    <dialog class="image-editor" id="imageEditorDialog">
+      <form method="dialog" id="imageEditorForm"><div class="dialog-title"><div><span class="section-kicker">IMAGE EDITOR</span><h2>Crop & resize</h2></div><button type="button" data-close-image-editor aria-label="Close">×</button></div><canvas id="imageEditorCanvas" width="420" height="420"></canvas><label>Zoom<input id="imageZoom" type="range" min="1" max="3" value="1" step="0.05" /></label><p>Drag the image to reposition it. The saved crop is square and optimized for the feed.</p><button class="primary-action" type="submit">Apply crop</button></form>
     </dialog>
 
     <dialog class="action-dialog" id="actionDialog"><div id="actionDialogContent"></div></dialog>

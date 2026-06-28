@@ -10,6 +10,7 @@ const mediaSchema = new mongoose.Schema({
 
 const postSchema = new mongoose.Schema({
   author: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, index: true },
+  guild: { type: mongoose.Schema.Types.ObjectId, ref: 'Guild', default: null, index: true },
   content: { type: String, required: true, maxlength: 180 },
   category: { type: String, enum: ['Movies', 'Music', 'Entertainment', 'Games', 'Life'], required: true },
   alrightVotes: { type: Number, default: 0, min: 0 },

@@ -7,6 +7,8 @@ import { Comment } from './models/Comment.mjs';
 import { Guild } from './models/Guild.mjs';
 import { Notification } from './models/Notification.mjs';
 import { Message } from './models/Message.mjs';
+import { GuildMessage } from './models/GuildMessage.mjs';
+import { Friendship } from './models/Friendship.mjs';
 
 let connected = false;
 const memoryUsers = new Map();
@@ -16,6 +18,8 @@ const memoryComments = new Map();
 const memoryGuilds = new Map();
 const memoryNotifications = [];
 const memoryMessages = [];
+const memoryGuildMessages = [];
+const memoryFriendships = [];
 
 export async function connectDatabase() {
   if (!process.env.DB_URI) {
@@ -61,6 +65,12 @@ export function vibeBadges(score = 0) {
   if (score >= 250) badges.push({ key: 'community-spark', name: 'Community Spark', icon: '🔥', threshold: 250 });
   if (score >= 1000) badges.push({ key: 'vibe-legend', name: 'Vibe Legend', icon: '♛', threshold: 1000 });
   return badges;
+}
+
+function publicIdentity(user) {
+  const account = publicUser(user);
+  if (!account) return null;
+  return { id: account.id, displayName: account.displayName, handle: account.handle, avatarUrl: account.avatarUrl, vibeScore: account.vibeScore, vibeBadges: account.vibeBadges, cringeScore: account.cringeScore, postCount: Number(account.postCount || 0), createdAt: account.createdAt };
 }
 
 async function incrementVibe(userId, amount) {
@@ -138,8 +148,8 @@ const serializePost = (post, userId = '') => {
 export async function listPosts(userId = '', { trending = false } = {}) {
   if (connected) {
     const sort = trending ? { impressions: -1, alrightVotes: -1, cringeVotes: -1, createdAt: -1 } : { createdAt: -1 };
-    const posts = await Post.find().sort(sort).populate('author', 'displayName handle avatarUrl').lean().exec();
-    const counts = await Comment.aggregate([{ $group: { _id: '$post', count: { $sum: 1 } } }]);
+    const posts = await Post.find({ guild: null }).sort(sort).populate('author', 'displayName handle avatarUrl').lean().exec();
+    const counts = await Comment.aggregate([{ $match: { post: { $in: posts.map(post => post._id) } } }, { $group: { _id: '$post', count: { $sum: 1 } } }]);
     const countMap = new Map(counts.map(item => [String(item._id), item.count]));
     return posts.map(post => ({
       ...serializePost(post, userId),
@@ -147,9 +157,9 @@ export async function listPosts(userId = '', { trending = false } = {}) {
       author: post.author ? { ...post.author, id: String(post.author._id), _id: undefined } : null
     }));
   }
-  return [...memoryPosts.values()].sort((a, b) => trending ? ((b.impressions || 0) - (a.impressions || 0) || new Date(b.createdAt) - new Date(a.createdAt)) : new Date(b.createdAt) - new Date(a.createdAt)).map(post => ({
+  return [...memoryPosts.values()].filter(post => !post.guild).sort((a, b) => trending ? ((b.impressions || 0) - (a.impressions || 0) || new Date(b.createdAt) - new Date(a.createdAt)) : new Date(b.createdAt) - new Date(a.createdAt)).map(post => ({
     ...serializePost(post, userId), commentCount: [...memoryComments.values()].filter(comment => comment.post === post.id).length,
-    author: publicUser(memoryUsers.get(String(post.author)))
+    author: publicIdentity(memoryUsers.get(String(post.author)))
   }));
 }
 
@@ -158,6 +168,17 @@ export async function recordPostView(postId) {
   const post = memoryPosts.get(String(postId));
   if (post) post.impressions = (post.impressions || 0) + 1;
   return post || null;
+}
+
+export async function canAccessPost(postId, userId = '') {
+  if (connected) {
+    const post = await Post.findById(postId).select('guild').lean();
+    if (!post) return false;
+    return !post.guild || Boolean(userId && await Guild.exists({ _id: post.guild, members: userId }));
+  }
+  const post = memoryPosts.get(String(postId));
+  if (!post) return false;
+  return !post.guild || Boolean(userId && memoryGuilds.get(String(post.guild))?.members.includes(String(userId)));
 }
 
 export async function voteOnPost(postId, userId, value) {
@@ -198,7 +219,7 @@ export async function voteOnPost(postId, userId, value) {
 
 const serializeComment = (comment, userId = '') => {
   const value = normalize(comment);
-  const author = value.author ? { ...value.author, id: String(value.author._id || value.author.id), _id: undefined } : null;
+  const author = value.author ? publicIdentity(value.author) : null;
   return { ...value, id: String(value._id || value.id), _id: undefined, post: String(value.post), parent: value.parent ? String(value.parent) : null, author, votes: value.upvotes?.length || 0, upvoted: (value.upvotes || []).some(id => String(id) === String(userId)), upvotes: undefined, replies: [] };
 };
 
@@ -311,8 +332,11 @@ export async function listSavedPostIds(userId) {
 const serializeGuild = (guild, userId = '') => {
   const value = normalize(guild);
   const members = value.members || [];
-  const creator = value.creator && typeof value.creator === 'object' ? publicUser(value.creator) : (value.creator ? { id: String(value.creator) } : null);
-  return { ...value, id: String(value._id || value.id), _id: undefined, creator, memberCount: members.length, joined: members.some(member => String(member._id || member) === String(userId)), members: undefined };
+  const creatorAccount = value.creator && typeof value.creator === 'object' ? publicIdentity(value.creator) : null;
+  const creator = creatorAccount ? { id: creatorAccount.id, displayName: creatorAccount.displayName, handle: creatorAccount.handle, avatarUrl: creatorAccount.avatarUrl } : (value.creator ? { id: String(value.creator) } : null);
+  const joined = members.some(member => String(member._id || member) === String(userId));
+  const owner = String(creator?.id || creator?._id || value.creator) === String(userId);
+  return { ...value, id: String(value._id || value.id), _id: undefined, creator, memberCount: members.length, joined, owner, canViewContent: joined, members: undefined };
 };
 
 export async function listGuilds(userId = '') {
@@ -325,6 +349,67 @@ export async function createGuild(userId, values) {
   const guild = { id: crypto.randomUUID(), creator: String(userId), members: [String(userId)], createdAt: new Date(), ...values };
   memoryGuilds.set(guild.id, guild);
   return serializeGuild({ ...guild, creator: memoryUsers.get(String(userId)) }, userId);
+}
+
+export async function getGuild(guildId, userId = '') {
+  if (connected) {
+    if (!mongoose.isValidObjectId(guildId)) return null;
+    const guild = await Guild.findById(guildId).populate('creator', 'displayName handle avatarUrl').lean();
+    return guild ? serializeGuild(guild, userId) : null;
+  }
+  const guild = memoryGuilds.get(String(guildId));
+  return guild ? serializeGuild({ ...guild, creator: memoryUsers.get(guild.creator) }, userId) : null;
+}
+
+async function isGuildMember(guildId, userId) {
+  if (connected) return Boolean(await Guild.exists({ _id: guildId, members: userId }));
+  return memoryGuilds.get(String(guildId))?.members.includes(String(userId)) || false;
+}
+
+export async function updateGuild(guildId, userId, values) {
+  if (connected) {
+    const guild = await Guild.findOneAndUpdate({ _id: guildId, creator: userId }, values, { new: true, runValidators: true }).populate('creator', 'displayName handle avatarUrl');
+    return guild ? serializeGuild(guild, userId) : null;
+  }
+  const guild = memoryGuilds.get(String(guildId));
+  if (!guild || guild.creator !== String(userId)) return null;
+  Object.assign(guild, values, { updatedAt: new Date() });
+  return serializeGuild({ ...guild, creator: memoryUsers.get(guild.creator) }, userId);
+}
+
+export async function listGuildPosts(guildId, userId) {
+  if (!(await isGuildMember(guildId, userId))) return null;
+  if (connected) {
+    const posts = await Post.find({ guild: guildId }).sort({ createdAt: -1 }).populate('author', 'displayName handle avatarUrl').lean();
+    const counts = await Comment.aggregate([{ $match: { post: { $in: posts.map(post => post._id) } } }, { $group: { _id: '$post', count: { $sum: 1 } } }]);
+    const countMap = new Map(counts.map(item => [String(item._id), item.count]));
+    return posts.map(post => ({ ...serializePost(post, userId), commentCount: countMap.get(String(post._id)) || 0, author: post.author ? publicIdentity(post.author) : null }));
+  }
+  return [...memoryPosts.values()].filter(post => post.guild === String(guildId)).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)).map(post => ({ ...serializePost(post, userId), author: publicIdentity(memoryUsers.get(post.author)), commentCount: [...memoryComments.values()].filter(comment => comment.post === post.id).length }));
+}
+
+export async function createGuildPost(guildId, userId, values) {
+  if (!(await isGuildMember(guildId, userId))) return null;
+  return createPost(userId, { ...values, guild: guildId });
+}
+
+const serializeGuildMessage = message => {
+  const value = normalize(message);
+  return { ...value, id: String(value._id || value.id), _id: undefined, guild: String(value.guild), sender: publicIdentity(value.sender) };
+};
+
+export async function listGuildMessages(guildId, userId) {
+  if (!(await isGuildMember(guildId, userId))) return null;
+  if (connected) return (await GuildMessage.find({ guild: guildId }).sort({ createdAt: 1 }).limit(250).populate('sender', 'displayName handle avatarUrl').lean()).map(serializeGuildMessage);
+  return memoryGuildMessages.filter(item => item.guild === String(guildId)).map(item => serializeGuildMessage({ ...item, sender: memoryUsers.get(item.sender) }));
+}
+
+export async function createGuildMessage(guildId, userId, text) {
+  if (!(await isGuildMember(guildId, userId))) return null;
+  if (connected) return serializeGuildMessage(await (await GuildMessage.create({ guild: guildId, sender: userId, text })).populate('sender', 'displayName handle avatarUrl'));
+  const message = { id: crypto.randomUUID(), guild: String(guildId), sender: String(userId), text, createdAt: new Date() };
+  memoryGuildMessages.push(message);
+  return serializeGuildMessage({ ...message, sender: memoryUsers.get(String(userId)) });
 }
 
 export async function toggleGuildMembership(userId, guildId) {
@@ -356,13 +441,13 @@ export async function listLeaderboard() {
       ])
     ]);
     const scoreMap = new Map(scores.map(item => [String(item._id), Number(item.cringeScore || 0)]));
-    return users.map(user => ({ ...publicUser(user), cringeScore: scoreMap.get(String(user._id)) || 0 }))
+    return users.map(user => ({ ...publicIdentity(user), cringeScore: scoreMap.get(String(user._id)) || 0 }))
       .sort((a, b) => b.cringeScore - a.cringeScore || b.vibeScore - a.vibeScore || new Date(a.createdAt) - new Date(b.createdAt))
       .map((user, index) => ({ ...user, rank: index + 1, cringeBadge: cringeBadge(index + 1, user.cringeScore) }));
   }
   const scoreMap = new Map();
   for (const post of memoryPosts.values()) scoreMap.set(post.author, (scoreMap.get(post.author) || 0) + (post.votes || []).filter(vote => vote.value === 'cringe' && vote.user !== post.author).length);
-  return [...memoryUsers.values()].map(user => ({ ...publicUser(user), cringeScore: scoreMap.get(user.id) || 0 }))
+  return [...memoryUsers.values()].map(user => ({ ...publicIdentity(user), cringeScore: scoreMap.get(user.id) || 0 }))
     .sort((a, b) => b.cringeScore - a.cringeScore || b.vibeScore - a.vibeScore || new Date(a.createdAt) - new Date(b.createdAt))
     .map((user, index) => ({ ...user, rank: index + 1, cringeBadge: cringeBadge(index + 1, user.cringeScore) }));
 }
@@ -381,21 +466,21 @@ export async function searchCallout(query) {
   if (connected) {
     const [users, posts, guilds] = await Promise.all([
       User.find({ $or: [{ displayName: regex }, { handle: regex }] }).select('displayName handle avatarUrl vibeScore points').limit(8).lean(),
-      Post.find({ content: regex }).populate('author', 'displayName handle avatarUrl').sort({ createdAt: -1 }).limit(8).lean(),
+      Post.find({ content: regex, guild: null }).populate('author', 'displayName handle avatarUrl').sort({ createdAt: -1 }).limit(8).lean(),
       Guild.find({ $or: [{ name: regex }, { description: regex }] }).limit(8).lean()
     ]);
-    return { users: users.map(publicUser), posts: posts.map(post => ({ ...serializePost(post), author: post.author ? publicUser(post.author) : null })), guilds: guilds.map(serializeGuild) };
+    return { users: users.map(publicIdentity), posts: posts.map(post => ({ ...serializePost(post), author: post.author ? publicIdentity(post.author) : null })), guilds: guilds.map(serializeGuild) };
   }
   return {
-    users: [...memoryUsers.values()].filter(user => regex.test(user.displayName) || regex.test(user.handle)).slice(0, 8).map(publicUser),
-    posts: [...memoryPosts.values()].filter(post => regex.test(post.content)).slice(0, 8).map(post => serializePost(post)),
+    users: [...memoryUsers.values()].filter(user => regex.test(user.displayName) || regex.test(user.handle)).slice(0, 8).map(publicIdentity),
+    posts: [...memoryPosts.values()].filter(post => !post.guild && regex.test(post.content)).slice(0, 8).map(post => serializePost(post)),
     guilds: [...memoryGuilds.values()].filter(guild => regex.test(guild.name) || regex.test(guild.description)).slice(0, 8).map(serializeGuild)
   };
 }
 
 export async function listNotifications(userId) {
-  if (connected) return (await Notification.find({ recipient: userId }).sort({ createdAt: -1 }).limit(100).populate('actor', 'displayName handle avatarUrl').lean()).map(item => ({ ...item, id: String(item._id), _id: undefined, actor: item.actor ? publicUser(item.actor) : null, post: item.post ? String(item.post) : null, guild: item.guild ? String(item.guild) : null }));
-  return memoryNotifications.filter(item => item.recipient === String(userId)).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+  if (connected) return (await Notification.find({ recipient: userId }).sort({ createdAt: -1 }).limit(100).populate('actor', 'displayName handle avatarUrl').lean()).map(item => ({ ...item, id: String(item._id), _id: undefined, actor: item.actor ? publicIdentity(item.actor) : null, post: item.post ? String(item.post) : null, guild: item.guild ? String(item.guild) : null }));
+  return memoryNotifications.filter(item => item.recipient === String(userId)).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)).map(item => ({ ...item, actor: publicIdentity(item.actor) }));
 }
 
 export async function markNotificationsRead(userId) {
@@ -404,25 +489,94 @@ export async function markNotificationsRead(userId) {
 }
 
 export async function createMessage(senderId, recipientQuery, text) {
-  const recipient = recipientQuery.startsWith('@')
-    ? (connected ? await User.findOne({ handle: recipientQuery.toLowerCase() }) : [...memoryUsers.values()].find(user => user.handle === recipientQuery.toLowerCase()))
-    : await findUserByEmail(recipientQuery);
+  const query = String(recipientQuery);
+  const recipient = query.startsWith('@')
+    ? (connected ? await User.findOne({ handle: query.toLowerCase() }) : [...memoryUsers.values()].find(user => user.handle === query.toLowerCase()))
+    : (/^(?:[a-f\d]{24}|[a-f\d-]{36})$/i.test(query) ? await findUserById(query) : await findUserByEmail(query));
   if (!recipient) return null;
   const recipientId = String(recipient._id || recipient.id);
-  if (connected) return serializeMessage(await (await Message.create({ sender: senderId, recipient: recipientId, text })).populate([{ path: 'sender', select: 'displayName handle avatarUrl' }, { path: 'recipient', select: 'displayName handle avatarUrl' }]));
+  if (recipientId === String(senderId)) return { forbidden: true, reason: 'You cannot message yourself.' };
+  if (recipient.preferences?.directMessages === 'nobody') return { forbidden: true, reason: 'This user is not accepting direct messages.' };
+  if (recipient.preferences?.directMessages === 'guilds') {
+    const shared = connected
+      ? await Guild.exists({ members: { $all: [senderId, recipientId] } })
+      : [...memoryGuilds.values()].some(guild => guild.members.includes(String(senderId)) && guild.members.includes(recipientId));
+    if (!shared) return { forbidden: true, reason: 'Direct messages are limited to shared guild members.' };
+  }
+  if (connected) {
+    const message = await Message.create({ sender: senderId, recipient: recipientId, text });
+    await Notification.create({ recipient: recipientId, actor: senderId, type: 'message', text: 'You received a new direct message.' });
+    return serializeMessage(await message.populate([{ path: 'sender', select: 'displayName handle avatarUrl' }, { path: 'recipient', select: 'displayName handle avatarUrl' }]));
+  }
   const message = { id: crypto.randomUUID(), sender: String(senderId), recipient: recipientId, text, read: false, createdAt: new Date() };
   memoryMessages.push(message);
+  memoryNotifications.push({ id: crypto.randomUUID(), recipient: recipientId, actor: publicUser(memoryUsers.get(String(senderId))), type: 'message', text: 'You received a new direct message.', read: false, createdAt: new Date() });
   return serializeMessage({ ...message, sender: memoryUsers.get(String(senderId)), recipient: memoryUsers.get(recipientId) });
 }
 
 const serializeMessage = message => {
   const value = normalize(message);
-  return { ...value, id: String(value._id || value.id), _id: undefined, sender: publicUser(value.sender), recipient: publicUser(value.recipient) };
+  return { ...value, id: String(value._id || value.id), _id: undefined, sender: publicIdentity(value.sender), recipient: publicIdentity(value.recipient) };
 };
 
 export async function listMessages(userId) {
-  if (connected) return (await Message.find({ $or: [{ sender: userId }, { recipient: userId }] }).sort({ createdAt: -1 }).limit(100).populate([{ path: 'sender', select: 'displayName handle avatarUrl' }, { path: 'recipient', select: 'displayName handle avatarUrl' }]).lean()).map(serializeMessage);
+  if (connected) return (await Message.find({ $or: [{ sender: userId }, { recipient: userId }] }).sort({ createdAt: 1 }).limit(500).populate([{ path: 'sender', select: 'displayName handle avatarUrl' }, { path: 'recipient', select: 'displayName handle avatarUrl' }]).lean()).map(serializeMessage);
   return memoryMessages.filter(message => message.sender === String(userId) || message.recipient === String(userId)).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)).map(message => serializeMessage({ ...message, sender: memoryUsers.get(message.sender), recipient: memoryUsers.get(message.recipient) }));
+}
+
+const pairKey = (a, b) => [String(a), String(b)].sort().join(':');
+const serializeFriendship = friendship => {
+  const value = normalize(friendship);
+  return { ...value, id: String(value._id || value.id), _id: undefined, requester: publicIdentity(value.requester), recipient: publicIdentity(value.recipient) };
+};
+
+export async function createFriendRequest(requesterId, recipientId) {
+  if (String(requesterId) === String(recipientId) || !(await findUserById(recipientId))) return null;
+  const key = pairKey(requesterId, recipientId);
+  if (connected) {
+    const existing = await Friendship.findOne({ pairKey: key });
+    if (existing) {
+      if (existing.status === 'pending' && String(existing.requester) === String(recipientId)) { existing.status = 'accepted'; await existing.save(); await Notification.create({ recipient: recipientId, actor: requesterId, type: 'friend_accept', text: 'Your friend request was accepted.' }); }
+      return serializeFriendship(await existing.populate([{ path: 'requester', select: 'displayName handle avatarUrl' }, { path: 'recipient', select: 'displayName handle avatarUrl' }]));
+    }
+    const friendship = await Friendship.create({ requester: requesterId, recipient: recipientId, pairKey: key });
+    await Notification.create({ recipient: recipientId, actor: requesterId, type: 'friend_request', text: 'You received a friend request.' });
+    return serializeFriendship(await friendship.populate([{ path: 'requester', select: 'displayName handle avatarUrl' }, { path: 'recipient', select: 'displayName handle avatarUrl' }]));
+  }
+  let existing = memoryFriendships.find(item => item.pairKey === key);
+  if (!existing) { existing = { id: crypto.randomUUID(), requester: String(requesterId), recipient: String(recipientId), pairKey: key, status: 'pending', createdAt: new Date() }; memoryFriendships.push(existing); memoryNotifications.push({ id: crypto.randomUUID(), recipient: String(recipientId), actor: publicUser(memoryUsers.get(String(requesterId))), type: 'friend_request', text: 'You received a friend request.', read: false, createdAt: new Date() }); }
+  else if (existing.status === 'pending' && existing.requester === String(recipientId)) existing.status = 'accepted';
+  return serializeFriendship({ ...existing, requester: memoryUsers.get(existing.requester), recipient: memoryUsers.get(existing.recipient) });
+}
+
+export async function acceptFriendRequest(friendshipId, userId) {
+  if (connected) {
+    const friendship = await Friendship.findOneAndUpdate({ _id: friendshipId, recipient: userId, status: 'pending' }, { status: 'accepted' }, { new: true }).populate([{ path: 'requester', select: 'displayName handle avatarUrl' }, { path: 'recipient', select: 'displayName handle avatarUrl' }]);
+    if (friendship) await Notification.create({ recipient: friendship.requester._id, actor: userId, type: 'friend_accept', text: 'Your friend request was accepted.' });
+    return friendship ? serializeFriendship(friendship) : null;
+  }
+  const friendship = memoryFriendships.find(item => item.id === String(friendshipId) && item.recipient === String(userId) && item.status === 'pending');
+  if (!friendship) return null; friendship.status = 'accepted';
+  return serializeFriendship({ ...friendship, requester: memoryUsers.get(friendship.requester), recipient: memoryUsers.get(friendship.recipient) });
+}
+
+export async function listFriends(userId) {
+  if (connected) {
+    const rows = await Friendship.find({ $or: [{ requester: userId }, { recipient: userId }] }).sort({ updatedAt: -1 }).populate([{ path: 'requester', select: 'displayName handle avatarUrl' }, { path: 'recipient', select: 'displayName handle avatarUrl' }]).lean();
+    return rows.map(serializeFriendship);
+  }
+  return memoryFriendships.filter(item => item.requester === String(userId) || item.recipient === String(userId)).map(item => serializeFriendship({ ...item, requester: memoryUsers.get(item.requester), recipient: memoryUsers.get(item.recipient) }));
+}
+
+export async function getPublicProfile(profileId, viewerId = '') {
+  const user = await findUserById(profileId);
+  if (!user) return null;
+  const account = publicUser(user);
+  const profile = { id: account.id, displayName: account.displayName, handle: account.handle, avatarUrl: account.avatarUrl, bannerUrl: account.bannerUrl, themeColor: account.themeColor, bio: account.bio, socialLinks: account.socialLinks, pronouns: account.pronouns, status: account.status, vibeScore: account.vibeScore, vibeBadges: account.vibeBadges, createdAt: account.createdAt };
+  if (!viewerId || String(profileId) === String(viewerId)) return { ...profile, friendship: String(profileId) === String(viewerId) ? 'self' : 'none' };
+  const key = pairKey(profileId, viewerId);
+  const friendship = connected ? await Friendship.findOne({ pairKey: key }).lean() : memoryFriendships.find(item => item.pairKey === key);
+  return { ...profile, friendship: friendship?.status || 'none', friendshipId: friendship ? String(friendship._id || friendship.id) : null, requestIncoming: friendship?.status === 'pending' && String(friendship.recipient) === String(viewerId) };
 }
 
 export async function createReport(reporterId, postId, values) {

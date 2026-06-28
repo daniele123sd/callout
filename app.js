@@ -58,7 +58,13 @@ const state = {
   leaderboard: [],
   userStanding: null,
   notifications: [],
-  messages: []
+  messages: [],
+  friendships: [],
+  activeGuild: null,
+  guildPosts: [],
+  guildMessages: [],
+  publicProfile: null,
+  notificationFilter: 'all'
 };
 
 if (storedState?.settings?.appearanceVersion !== 2) {
@@ -66,7 +72,7 @@ if (storedState?.settings?.appearanceVersion !== 2) {
   state.settings.theme = 'light';
 }
 
-const routes = new Set(['home', 'trending', 'guilds', 'leaderboards', 'notifications', 'messages', 'saved', 'profile', 'settings', 'take', 'auth']);
+const routes = new Set(['home', 'trending', 'guilds', 'guild', 'leaderboards', 'vibe-progress', 'notifications', 'messages', 'saved', 'profile', 'user', 'settings', 'take', 'auth']);
 const mainContent = document.querySelector('#mainContent');
 const composer = document.querySelector('#composer');
 const guildComposer = document.querySelector('#guildComposer');
@@ -171,21 +177,38 @@ function updateAccountChrome() {
   const standing = state.userStanding;
   const milestone = vibeMilestone(score);
   const progress = Math.max(0, Math.min(100, ((score - milestone.threshold) / (milestone.next - milestone.threshold)) * 100));
-  const rankText = standing ? `#${standing.rank}` : '—';
   document.querySelector('#headerVibe').textContent = `✦ ${score.toLocaleString()}`;
-  document.querySelector('#headerGlobalRank').textContent = rankText;
   document.querySelector('#sidebarVibeScore').textContent = score.toLocaleString();
   document.querySelector('#vibeBadgeIcon').textContent = milestone.icon;
   document.querySelector('#vibeBadgeName').textContent = milestone.name;
   document.querySelector('#vibeProgressText').textContent = `${score.toLocaleString()} / ${milestone.next.toLocaleString()}`;
   const track = document.querySelector('#vibeProgress');
   track.setAttribute('aria-valuenow', String(score)); track.setAttribute('aria-valuemax', String(milestone.next)); track.querySelector('span').style.width = `${progress}%`; track.querySelector('i').style.left = `${Math.max(2, progress - 3)}%`;
-  document.querySelector('#railGlobalRank').textContent = standing ? `#${standing.rank} GLOBAL` : '—';
   document.querySelector('#railRankNote').textContent = standing ? `${standing.cringeScore.toLocaleString()} Cringe ${standing.cringeScore === 1 ? 'vote' : 'votes'} received.` : 'Sign in to claim your place.';
   document.querySelector('#cringeBadgeName').textContent = (standing?.cringeBadge?.name || 'Fresh Face').toUpperCase();
   document.querySelector('#cringeBadgeIcon').textContent = standing?.cringeBadge?.icon || '◇';
-  const mini = document.querySelector('#miniLeaderboardRows');
-  mini.innerHTML = state.leaderboard.slice(0, 5).map(user => `<button type="button" data-mini-rank="${user.rank}"><b>${user.rank}</b><span class="avatar">${user.avatarUrl ? `<img src="${escapeHtml(user.avatarUrl)}" alt="" />` : escapeHtml((user.displayName || 'C').charAt(0))}</span><span><strong>${escapeHtml(user.displayName)}</strong><small>${escapeHtml(user.handle || '')}</small></span><em>${Number(user.cringeScore || 0).toLocaleString()}</em></button>`).join('') || '<p>No ranked users yet.</p>';
+  const mini = document.querySelector('#railLeaderboardRows');
+  mini.innerHTML = state.leaderboard.slice(0, 5).map(user => `<button type="button" data-rail-user="${user.id}"><b>${user.rank}</b><span class="avatar">${user.avatarUrl ? `<img src="${escapeHtml(user.avatarUrl)}" alt="" />` : escapeHtml((user.displayName || 'C').charAt(0))}</span><span><strong>${escapeHtml(user.displayName)}</strong><small>${escapeHtml(user.handle || '')}</small></span><em>${Number(user.cringeScore || 0).toLocaleString()}</em></button>`).join('') || '<p>No ranked users yet.</p>';
+  mini.querySelectorAll('[data-rail-user]').forEach(button => button.addEventListener('click', () => navigate(`user/${button.dataset.railUser}`)));
+}
+
+function updateGuildChrome() {
+  const guild = state.guilds.find(item => item.joined);
+  const art = document.querySelector('#railGuildArt');
+  const name = document.querySelector('#railGuildName');
+  const description = document.querySelector('#railGuildDescription');
+  const actions = document.querySelector('#railGuildActions');
+  if (!guild) {
+    art.innerHTML = '⚔'; art.style.backgroundImage = '';
+    name.textContent = 'Find your people'; description.textContent = 'Join communities built around shared interests and stronger takes.';
+    actions.innerHTML = '<button type="button" data-quick-guilds>View Guilds</button>';
+    actions.querySelector('button').addEventListener('click', () => navigate('guilds'));
+    return;
+  }
+  art.innerHTML = guild.iconUrl ? `<img src="${escapeHtml(guild.iconUrl)}" alt="" />` : escapeHtml(guild.name.charAt(0).toUpperCase());
+  name.textContent = guild.name; description.textContent = guild.tagline || guild.description || 'Your current guild.';
+  actions.innerHTML = `<button type="button" data-guild-quick="feed">Feed</button><button type="button" data-guild-quick="public">Profile</button><button type="button" data-guild-quick="chat">GC</button>`;
+  actions.querySelectorAll('[data-guild-quick]').forEach(button => button.addEventListener('click', () => navigate(`guild/${guild.id}/${button.dataset.guildQuick}`)));
 }
 
 async function hydrateSession() {
@@ -218,17 +241,35 @@ async function hydrateApp() {
   await hydrateSession();
   await Promise.all([hydratePosts(), hydrateGuilds(), hydrateLeaderboard(), hydrateTrending(), hydrateAccountData()]);
   if (currentRoute() === 'take') await hydrateTake(activeTake());
+  if (currentRoute() === 'guild') await hydrateGuildDetail();
+  if (currentRoute() === 'user') await hydratePublicProfile();
   renderRoute();
 }
 
-async function hydrateGuilds() { try { state.guilds = (await apiFetch('/api/guilds', {}, false)).guilds || []; } catch (error) { console.error(error); } }
+async function hydrateGuilds() { try { state.guilds = (await apiFetch('/api/guilds', {}, false)).guilds || []; updateGuildChrome(); } catch (error) { console.error(error); } }
 async function hydrateLeaderboard() { try { state.leaderboard = (await apiFetch('/api/leaderboard', {}, false)).users || []; state.userStanding = sessionUser ? state.leaderboard.find(user => String(user.id) === String(sessionUser.id)) || null : null; updateAccountChrome(); } catch (error) { console.error(error); } }
 async function hydrateTrending() { try { state.trendingPosts = ((await apiFetch('/api/posts/trending', {}, false)).posts || []).map(mapPost); } catch (error) { console.error(error); } }
-async function hydrateAccountData() {
-  if (!sessionUser) { state.savedPostIds = []; state.notifications = []; state.messages = []; return; }
+async function hydrateGuildDetail() {
+  const id = decodeURIComponent(location.hash.split('/')[1] || '');
+  if (!id) return;
   try {
-    const [saved, notifications, messages] = await Promise.all([apiFetch('/api/saved'), apiFetch('/api/notifications'), apiFetch('/api/messages')]);
-    state.savedPostIds = (saved.savedPostIds || []).map(String); state.notifications = notifications.notifications || []; state.messages = messages.messages || [];
+    state.activeGuild = (await apiFetch(`/api/guilds/${id}`, {}, false)).guild;
+    if (state.activeGuild.canViewContent && sessionUser) {
+      const [posts, messages] = await Promise.all([apiFetch(`/api/guilds/${id}/posts`), apiFetch(`/api/guilds/${id}/messages`)]);
+      state.guildPosts = (posts.posts || []).map(mapPost); state.guildMessages = messages.messages || [];
+    } else { state.guildPosts = []; state.guildMessages = []; }
+  } catch (error) { state.activeGuild = null; showToast(error.message); }
+}
+async function hydratePublicProfile() {
+  const id = decodeURIComponent(location.hash.split('/')[1] || '');
+  if (!id) return;
+  try { state.publicProfile = (await apiFetch(`/api/users/${id}`, {}, false)).user; } catch (error) { state.publicProfile = null; showToast(error.message); }
+}
+async function hydrateAccountData() {
+  if (!sessionUser) { state.savedPostIds = []; state.notifications = []; state.messages = []; state.friendships = []; return; }
+  try {
+    const [saved, notifications, messages, friends] = await Promise.all([apiFetch('/api/saved'), apiFetch('/api/notifications'), apiFetch('/api/messages'), apiFetch('/api/friends')]);
+    state.savedPostIds = (saved.savedPostIds || []).map(String); state.notifications = notifications.notifications || []; state.messages = messages.messages || []; state.friendships = friends.friendships || [];
     const unread = state.notifications.filter(item => !item.read).length;
     const badge = document.querySelector('#notificationBadge'); badge.textContent = unread; badge.hidden = unread === 0;
   } catch (error) { console.error(error); }
@@ -365,7 +406,7 @@ function commentThreadDetail(post) {
 
 function takeDetailView() {
   const id = decodeURIComponent(location.hash.split('/')[1] || '');
-  const post = state.posts.find(item => String(item.id) === id);
+  const post = findPostById(id);
   if (!post) return `${pageHeader('TAKE', 'Take not found', 'This take may have been removed.')}<button class="quiet-action" type="button" data-back-feed>← Back to feed</button>`;
   return `<div class="detail-back-row"><button type="button" data-back-feed>← Back to feed</button><span>TAKE DETAIL</span></div>${postTemplate(post, true)}${commentThreadDetail(post)}`;
 }
@@ -403,7 +444,7 @@ function trendingView() {
 }
 
 function guildCard(guild) {
-  return `<article class="created-guild"><div class="guild-monogram">${escapeHtml(guild.name.charAt(0).toUpperCase())}</div><div><span class="section-kicker">PUBLIC GUILD</span><h2>${escapeHtml(guild.name)}</h2><p>${escapeHtml(guild.description)}</p><small>${Number(guild.memberCount || 0)} members</small></div><button type="button" data-open-guild="${guild.id}">${guild.joined ? 'Leave' : 'Join'}</button></article>`;
+  return `<article class="created-guild"><div class="guild-monogram">${guild.iconUrl ? `<img src="${escapeHtml(guild.iconUrl)}" alt="" />` : escapeHtml(guild.name.charAt(0).toUpperCase())}</div><div><span class="section-kicker">${guild.joined ? 'YOUR GUILD' : 'PUBLIC PROFILE'}</span><h2>${escapeHtml(guild.name)}</h2><p>${escapeHtml(guild.tagline || guild.description)}</p><small>${Number(guild.memberCount || 0)} members</small></div><button type="button" data-open-guild="${guild.id}">Open</button></article>`;
 }
 
 function guildsView() {
@@ -416,7 +457,7 @@ function guildsView() {
 }
 
 function leaderboardsView() {
-  const rows = state.leaderboard.map(user => `<div class="ranking-row ${String(user.id) === String(sessionUser?.id) ? 'is-you' : ''}"><strong>#${user.rank}</strong><span class="ranking-user">${user.avatarUrl ? `<span class="avatar"><img src="${escapeHtml(user.avatarUrl)}" alt="" /></span>` : `<span class="avatar">${escapeHtml((user.displayName || 'C').charAt(0))}</span>`}<span><b>${escapeHtml(user.displayName)}${String(user.id) === String(sessionUser?.id) ? ' (You)' : ''}</b><small>${escapeHtml(user.handle || '')}</small></span></span><b>${Number(user.cringeScore || 0).toLocaleString()} cringe</b><small>${escapeHtml(user.cringeBadge?.icon || '◇')} ${escapeHtml(user.cringeBadge?.name || 'Fresh Face')}</small></div>`).join('');
+  const rows = state.leaderboard.map(user => `<button type="button" data-leader-user="${user.id}" class="ranking-row ${String(user.id) === String(sessionUser?.id) ? 'is-you' : ''}"><strong>#${user.rank}</strong><span class="ranking-user">${user.avatarUrl ? `<span class="avatar"><img src="${escapeHtml(user.avatarUrl)}" alt="" /></span>` : `<span class="avatar">${escapeHtml((user.displayName || 'C').charAt(0))}</span>`}<span><b>${escapeHtml(user.displayName)}${String(user.id) === String(sessionUser?.id) ? ' (You)' : ''}</b><small>${escapeHtml(user.handle || '')}</small></span></span><b>${Number(user.cringeScore || 0).toLocaleString()} cringe</b><small>${escapeHtml(user.cringeBadge?.icon || '◇')} ${escapeHtml(user.cringeBadge?.name || 'Fresh Face')}</small></button>`).join('');
   return `${pageHeader('GLOBAL CRINGE RANK', 'Leaderboard', 'A competitive ranking based only on Cringe votes received on your posts.')}
     <section class="ranking-card">
       <div class="ranking-head"><span>RANK</span><span>USER</span><span>CRINGE</span><span>BADGE</span></div>
@@ -425,19 +466,70 @@ function leaderboardsView() {
     <aside class="info-callout"><strong>Cringe rank vs. Vibe</strong><p>Cringe votes determine this global rank. Your Vibe score is separate and rewards posting, adding Takes, and reacting across Callout.</p></aside>`;
 }
 
+function vibeProgressView() {
+  const score = Number(state.profile.vibeScore || 0);
+  const tiers = [{ name: 'Vibe Rookie', icon: '◆', minimum: 0, next: 100, color: '#c77a3d' }, { name: 'Vibe Star', icon: '✦', minimum: 100, next: 500, color: '#aeb8c6' }, { name: 'Vibe Legend', icon: '♛', minimum: 500, next: 1000, color: '#f3bd25' }];
+  const current = [...tiers].reverse().find(tier => score >= tier.minimum) || tiers[0];
+  const progress = Math.min(100, ((score - current.minimum) / (current.next - current.minimum)) * 100);
+  return `${pageHeader('PERSONAL PROGRESS', 'Your Vibe journey', 'Vibe is a participation score, not a global competition. Post, react, and add Takes to progress.')}
+    <section class="vibe-progress-hero"><div style="--tier:${current.color}"><span>${current.icon}</span><div><small>CURRENT RANK</small><h2>${current.name}</h2><strong>${score.toLocaleString()} Vibe</strong></div></div><div class="vibe-rank-track"><span style="width:${progress}%"></span></div><p>${score.toLocaleString()} / ${current.next.toLocaleString()} toward your next milestone</p></section>
+    <section class="vibe-tier-grid">${tiers.map((tier, index) => `<article class="${score >= tier.minimum ? 'unlocked' : ''}" style="--tier:${tier.color}"><span>${tier.icon}</span><small>RANK ${index + 1}</small><h2>${tier.name}</h2><p>${tier.minimum.toLocaleString()}+ Vibe</p><b>${score >= tier.minimum ? 'Unlocked' : 'Locked'}</b></article>`).join('')}</section>
+    <aside class="info-callout"><strong>How Vibe grows</strong><p>Post: +10 · Add a Take or reply: +4 · First reaction on a post or Take: +1. Repeated toggling does not generate extra Vibe.</p></aside>`;
+}
+
+function guildDetailView() {
+  const id = decodeURIComponent(location.hash.split('/')[1] || '');
+  const guild = state.activeGuild?.id === id ? state.activeGuild : null;
+  if (!guild) return `${pageHeader('GUILD', 'Loading guild…', 'Opening the public guild profile.')}`;
+  const tab = location.hash.split('/')[2] || (guild.joined ? 'feed' : 'public');
+  const tabs = `<nav class="guild-tabs"><button data-guild-tab="public" class="${tab === 'public' ? 'active' : ''}">Public profile</button><button data-guild-tab="feed" class="${tab === 'feed' ? 'active' : ''}">Member feed</button><button data-guild-tab="chat" class="${tab === 'chat' ? 'active' : ''}">Group chat</button>${guild.owner ? `<button data-guild-tab="settings" class="${tab === 'settings' ? 'active' : ''}">Settings</button>` : ''}</nav>`;
+  const hero = `<section class="guild-hero" style="--guild-theme:${escapeHtml(guild.themeColor || '#7444e8')};--guild-accent:${escapeHtml(guild.accentColor || '#ff4713')}"><div class="guild-cover">${guild.bannerUrl ? `<img src="${escapeHtml(guild.bannerUrl)}" alt="" />` : ''}</div><div class="guild-hero-body"><span class="guild-profile-icon">${guild.iconUrl ? `<img src="${escapeHtml(guild.iconUrl)}" alt="" />` : escapeHtml(guild.name.charAt(0))}</span><div><span class="section-kicker">${guild.memberCount} MEMBERS</span><h1>${escapeHtml(guild.name)}</h1><p>${escapeHtml(guild.tagline || guild.description)}</p></div><button class="${guild.joined ? 'quiet-action' : 'primary-action'}" type="button" data-toggle-guild="${guild.id}" ${guild.owner ? 'disabled' : ''}>${guild.owner ? 'Owner' : guild.joined ? 'Leave guild' : 'Join guild'}</button></div></section>`;
+  let body = '';
+  if (tab === 'public') body = `<section class="guild-public-grid"><article><span class="section-kicker">ABOUT</span><h2>${escapeHtml(guild.description || 'No description yet.')}</h2></article><article><span class="section-kicker">RULES</span><div class="formatted-copy">${escapeHtml(guild.rules || 'Guild rules have not been added yet.').replace(/\n/g, '<br>')}</div></article></section>`;
+  else if (!guild.canViewContent) body = emptyState('🔒', 'Members-only area', 'This guild is public from the outside, but its feed and group chat are visible only to members.', `<button class="primary-action" type="button" data-toggle-guild="${guild.id}">Join guild</button>`);
+  else if (tab === 'feed') body = `<form class="guild-post-composer" id="guildPostForm"><textarea name="content" maxlength="180" required placeholder="Share something with ${escapeHtml(guild.name)}…"></textarea><select name="category"><option>Life</option><option>Entertainment</option><option>Movies</option><option>Music</option><option>Games</option></select><button class="primary-action" type="submit">Post to guild</button></form>${state.guildPosts.length ? feedMarkup(state.guildPosts) : emptyState('✦', 'No guild posts yet', 'Members can start the first conversation here.')}`;
+  else if (tab === 'chat') body = `<section class="guild-chat"><div class="chat-stream">${state.guildMessages.length ? state.guildMessages.map(message => `<article><span class="avatar">${escapeHtml((message.sender?.displayName || 'C').charAt(0))}</span><div><strong>${escapeHtml(message.sender?.displayName || 'Member')}</strong><small>${timeLabel(new Date(message.createdAt).getTime())}</small><p>${escapeHtml(message.text)}</p></div></article>`).join('') : '<div class="stage-empty"><h2>No messages yet</h2><p>Start the guild group chat.</p></div>'}</div><form id="guildChatForm"><textarea name="text" maxlength="2000" required placeholder="Message the guild…"></textarea><button class="primary-action" type="submit">Send</button></form></section>`;
+  else body = `<form class="guild-settings-form" id="guildSettingsForm"><div class="form-grid"><label>Guild name<input name="name" maxlength="60" value="${escapeHtml(guild.name)}" required /></label><label>Tagline<input name="tagline" maxlength="100" value="${escapeHtml(guild.tagline || '')}" /></label></div><label>Description<textarea name="description" maxlength="240">${escapeHtml(guild.description || '')}</textarea></label><label>Rules<textarea name="rules" maxlength="1200">${escapeHtml(guild.rules || '')}</textarea></label><div class="form-grid"><label>Icon image<input name="iconFile" type="file" accept="image/png,image/jpeg,image/webp,image/gif" /></label><label>Banner image<input name="bannerFile" type="file" accept="image/png,image/jpeg,image/webp,image/gif" /></label><label>Theme color<input name="themeColor" type="color" value="${escapeHtml(guild.themeColor || '#7444e8')}" /></label><label>Accent color<input name="accentColor" type="color" value="${escapeHtml(guild.accentColor || '#ff4713')}" /></label></div><input type="hidden" name="iconUrl" value="${escapeHtml(guild.iconUrl || '')}" /><input type="hidden" name="bannerUrl" value="${escapeHtml(guild.bannerUrl || '')}" /><input type="hidden" name="contentPrivacy" value="members" /><button class="primary-action" type="submit">Save guild</button></form>`;
+  return `${hero}${tabs}<div class="guild-workspace">${body}</div>`;
+}
+
+function notificationCategory(item) {
+  if (['comment', 'reply', 'vote'].includes(item.type)) return 'takes';
+  if (['guild', 'guild_invite'].includes(item.type)) return 'guilds';
+  if (item.type === 'message') return 'messages';
+  if (['friend_request', 'friend_accept'].includes(item.type)) return 'social';
+  return 'system';
+}
+
 function notificationsView() {
-  const content = state.notifications.length ? `<section class="activity-list">${state.notifications.map(item => `<article class="activity-item ${item.read ? '' : 'unread'}"><span class="avatar">${escapeHtml((item.actor?.displayName || 'C').charAt(0))}</span><div><strong>${escapeHtml(item.text)}</strong><small>${timeLabel(new Date(item.createdAt).getTime())}</small></div></article>`).join('')}</section>` : emptyState('♢', 'You’re all caught up', 'New activity will appear here. There are no synthetic notifications in your inbox.');
+  const filtered = state.notificationFilter === 'all' ? state.notifications : state.notifications.filter(item => notificationCategory(item) === state.notificationFilter);
+  const content = filtered.length ? `<section class="activity-list">${filtered.map(item => `<article class="activity-item ${item.read ? '' : 'unread'}"><span class="avatar">${escapeHtml((item.actor?.displayName || 'C').charAt(0))}</span><div><span class="notification-kind">${notificationCategory(item).toUpperCase()}</span><strong>${escapeHtml(item.text)}</strong><small>${item.actor ? `${escapeHtml(item.actor.displayName)} · ` : ''}${timeLabel(new Date(item.createdAt).getTime())}</small></div><div class="notification-actions">${item.type === 'friend_request' ? `<button type="button" data-notification-user="${escapeHtml(item.actor?.id || '')}">View request</button>` : ''}${item.post ? `<button type="button" data-notification-post="${item.post}">Open</button>` : ''}${item.guild ? `<button type="button" data-notification-guild="${item.guild}">Open</button>` : ''}${item.type === 'message' && item.actor?.id ? `<button type="button" data-notification-message="${item.actor.id}">Chat</button>` : ''}</div></article>`).join('')}</section>` : emptyState('♢', 'Nothing in this category', 'Specific account activity will appear here when it happens.');
   return `${pageHeader('INBOX', 'Notifications', 'Votes, replies, guild activity, and system updates in one place.', '<button class="quiet-action" type="button" data-mark-read>Mark all as read</button>')}
-    <div class="segmented-control"><button class="active" type="button">All</button><button type="button">Replies</button><button type="button">Votes</button><button type="button">Guilds</button></div>
+    <div class="segmented-control notification-filters">${[['all','All'],['takes','Takes'],['messages','Messages'],['social','Friends'],['guilds','Guilds'],['system','System']].map(([key,label]) => `<button class="${state.notificationFilter === key ? 'active' : ''}" type="button" data-notification-filter="${key}">${label}</button>`).join('')}</div>
     ${content}`;
 }
 
+function conversationGroups() {
+  const groups = new Map();
+  for (const message of state.messages) {
+    const other = String(message.sender?.id) === String(sessionUser?.id) ? message.recipient : message.sender;
+    if (!other?.id) continue;
+    if (!groups.has(String(other.id))) groups.set(String(other.id), { user: other, messages: [] });
+    groups.get(String(other.id)).messages.push(message);
+  }
+  return [...groups.values()].sort((a, b) => new Date(b.messages.at(-1)?.createdAt || 0) - new Date(a.messages.at(-1)?.createdAt || 0));
+}
+
 function messagesView() {
-  const items = state.messages.map(message => { const other = String(message.sender?.id) === String(sessionUser?.id) ? message.recipient : message.sender; return `<article class="message-item"><span class="avatar">${escapeHtml((other?.displayName || 'C').charAt(0))}</span><div><strong>${escapeHtml(other?.displayName || 'Member')}</strong><p>${escapeHtml(message.text)}</p><small>${timeLabel(new Date(message.createdAt).getTime())}</small></div></article>`; }).join('');
+  const groups = conversationGroups();
+  const selectedId = decodeURIComponent(location.hash.split('/')[1] || '');
+  const selected = groups.find(group => String(group.user.id) === selectedId) || (selectedId && String(state.publicProfile?.id) === selectedId ? { user: state.publicProfile, messages: [] } : null) || (selectedId && state.leaderboard.find(user => String(user.id) === selectedId) ? { user: state.leaderboard.find(user => String(user.id) === selectedId), messages: [] } : null);
+  const items = groups.map(group => { const last = group.messages.at(-1); return `<button class="message-item ${String(group.user.id) === selectedId ? 'active' : ''}" type="button" data-conversation="${group.user.id}"><span class="avatar">${escapeHtml((group.user.displayName || 'C').charAt(0))}</span><div><strong>${escapeHtml(group.user.displayName || 'Member')}</strong><p>${escapeHtml(last?.text || '')}</p><small>${timeLabel(new Date(last?.createdAt).getTime())}</small></div></button>`; }).join('');
+  const stage = selected ? `<section class="dm-chat"><header><span class="avatar">${escapeHtml((selected.user.displayName || 'C').charAt(0))}</span><div><strong>${escapeHtml(selected.user.displayName)}</strong><small>${escapeHtml(selected.user.handle || '')}</small></div><button type="button" data-open-user="${selected.user.id}">Profile</button></header><div class="chat-stream">${selected.messages.map(message => `<article class="dm-bubble ${String(message.sender?.id) === String(sessionUser?.id) ? 'sent' : 'received'}"><p>${escapeHtml(message.text)}</p><small>${timeLabel(new Date(message.createdAt).getTime())}</small></article>`).join('')}</div><form id="dmChatForm"><textarea name="message" maxlength="2000" required placeholder="Message ${escapeHtml(selected.user.displayName)}…"></textarea><input type="hidden" name="recipient" value="${selected.user.id}" /><button class="primary-action" type="submit">Send</button></form></section>` : '<div class="stage-empty"><div class="empty-icon">✉</div><h2>Select a conversation</h2><p>Choose an existing chat or start a new one.</p></div>';
   return `${pageHeader('DIRECT MESSAGES', 'Messages', 'Private conversations with people you connect with on Callout.', '<button class="primary-action" type="button" data-new-message>＋ New message</button>')}
     <section class="messages-layout">
       <aside class="conversation-list"><label><svg><use href="#i-search"></use></svg><input type="search" placeholder="Search messages" aria-label="Search messages" /></label>${items || '<div class="mini-empty"><span>✉</span><strong>No conversations</strong><p>Your message history will appear here.</p></div>'}</aside>
-      <div class="conversation-stage" id="conversationStage"><div class="stage-empty"><div class="empty-icon">✉</div><h2>Select a conversation</h2><p>Or start a new message when you have someone to contact.</p></div></div>
+      <div class="conversation-stage" id="conversationStage">${stage}</div>
     </section>`;
 }
 
@@ -456,8 +548,21 @@ function profileView() {
       <div class="profile-cover">${profile.bannerUrl ? `<img src="${escapeHtml(profile.bannerUrl)}" alt="Profile banner" />` : '<span>CALL IT LIKE YOU SEE IT.</span>'}</div>
       <div class="profile-identity">${avatarMarkup('profile-avatar')}<div><div class="identity-line"><h2>${escapeHtml(profile.displayName)}</h2><i class="status-dot ${escapeHtml(profile.status)}"></i></div><p>${escapeHtml(profile.handle)}${profile.pronouns ? ` · ${escapeHtml(profile.pronouns)}` : ''}</p></div><div class="vibe-stat-card"><span>✦</span><div><strong>${Number(profile.vibeScore || 0).toLocaleString()}</strong><small>VIBE SCORE</small></div></div></div>
     </section>
-    <section class="profile-summary"><div><span class="section-kicker">ABOUT ME</span><h2>${profile.bio ? escapeHtml(profile.bio) : 'No bio added yet.'}</h2><p>Status: ${escapeHtml(profile.status.toUpperCase())}</p></div><div><span class="section-kicker">SOCIAL LINKS</span><h2>Find me elsewhere</h2><div class="profile-links">${links.length ? links.join('') : '<p>No social links added yet.</p>'}</div></div></section>
+    <section class="profile-summary"><div><span class="section-kicker">ABOUT ME</span><div class="formatted-copy">${formatBio(profile.bio || 'No bio added yet.')}</div><p>Status: ${escapeHtml(profile.status.toUpperCase())}</p></div><div><span class="section-kicker">SOCIAL LINKS</span><h2>Find me elsewhere</h2><div class="profile-links">${links.length ? links.join('') : '<p>No social links added yet.</p>'}</div></div></section>
     <section class="badges-card"><div><span class="section-kicker">VIBE BADGES</span><h2>Earned through participation</h2></div><div class="badge-grid">${(profile.vibeBadges?.length ? profile.vibeBadges : [{ icon: '✦', name: 'New Voice' }]).map(badge => `<span title="${escapeHtml(badge.name)}">${escapeHtml(badge.icon)}<strong>${escapeHtml(badge.name)}</strong></span>`).join('')}<span class="locked" title="Keep building your Vibe">◇<strong>Next badge</strong></span></div></section>`;
+}
+
+function formatBio(value) {
+  return escapeHtml(value).replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>').replace(/\*([^*]+)\*/g, '<em>$1</em>').replace(/\n/g, '<br>');
+}
+
+function publicUserView() {
+  const user = state.publicProfile;
+  const id = decodeURIComponent(location.hash.split('/')[1] || '');
+  if (!user || String(user.id) !== id) return `${pageHeader('PROFILE', 'Loading profile…', 'Fetching the latest public account details.')}`;
+  const badges = user.vibeBadges || [];
+  const friendButton = user.requestIncoming ? `<button class="quiet-action" type="button" data-accept-friend="${user.friendshipId}">Accept friend</button>` : `<button class="quiet-action" type="button" data-friend-user="${user.id}" ${['accepted','pending'].includes(user.friendship) ? 'disabled' : ''}>${user.friendship === 'accepted' ? 'Friends ✓' : user.friendship === 'pending' ? 'Request pending' : 'Add friend'}</button>`;
+  return `<section class="public-user-card" style="--profile-accent:${escapeHtml(user.themeColor || '#ff4713')}"><div class="public-user-banner">${user.bannerUrl ? `<img src="${escapeHtml(user.bannerUrl)}" alt="" />` : ''}</div><div class="public-user-main"><span class="avatar">${user.avatarUrl ? `<img src="${escapeHtml(user.avatarUrl)}" alt="" />` : escapeHtml((user.displayName || 'C').charAt(0))}</span><div><h1>${escapeHtml(user.displayName)}</h1><p>${escapeHtml(user.handle || '')}${user.pronouns ? ` · ${escapeHtml(user.pronouns)}` : ''}</p></div><div class="public-user-actions">${user.friendship === 'self' ? '<button class="quiet-action" data-open-settings>Edit profile</button>' : `${friendButton}<button class="primary-action" type="button" data-message-user="${user.id}">Message</button>`}</div></div><div class="public-user-body"><article><span class="section-kicker">ABOUT ME</span><div class="formatted-copy">${formatBio(user.bio || 'No bio added yet.')}</div></article><article><span class="section-kicker">VIBE</span><h2>✦ ${Number(user.vibeScore || 0).toLocaleString()}</h2><div class="mini-badges">${badges.map(badge => `<span>${escapeHtml(badge.icon)} ${escapeHtml(badge.name)}</span>`).join('')}</div></article></div></section>`;
 }
 
 function settingsView() {
@@ -469,7 +574,7 @@ function settingsView() {
         <div class="theme-options" role="radiogroup" aria-label="Theme"><label><input type="radio" name="theme" value="light" ${checked(settings.theme === 'light')} /><span>☀<strong>Light</strong><small>Bright and crisp</small></span></label><label><input type="radio" name="theme" value="dark" ${checked(settings.theme === 'dark')} /><span>◐<strong>Dark</strong><small>Easy on the eyes</small></span></label><label><input type="radio" name="theme" value="system" ${checked(settings.theme === 'system')} /><span>◫<strong>System</strong><small>Match your device</small></span></label></div>
       </section>
       <section class="settings-section"><div class="settings-section-head"><div><span class="settings-icon">♢</span><div><h2>Notification preferences</h2><p>Choose what deserves your attention.</p></div></div></div>
-        <div class="setting-rows"><label class="setting-row"><span><strong>Likes</strong><small>When someone votes Alright on your take</small></span><input class="switch-input" type="checkbox" name="notifyLikes" ${checked(settings.notifications.likes)} /><i></i></label><label class="setting-row"><span><strong>Comments</strong><small>Replies and new comments on your takes</small></span><input class="switch-input" type="checkbox" name="notifyComments" ${checked(settings.notifications.comments)} /><i></i></label><label class="setting-row"><span><strong>Guild invites</strong><small>Invitations to join a community</small></span><input class="switch-input" type="checkbox" name="notifyGuildInvites" ${checked(settings.notifications.guildInvites)} /><i></i></label></div>
+        <div class="setting-rows"><label class="setting-row"><span><strong>Likes</strong><small>When someone votes Alright on your post</small></span><input class="switch-input" type="checkbox" name="notifyLikes" ${checked(settings.notifications.likes)} /><i></i></label><label class="setting-row"><span><strong>Takes</strong><small>Replies and new Takes on your posts</small></span><input class="switch-input" type="checkbox" name="notifyComments" ${checked(settings.notifications.comments)} /><i></i></label><label class="setting-row"><span><strong>Guild invites</strong><small>Invitations to join a community</small></span><input class="switch-input" type="checkbox" name="notifyGuildInvites" ${checked(settings.notifications.guildInvites)} /><i></i></label></div>
       </section>
       <section class="settings-section"><div class="settings-section-head"><div><span class="settings-icon">⌁</span><div><h2>Privacy</h2><p>Control who can reach you directly.</p></div></div></div>
         <label class="select-setting">Who can send you Direct Messages?<select name="directMessages"><option value="everyone" ${settings.directMessages === 'everyone' ? 'selected' : ''}>Everyone</option><option value="guilds" ${settings.directMessages === 'guilds' ? 'selected' : ''}>Guild Members Only</option><option value="nobody" ${settings.directMessages === 'nobody' ? 'selected' : ''}>Nobody</option></select></label>
@@ -480,8 +585,8 @@ function settingsView() {
       <section class="settings-section"><div class="settings-section-head"><div><span class="settings-icon">✎</span><div><h2>Profile customization</h2><p>Build a profile that feels distinctly yours.</p></div></div></div>
         <div class="profile-live-preview" id="profilePreview" style="--profile-accent:${escapeHtml(state.profile.themeColor)}"><div class="preview-banner" id="bannerPreview">${state.profile.bannerUrl ? `<img src="${escapeHtml(state.profile.bannerUrl)}" alt="Banner preview" />` : ''}</div><div>${avatarMarkup('preview-avatar')}<span><strong id="previewName">${escapeHtml(state.profile.displayName)}</strong><small id="previewStatus">${escapeHtml(state.profile.status)}</small></span><b>✦ ${Number(state.profile.vibeScore || 0).toLocaleString()}</b></div></div>
         <div class="form-grid"><label>Display name<input name="displayName" maxlength="40" value="${escapeHtml(state.profile.displayName)}" required /></label><label>Username<input name="handle" maxlength="30" value="${escapeHtml(state.profile.handle)}" required /></label><label>Pronouns<input name="pronouns" maxlength="40" value="${escapeHtml(state.profile.pronouns)}" placeholder="e.g. they/them" /></label><label>Online status<select name="status"><option value="online" ${state.profile.status === 'online' ? 'selected' : ''}>Online</option><option value="idle" ${state.profile.status === 'idle' ? 'selected' : ''}>Idle</option><option value="dnd" ${state.profile.status === 'dnd' ? 'selected' : ''}>Do Not Disturb</option><option value="invisible" ${state.profile.status === 'invisible' ? 'selected' : ''}>Invisible</option></select></label></div>
-        <div class="form-grid"><label>Profile banner<input id="bannerUpload" type="file" accept="image/*" /><small>PNG, JPG, GIF, or WebP. Maximum 2 MB.</small></label><label>Theme color<div class="color-control"><input name="themeColor" type="color" value="${escapeHtml(state.profile.themeColor)}" /><output id="colorHex">${escapeHtml(state.profile.themeColor)}</output></div></label></div>
-        <input type="hidden" name="bannerUrl" value="${escapeHtml(state.profile.bannerUrl)}" />
+        <div class="form-grid"><label>Profile banner<input id="bannerUpload" type="file" accept="image/*" /><small>PNG, JPG, GIF, or WebP. Maximum 2 MB.</small></label><label>Avatar or animated GIF<input id="avatarUpload" type="file" accept="image/png,image/jpeg,image/webp,image/gif" /><small>Animated GIF avatars are supported. Maximum 2 MB.</small></label><label>Theme color<div class="color-control"><input name="themeColor" type="color" value="${escapeHtml(state.profile.themeColor)}" /><output id="colorHex">${escapeHtml(state.profile.themeColor)}</output></div></label></div>
+        <input type="hidden" name="bannerUrl" value="${escapeHtml(state.profile.bannerUrl)}" /><input type="hidden" name="avatarUrl" value="${escapeHtml(state.profile.avatarUrl)}" />
         <label>About Me <span class="field-counter" id="bioCounter">${state.profile.bio.length} / 200</span><textarea name="bio" maxlength="200" placeholder="Tell people what kind of takes you bring.">${escapeHtml(state.profile.bio)}</textarea></label>
         <div class="social-fields"><h3>Social media</h3><label><span>𝕏</span><input name="twitter" value="${escapeHtml(state.profile.socialLinks.twitter)}" placeholder="x.com/username" /></label><label><span>◎</span><input name="instagram" value="${escapeHtml(state.profile.socialLinks.instagram)}" placeholder="instagram.com/username" /></label><label><span>◈</span><input name="discord" value="${escapeHtml(state.profile.socialLinks.discord)}" placeholder="Discord username" /></label><label><span>▶</span><input name="youtube" value="${escapeHtml(state.profile.socialLinks.youtube)}" placeholder="youtube.com/@channel" /></label><label><span>◉</span><input name="twitch" value="${escapeHtml(state.profile.socialLinks.twitch)}" placeholder="twitch.tv/username" /></label><label><span>↗</span><input name="custom" value="${escapeHtml(state.profile.socialLinks.custom)}" placeholder="https://your-site.example" /></label></div>
       </section>
@@ -500,11 +605,11 @@ function authView() {
     <details class="reset-panel"><summary>Forgot your password?</summary><form id="resetRequestForm"><label>Email<input type="email" name="email" required /></label><button class="quiet-action" type="submit">Request reset</button></form><form id="resetConfirmForm" hidden><label>Email<input type="email" name="email" required /></label><label>Reset token<input name="token" required /></label><label>New password<input type="password" name="password" minlength="8" required /></label><button class="primary-action" type="submit">Update password</button></form></details>`;
 }
 
-const viewRenderers = { home: homeView, trending: trendingView, guilds: guildsView, leaderboards: leaderboardsView, notifications: notificationsView, messages: messagesView, saved: savedView, profile: profileView, settings: settingsView, take: takeDetailView, auth: authView };
+const viewRenderers = { home: homeView, trending: trendingView, guilds: guildsView, guild: guildDetailView, leaderboards: leaderboardsView, 'vibe-progress': vibeProgressView, notifications: notificationsView, messages: messagesView, saved: savedView, profile: profileView, user: publicUserView, settings: settingsView, take: takeDetailView, auth: authView };
 
 function renderRoute() {
   const route = currentRoute();
-  document.querySelectorAll('.nav-item').forEach(item => item.classList.toggle('active', item.dataset.route === route || (route === 'take' && item.dataset.route === 'home')));
+  document.querySelectorAll('.nav-item').forEach(item => item.classList.toggle('active', item.dataset.route === route || (route === 'take' && item.dataset.route === 'home') || (route === 'guild' && item.dataset.route === 'guilds') || (route === 'vibe-progress' && item.dataset.route === 'profile')));
   document.querySelector('#sidebar').classList.remove('open');
   mainContent.innerHTML = viewRenderers[route]();
   mainContent.dataset.route = route;
@@ -524,10 +629,14 @@ function renderFilteredPosts(category = 'All', search = '') {
   bindPostInteractions();
 }
 
+function findPostById(id) {
+  return [...state.posts, ...state.guildPosts].find(item => String(item.id) === String(id));
+}
+
 function bindPostInteractions() {
   document.querySelectorAll('[data-vote]').forEach(button => button.addEventListener('click', async () => {
     const card = button.closest('[data-post-id]');
-    const post = state.posts.find(item => String(item.id) === card.dataset.postId);
+    const post = findPostById(card.dataset.postId);
     if (!post) return;
     if (!sessionUser) { navigate('auth'); return showToast('Sign in to vote.'); }
     const nextVote = button.dataset.vote;
@@ -581,18 +690,89 @@ function bindViewInteractions(route) {
   document.querySelectorAll('input[name="theme"], input[name="textSize"]').forEach(input => input.addEventListener('change', previewDisplaySettings));
   document.querySelector('#settingsForm')?.addEventListener('input', updateProfilePreview);
   document.querySelector('#bannerUpload')?.addEventListener('change', handleBannerUpload);
+  document.querySelector('#avatarUpload')?.addEventListener('change', handleAvatarUpload);
   document.querySelectorAll('[data-reply-comment]').forEach(button => button.addEventListener('click', () => openReplyComposer(button.dataset.replyComment)));
   document.querySelectorAll('[data-upvote-comment]').forEach(button => button.addEventListener('click', () => toggleCommentVote(button.dataset.upvoteComment)));
   document.querySelectorAll('[data-unblock]').forEach(button => button.addEventListener('click', () => unblockUser(button.dataset.unblock)));
-  document.querySelectorAll('[data-open-guild]').forEach(button => button.addEventListener('click', async () => {
+  document.querySelectorAll('[data-open-guild]').forEach(button => button.addEventListener('click', () => navigate(`guild/${button.dataset.openGuild}/public`)));
+  document.querySelectorAll('[data-toggle-guild]').forEach(button => button.addEventListener('click', async () => {
     if (!sessionUser) { navigate('auth'); return showToast('Sign in to join a guild.'); }
-    try { await apiFetch(`/api/guilds/${button.dataset.openGuild}/membership`, { method: 'POST' }); await hydrateGuilds(); renderRoute(); showToast('Guild membership updated.'); } catch (error) { showToast(error.message); }
+    try { await apiFetch(`/api/guilds/${button.dataset.toggleGuild}/membership`, { method: 'POST' }); await Promise.all([hydrateGuilds(), hydrateGuildDetail()]); renderRoute(); showToast('Guild membership updated.'); } catch (error) { showToast(error.message); }
   }));
+  document.querySelectorAll('[data-guild-tab]').forEach(button => button.addEventListener('click', () => navigate(`guild/${state.activeGuild.id}/${button.dataset.guildTab}`)));
+  document.querySelector('#guildPostForm')?.addEventListener('submit', createGuildFeedPost);
+  document.querySelector('#guildChatForm')?.addEventListener('submit', sendGuildChatMessage);
+  document.querySelector('#guildSettingsForm')?.addEventListener('submit', saveGuildSettings);
+  document.querySelectorAll('[data-notification-filter]').forEach(button => button.addEventListener('click', () => { state.notificationFilter = button.dataset.notificationFilter; renderRoute(); }));
+  document.querySelectorAll('[data-notification-post]').forEach(button => button.addEventListener('click', () => navigate(`take/${button.dataset.notificationPost}`)));
+  document.querySelectorAll('[data-notification-guild]').forEach(button => button.addEventListener('click', () => navigate(`guild/${button.dataset.notificationGuild}/public`)));
+  document.querySelectorAll('[data-notification-message]').forEach(button => button.addEventListener('click', () => navigate(`messages/${button.dataset.notificationMessage}`)));
+  document.querySelectorAll('[data-notification-user]').forEach(button => button.addEventListener('click', () => navigate(`user/${button.dataset.notificationUser}`)));
+  document.querySelectorAll('[data-conversation]').forEach(button => button.addEventListener('click', () => navigate(`messages/${button.dataset.conversation}`)));
+  document.querySelector('#dmChatForm')?.addEventListener('submit', sendDirectMessage);
+  document.querySelectorAll('[data-open-user]').forEach(button => button.addEventListener('click', () => navigate(`user/${button.dataset.openUser}`)));
+  document.querySelectorAll('[data-leader-user]').forEach(button => button.addEventListener('click', () => navigate(`user/${button.dataset.leaderUser}`)));
+  document.querySelector('[data-friend-user]')?.addEventListener('click', sendFriendRequest);
+  document.querySelector('[data-accept-friend]')?.addEventListener('click', acceptFriendRequestFromProfile);
+  document.querySelector('[data-message-user]')?.addEventListener('click', event => navigate(`messages/${event.currentTarget.dataset.messageUser}`));
   document.querySelector('#loginForm')?.addEventListener('submit', loginUser);
   document.querySelector('#signupForm')?.addEventListener('submit', signupUser);
   document.querySelector('#resetRequestForm')?.addEventListener('submit', requestPasswordReset);
   document.querySelector('#resetConfirmForm')?.addEventListener('submit', confirmPasswordReset);
   document.querySelector('[data-logout]')?.addEventListener('click', logoutUser);
+}
+
+function postTextError(text) {
+  if (text.includes('#')) return 'Hashtags are not allowed in post text.';
+  if (/(?:https?:\/\/|www\.|\b[a-z0-9-]+\.(?:com|net|org|io|co|gg|me|tv)(?:\/|\b))/i.test(text)) return 'Links are not allowed in post text. Use the GIF attachment field for GIF links.';
+  return '';
+}
+
+async function createGuildFeedPost(event) {
+  event.preventDefault();
+  const content = sanitizeInput(event.currentTarget.elements.content.value);
+  const error = postTextError(content); if (error) return showToast(error);
+  try { await apiFetch(`/api/guilds/${state.activeGuild.id}/posts`, { method: 'POST', body: JSON.stringify({ content, category: event.currentTarget.elements.category.value, media: [] }) }); await Promise.all([hydrateGuildDetail(), hydrateSession()]); renderRoute(); showToast('Posted to the guild.'); }
+  catch (requestError) { showToast(requestError.message); }
+}
+
+async function sendGuildChatMessage(event) {
+  event.preventDefault(); const text = sanitizeInput(event.currentTarget.elements.text.value); if (!text) return;
+  try { await apiFetch(`/api/guilds/${state.activeGuild.id}/messages`, { method: 'POST', body: JSON.stringify({ text }) }); await hydrateGuildDetail(); renderRoute(); }
+  catch (error) { showToast(error.message); }
+}
+
+async function imageFieldValue(file, existing = '') {
+  if (!file) return existing;
+  if (file.size > 2 * 1024 * 1024) throw new Error('Guild images must be 2 MB or smaller.');
+  return fileToDataUrl(file);
+}
+
+async function saveGuildSettings(event) {
+  event.preventDefault(); const form = event.currentTarget; const data = new FormData(form);
+  try {
+    const [iconUrl, bannerUrl] = await Promise.all([imageFieldValue(form.elements.iconFile.files[0], data.get('iconUrl')), imageFieldValue(form.elements.bannerFile.files[0], data.get('bannerUrl'))]);
+    await apiFetch(`/api/guilds/${state.activeGuild.id}`, { method: 'PATCH', body: JSON.stringify({ name: sanitizeInput(data.get('name')), description: sanitizeInput(data.get('description')), tagline: sanitizeInput(data.get('tagline')), rules: sanitizeInput(data.get('rules')), iconUrl, bannerUrl, themeColor: data.get('themeColor'), accentColor: data.get('accentColor'), contentPrivacy: 'members' }) });
+    await Promise.all([hydrateGuilds(), hydrateGuildDetail()]); renderRoute(); showToast('Guild settings saved.');
+  } catch (error) { showToast(error.message); }
+}
+
+async function sendDirectMessage(event) {
+  event.preventDefault(); const form = event.currentTarget; const message = sanitizeInput(form.elements.message.value); if (!message) return;
+  try { await apiFetch('/api/messages', { method: 'POST', body: JSON.stringify({ recipient: form.elements.recipient.value, message }) }); await hydrateAccountData(); renderRoute(); }
+  catch (error) { showToast(error.message); }
+}
+
+async function sendFriendRequest(event) {
+  const userId = event.currentTarget.dataset.friendUser;
+  if (!sessionUser) { navigate('auth'); return; }
+  try { await apiFetch('/api/friends', { method: 'POST', body: JSON.stringify({ userId }) }); await Promise.all([hydrateAccountData(), hydratePublicProfile()]); renderRoute(); showToast('Friend request sent.'); }
+  catch (error) { showToast(error.message); }
+}
+
+async function acceptFriendRequestFromProfile(event) {
+  try { await apiFetch(`/api/friends/${event.currentTarget.dataset.acceptFriend}/accept`, { method: 'POST' }); await Promise.all([hydrateAccountData(), hydratePublicProfile()]); renderRoute(); showToast('Friend added.'); }
+  catch (error) { showToast(error.message); }
 }
 
 function renderMessageComposer() {
@@ -604,7 +784,7 @@ function renderMessageComposer() {
     const message = sanitizeInput(event.currentTarget.elements.message.value);
     if (!recipient || !message) return;
     if (!sessionUser) { navigate('auth'); return; }
-    try { await apiFetch('/api/messages', { method: 'POST', body: JSON.stringify({ recipient, message }) }); await hydrateAccountData(); renderRoute(); showToast('Message sent.'); }
+    try { const payload = await apiFetch('/api/messages', { method: 'POST', body: JSON.stringify({ recipient, message }) }); await hydrateAccountData(); const other = String(payload.message.sender?.id) === String(sessionUser.id) ? payload.message.recipient : payload.message.sender; navigate(`messages/${other.id}`); showToast('Message sent.'); }
     catch (error) { showToast(error.message); }
   });
 }
@@ -625,7 +805,7 @@ function showActionDialog(content) {
 }
 
 function openPostMenu(id) {
-  const post = state.posts.find(item => String(item.id) === String(id));
+  const post = findPostById(id);
   if (!post) return;
   const isAuthor = post.authorId === currentUserId();
   showActionDialog(actionDialogShell('POST OPTIONS', 'What would you like to do?', `<div class="post-menu-list">${isAuthor ? '<button type="button" data-edit-post>✎ <span><strong>Edit Post</strong><small>Update the wording or category</small></span></button><button class="danger" type="button" data-delete-post>⌫ <span><strong>Delete Post</strong><small>Remove this take permanently</small></span></button>' : ''}<button type="button" data-share-post>↗ <span><strong>Share</strong><small>Copy a direct link to this take</small></span></button>${isAuthor ? '' : '<button type="button" data-report-post>⚑ <span><strong>Report</strong><small>Send this take for review</small></span></button>'}</div>`));
@@ -642,6 +822,7 @@ function openEditPost(post) {
     const content = sanitizeInput(event.currentTarget.elements.content.value);
     const category = event.currentTarget.elements.category.value;
     if (!content) return;
+    const validationError = postTextError(content); if (validationError) return showToast(validationError);
     try { if (post.databaseId && sessionUser) await apiFetch(`/api/posts/${post.databaseId}`, { method: 'PATCH', body: JSON.stringify({ content, category }) }); post.text = content.toUpperCase(); post.category = category; persist(); closeActionDialog(); renderRoute(); showToast('Post updated.'); }
     catch (error) { showToast(error.message); }
   });
@@ -654,6 +835,7 @@ function openDeletePost(post) {
     try {
       if (post.databaseId && sessionUser) await apiFetch(`/api/posts/${post.databaseId}`, { method: 'DELETE' });
       state.posts = state.posts.filter(item => item.id !== post.id);
+      state.guildPosts = state.guildPosts.filter(item => item.id !== post.id);
       state.savedPostIds = state.savedPostIds.filter(id => id !== post.id);
       persist(); closeActionDialog(); navigate('home'); renderRoute(); showToast('Post deleted.');
     } catch (error) { showToast(error.message); }
@@ -704,6 +886,15 @@ function handleBannerUpload(event) {
   reader.readAsDataURL(file);
 }
 
+function handleAvatarUpload(event) {
+  const file = event.target.files?.[0];
+  if (!file) return;
+  if (!file.type.startsWith('image/') || file.size > 2 * 1024 * 1024) { event.target.value = ''; return showToast('Choose an avatar smaller than 2 MB.'); }
+  const reader = new FileReader();
+  reader.onload = () => { document.querySelector('#settingsForm').elements.avatarUrl.value = reader.result; state.profile.avatarUrl = reader.result; document.querySelector('.preview-avatar').innerHTML = `<img src="${reader.result}" alt="Avatar preview" />`; showToast('Avatar ready to save.'); };
+  reader.readAsDataURL(file);
+}
+
 async function loginUser(event) {
   event.preventDefault();
   const form = event.currentTarget;
@@ -746,14 +937,14 @@ async function logoutUser() {
   try { await apiFetch('/api/auth/logout', { method: 'POST' }, false); } catch { /* clear local session regardless */ }
   sessionUser = null;
   state.profile = { ...defaultState.profile, socialLinks: { ...defaultState.profile.socialLinks } };
-  state.savedPostIds = []; state.notifications = []; state.messages = [];
-  state.userStanding = null;
-  updateHeaderProfile(); await hydratePosts(); renderRoute(); showToast('Signed out.');
+  state.savedPostIds = []; state.notifications = []; state.messages = []; state.friendships = [];
+  state.userStanding = null; state.activeGuild = null; state.guildPosts = []; state.guildMessages = []; state.publicProfile = null;
+  updateHeaderProfile(); await Promise.all([hydratePosts(), hydrateGuilds(), hydrateLeaderboard()]); renderRoute(); showToast('Signed out.');
 }
 
 function activeTake() {
   const id = decodeURIComponent(location.hash.split('/')[1] || '');
-  return state.posts.find(post => String(post.id) === id);
+  return findPostById(id);
 }
 
 async function hydrateTake(post) {
@@ -845,6 +1036,7 @@ async function saveSettings(event) {
     displayName: sanitizeInput(formData.get('displayName')),
     handle: sanitizeInput(formData.get('handle')).toLowerCase().replace(/\s+/g, '_'),
     bio: sanitizeInput(formData.get('bio')),
+    avatarUrl: formData.get('avatarUrl') || state.profile.avatarUrl,
     bannerUrl: formData.get('bannerUrl') || '',
     themeColor: formData.get('themeColor'),
     pronouns: sanitizeInput(formData.get('pronouns')),
@@ -910,15 +1102,36 @@ async function prepareVideo(file) {
   if (file.size > 8 * 1024 * 1024) throw new Error('Short videos must be 8 MB or smaller.');
   const meta = await videoMetadata(file);
   if (!Number.isFinite(meta.duration) || meta.duration > 25) throw new Error('Videos must be 25 seconds or shorter.');
-  if (meta.aspectRatio < .7 || meta.aspectRatio > 1.45) throw new Error('Videos must be square or near-square.');
+  if (meta.aspectRatio < .95 || meta.aspectRatio > 1.05) throw new Error('Videos must use a square 1:1 aspect ratio.');
   return { type: 'video', url: await fileToDataUrl(file), alt: file.name, duration: Math.round(meta.duration * 10) / 10, aspectRatio: meta.aspectRatio };
 }
 
 function renderMediaPreview() {
   const preview = document.querySelector('#mediaPreview');
   preview.hidden = pendingMedia.length === 0;
-  preview.innerHTML = pendingMedia.map((item, index) => `<figure>${item.type === 'video' ? `<video src="${escapeHtml(item.url)}" muted></video>` : `<img src="${escapeHtml(item.url)}" alt="" />`}<button type="button" data-remove-media="${index}" aria-label="Remove attachment">×</button><figcaption>${escapeHtml(item.type.toUpperCase())}</figcaption></figure>`).join('');
+  preview.innerHTML = pendingMedia.map((item, index) => `<figure>${item.type === 'video' ? `<video src="${escapeHtml(item.url)}" muted></video>` : `<img src="${escapeHtml(item.url)}" alt="" />`}<button type="button" data-remove-media="${index}" aria-label="Remove attachment">×</button>${item.type === 'image' ? `<button class="edit-media" type="button" data-edit-media="${index}">Crop</button>` : ''}<figcaption>${escapeHtml(item.type.toUpperCase())}</figcaption></figure>`).join('');
   preview.querySelectorAll('[data-remove-media]').forEach(button => button.addEventListener('click', () => { pendingMedia.splice(Number(button.dataset.removeMedia), 1); renderMediaPreview(); }));
+  preview.querySelectorAll('[data-edit-media]').forEach(button => button.addEventListener('click', () => openImageEditor(Number(button.dataset.editMedia))));
+}
+
+let editingMediaIndex = -1;
+let editorImage = null;
+let editorOffset = { x: 0, y: 0 };
+let editorDrag = null;
+
+function drawImageEditor() {
+  if (!editorImage) return;
+  const canvas = document.querySelector('#imageEditorCanvas'); const context = canvas.getContext('2d'); const zoom = Number(document.querySelector('#imageZoom').value);
+  const base = Math.max(canvas.width / editorImage.naturalWidth, canvas.height / editorImage.naturalHeight); const scale = base * zoom;
+  const width = editorImage.naturalWidth * scale; const height = editorImage.naturalHeight * scale;
+  const maxX = Math.max(0, (width - canvas.width) / 2); const maxY = Math.max(0, (height - canvas.height) / 2);
+  editorOffset.x = Math.max(-maxX, Math.min(maxX, editorOffset.x)); editorOffset.y = Math.max(-maxY, Math.min(maxY, editorOffset.y));
+  context.clearRect(0, 0, canvas.width, canvas.height); context.drawImage(editorImage, (canvas.width - width) / 2 + editorOffset.x, (canvas.height - height) / 2 + editorOffset.y, width, height);
+}
+
+function openImageEditor(index) {
+  editingMediaIndex = index; editorOffset = { x: 0, y: 0 }; document.querySelector('#imageZoom').value = '1';
+  editorImage = new Image(); editorImage.onload = () => { drawImageEditor(); document.querySelector('#imageEditorDialog').showModal(); }; editorImage.src = pendingMedia[index].url;
 }
 
 async function handleTakeMedia(event) {
@@ -936,10 +1149,14 @@ async function handleTakeMedia(event) {
 document.querySelector('#openComposer').addEventListener('click', openComposerForUser);
 document.querySelector('[data-close-composer]').addEventListener('click', () => composer.close());
 document.querySelector('#takeMedia').addEventListener('change', handleTakeMedia);
+document.querySelector('[data-close-image-editor]').addEventListener('click', () => document.querySelector('#imageEditorDialog').close());
+document.querySelector('#imageZoom').addEventListener('input', drawImageEditor);
+document.querySelector('#imageEditorCanvas').addEventListener('pointerdown', event => { editorDrag = { x: event.clientX, y: event.clientY }; event.currentTarget.setPointerCapture(event.pointerId); });
+document.querySelector('#imageEditorCanvas').addEventListener('pointermove', event => { if (!editorDrag) return; editorOffset.x += event.clientX - editorDrag.x; editorOffset.y += event.clientY - editorDrag.y; editorDrag = { x: event.clientX, y: event.clientY }; drawImageEditor(); });
+document.querySelector('#imageEditorCanvas').addEventListener('pointerup', () => { editorDrag = null; });
+document.querySelector('#imageEditorForm').addEventListener('submit', event => { event.preventDefault(); if (editingMediaIndex < 0) return; const source = document.querySelector('#imageEditorCanvas'); const output = document.createElement('canvas'); output.width = 1200; output.height = 1200; output.getContext('2d').drawImage(source, 0, 0, output.width, output.height); pendingMedia[editingMediaIndex] = { ...pendingMedia[editingMediaIndex], url: output.toDataURL('image/webp', .82), aspectRatio: 1 }; document.querySelector('#imageEditorDialog').close(); renderMediaPreview(); showToast('Crop applied.'); });
 document.querySelector('#addGifUrl').addEventListener('click', () => { const input = document.querySelector('#gifUrlInput'); input.hidden = !input.hidden; if (!input.hidden) input.focus(); });
 document.querySelectorAll('#postEmojiTray button').forEach(button => button.addEventListener('click', () => { const input = document.querySelector('#takeText'); input.value += button.textContent; input.dispatchEvent(new Event('input')); input.focus(); }));
-document.querySelector('#globalRankButton').addEventListener('click', event => { event.stopPropagation(); const panel = document.querySelector('#miniLeaderboard'); panel.hidden = !panel.hidden; event.currentTarget.setAttribute('aria-expanded', String(!panel.hidden)); });
-document.addEventListener('click', event => { if (!event.target.closest('.account-cluster')) { document.querySelector('#miniLeaderboard').hidden = true; document.querySelector('#globalRankButton').setAttribute('aria-expanded', 'false'); } });
 document.querySelector('[data-close-guild]').addEventListener('click', () => guildComposer.close());
 document.querySelector('#takeText').addEventListener('input', event => document.querySelector('#charCount').textContent = `${event.target.value.length} / 180`);
 document.querySelector('#composerForm').addEventListener('submit', async event => {
@@ -948,6 +1165,7 @@ document.querySelector('#composerForm').addEventListener('submit', async event =
   const input = document.querySelector('#takeText');
   const text = sanitizeInput(input.value);
   if (!text) return;
+  const validationError = postTextError(text); if (validationError) return showToast(validationError);
   const category = document.querySelector('#takeCategory').value;
   const gifUrl = document.querySelector('#gifUrlInput').value.trim();
   const media = gifUrl ? [...pendingMedia, { type: 'gif', url: gifUrl, alt: 'GIF attachment', duration: 0, aspectRatio: 1 }] : [...pendingMedia];
@@ -968,13 +1186,14 @@ document.querySelector('#composerForm').addEventListener('submit', async event =
 });
 document.querySelector('#guildForm').addEventListener('submit', async event => {
   event.preventDefault();
+  const form = event.currentTarget;
   const name = sanitizeInput(document.querySelector('#guildName').value);
   const description = sanitizeInput(document.querySelector('#guildDescription').value);
   if (!name || !description) return;
   if (!sessionUser) { guildComposer.close(); navigate('auth'); return showToast('Sign in to create a guild.'); }
   try { await apiFetch('/api/guilds', { method: 'POST', body: JSON.stringify({ name, description }) }); await hydrateGuilds(); }
   catch (error) { return showToast(error.message); }
-  event.currentTarget.reset();
+  form.reset();
   guildComposer.close();
   navigate('guilds');
   renderRoute();
@@ -989,14 +1208,14 @@ document.querySelector('#globalSearch').addEventListener('input', event => {
   searchTimer = setTimeout(async () => {
     try {
       const result = await apiFetch(`/api/search?q=${encodeURIComponent(query)}`, {}, false);
-      const users = (result.users || []).map(user => `<button type="button" data-search-profile><span class="avatar">${user.avatarUrl ? `<img src="${escapeHtml(user.avatarUrl)}" alt="" />` : escapeHtml((user.displayName || 'C').charAt(0))}</span><span><strong>${escapeHtml(user.displayName)}</strong><small>${escapeHtml(user.handle || '')}</small></span></button>`).join('');
+      const users = (result.users || []).map(user => `<button type="button" data-search-profile="${user.id}"><span class="avatar">${user.avatarUrl ? `<img src="${escapeHtml(user.avatarUrl)}" alt="" />` : escapeHtml((user.displayName || 'C').charAt(0))}</span><span><strong>${escapeHtml(user.displayName)}</strong><small>${escapeHtml(user.handle || '')}</small></span></button>`).join('');
       const posts = (result.posts || []).map(post => `<button type="button" data-search-take="${escapeHtml(post.id)}"><span>↗</span><span><strong>${escapeHtml(post.content)}</strong><small>Take</small></span></button>`).join('');
       const guilds = (result.guilds || []).map(guild => `<button type="button" data-search-guild><span>⚔</span><span><strong>${escapeHtml(guild.name)}</strong><small>Guild</small></span></button>`).join('');
       panel.innerHTML = users || posts || guilds ? `${users}${posts}${guilds}` : '<p>No people, takes, or guilds found.</p>';
       panel.hidden = false;
       panel.querySelectorAll('[data-search-take]').forEach(button => button.addEventListener('click', () => { panel.hidden = true; navigate(`take/${button.dataset.searchTake}`); }));
       panel.querySelectorAll('[data-search-guild]').forEach(button => button.addEventListener('click', () => { panel.hidden = true; navigate('guilds'); }));
-      panel.querySelectorAll('[data-search-profile]').forEach(button => button.addEventListener('click', () => showToast('Public profile view is coming next.')));
+      panel.querySelectorAll('[data-search-profile]').forEach(button => button.addEventListener('click', () => { panel.hidden = true; navigate(`user/${button.dataset.searchProfile}`); }));
     } catch (error) { showToast(error.message); }
   }, 220);
 });
@@ -1017,7 +1236,15 @@ window.addEventListener('hashchange', async () => {
   if (currentRoute() === 'take') { await hydrateTake(activeTake()); renderRoute(); }
   if (currentRoute() === 'trending') { await hydrateTrending(); renderRoute(); }
   if (currentRoute() === 'notifications' || currentRoute() === 'messages') { await hydrateAccountData(); renderRoute(); }
+  if (currentRoute() === 'guild') { await hydrateGuildDetail(); renderRoute(); }
+  if (currentRoute() === 'user') { await hydratePublicProfile(); renderRoute(); }
 });
+
+setInterval(async () => {
+  if (document.activeElement?.matches('textarea,input')) return;
+  if (currentRoute() === 'messages' && sessionUser) { await hydrateAccountData(); renderRoute(); }
+  if (currentRoute() === 'guild' && location.hash.split('/')[2] === 'chat' && sessionUser) { await hydrateGuildDetail(); renderRoute(); }
+}, 4000);
 
 updateHeaderProfile();
 applyDisplaySettings();
