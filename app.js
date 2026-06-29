@@ -434,7 +434,7 @@ function adBanner() {
 }
 
 function inFeedAd() {
-  return adUnit('in-feed', 'ad-infeed', 'fluid', 'In-feed responsive unit').replace('data-ad-format="fluid"', 'data-ad-format="fluid" data-ad-layout-key="-fb+5w+4e-db+86"');
+  return adUnit('in-feed', 'ad-infeed', 'fluid', 'In-feed responsive unit').replace('data-ad-format="fluid"', 'data-ad-format="fluid" data-ad-layout-key="-gw-3+1f-3d+2z"');
 }
 
 function emptyState(icon, title, text, action = '') {
