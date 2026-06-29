@@ -16,6 +16,7 @@ test('analytics dashboard fails closed when reporting credentials are absent', a
 test('production template contains configurable ad units and GA4 metadata', async () => {
   const template = await readFile(new URL('../index.html', import.meta.url), 'utf8');
   assert.match(template, /name="ga-measurement-id" content="G-XXXXXXXXXX"/);
+  assert.match(template, /name="google-adsense-account" content="ca-pub-XXXXXXXXXXXXXXXX"/);
   assert.match(template, /ADSENSE_SIDEBAR_SLOT/);
   assert.match(template, /ADSENSE_RIGHT_RAIL_SLOT/);
   assert.match(template, /ADSENSE_FOOTER_SLOT/);
