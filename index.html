@@ -6,13 +6,19 @@
     <meta name="description" content="Callout is the place to post your boldest takes, vote Alright or Cringe, and build your vibe." />
     <meta name="theme-color" content="#ff4713" />
     <meta name="adsense-client" content="ca-pub-XXXXXXXXXXXXXXXX" />
+    <meta name="adsense-slot-header" content="ADSENSE_HEADER_SLOT" />
+    <meta name="adsense-slot-sidebar" content="ADSENSE_SIDEBAR_SLOT" />
+    <meta name="adsense-slot-right-rail" content="ADSENSE_RIGHT_RAIL_SLOT" />
+    <meta name="adsense-slot-in-feed" content="ADSENSE_IN_FEED_SLOT" />
+    <meta name="adsense-slot-footer" content="ADSENSE_FOOTER_SLOT" />
+    <meta name="ga-measurement-id" content="G-XXXXXXXXXX" />
     <title>Callout — Put your take on the line</title>
     <link rel="icon" type="image/png" href="/assets/callout-logo.png" />
     <link rel="apple-touch-icon" href="/assets/callout-logo.png" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Inter:wght@500;600;700;800&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="styles.css?v=20260629-hotfix1" />
+    <link rel="stylesheet" href="styles.css?v=20260629-ads-ga1" />
   </head>
   <body>
     <svg class="svg-sprite" aria-hidden="true">
@@ -56,6 +62,7 @@
           <a class="nav-item" href="#messages" data-route="messages"><svg><use href="#i-message"></use></svg><span>Messages</span></a>
           <a class="nav-item" href="#saved" data-route="saved"><svg><use href="#i-bookmark"></use></svg><span>Saved</span></a>
           <a class="nav-item" href="#settings" data-route="settings"><svg><use href="#i-settings"></use></svg><span>Settings</span></a>
+          <a class="nav-item" id="analyticsNav" href="#analytics" data-route="analytics" hidden><svg><use href="#i-trend"></use></svg><span>Analytics</span></a>
           <a class="nav-item" href="#auth" data-route="auth"><svg><use href="#i-users"></use></svg><span>Sign in</span></a>
         </nav>
         <button class="post-button" id="openComposer" type="button"><span>＋</span> Post Take</button>
@@ -70,7 +77,7 @@
           <p id="vibeProgressText">0 / 25</p>
           <a href="#vibe-progress" data-route="vibe-progress">View progress →</a>
         </section>
-        <div class="ad-slot ad-sidebar" data-ad-slot="sidebar-rail"><span>ADVERTISEMENT</span><small>160 × 600</small></div>
+        <div class="ad-slot ad-sidebar" data-ad-placement="sidebar"><ins class="adsbygoogle" data-ad-client="ca-pub-XXXXXXXXXXXXXXXX" data-ad-slot="ADSENSE_SIDEBAR_SLOT" data-ad-format="auto" data-full-width-responsive="true"></ins><span class="ad-placeholder-copy">ADVERTISEMENT <small>Responsive sidebar</small></span></div>
       </aside>
 
       <main class="main-content" id="mainContent" tabindex="-1"></main>
@@ -83,7 +90,7 @@
           <p class="status-note" id="railRankNote">Sign in to claim your place.</p>
         </section>
         <div class="sidebar-widgets" id="sidebarWidgets" aria-label="Customizable sidebar widgets"></div>
-        <div class="ad-slot ad-rectangle" data-ad-slot="right-rail"><ins class="adsbygoogle" style="display:block" data-ad-client="ca-pub-XXXXXXXXXXXXXXXX" data-ad-slot="RIGHT_RAIL_SLOT" data-ad-format="rectangle" data-full-width-responsive="true"></ins><span>ADVERTISEMENT</span><small>300 × 250</small></div>
+        <div class="ad-slot ad-rectangle" data-ad-placement="right-rail"><ins class="adsbygoogle" data-ad-client="ca-pub-XXXXXXXXXXXXXXXX" data-ad-slot="ADSENSE_RIGHT_RAIL_SLOT" data-ad-format="rectangle" data-full-width-responsive="true"></ins><span class="ad-placeholder-copy">ADVERTISEMENT <small>300 × 250</small></span></div>
         <section class="rail-guild-card" id="railGuildCard">
           <p class="eyebrow">GUILDS</p>
           <div class="guild-art" id="railGuildArt">⚔</div>
@@ -94,7 +101,7 @@
       </aside>
 
       <footer class="site-footer">
-        <div class="ad-slot footer-ad" data-ad-slot="footer"><ins class="adsbygoogle" style="display:block" data-ad-client="ca-pub-XXXXXXXXXXXXXXXX" data-ad-slot="FOOTER_SLOT" data-ad-format="horizontal" data-full-width-responsive="true"></ins><span>ADVERTISEMENT</span><small>Responsive footer unit</small></div>
+        <div class="ad-slot footer-ad" data-ad-placement="footer"><ins class="adsbygoogle" data-ad-client="ca-pub-XXXXXXXXXXXXXXXX" data-ad-slot="ADSENSE_FOOTER_SLOT" data-ad-format="horizontal" data-full-width-responsive="true"></ins><span class="ad-placeholder-copy">ADVERTISEMENT <small>Responsive footer unit</small></span></div>
         <div class="footer-bottom"><span>© 2026 Callout</span><nav aria-label="Legal"><a href="/privacy">Privacy Policy</a><a href="/terms">Terms of Service</a><a href="#auth" data-route="auth">Sign in</a></nav><p>Solo project. Do not share sensitive personal information.</p></div>
       </footer>
     </div>
@@ -135,6 +142,6 @@
 
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
     <script src="/vendor/dompurify.min.js"></script>
-    <script src="app.js?v=20260629-hotfix1"></script>
+    <script src="app.js?v=20260629-ads-ga1"></script>
   </body>
 </html>

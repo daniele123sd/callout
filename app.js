@@ -74,6 +74,9 @@ const state = {
   publicProfile: null,
   ownProfileData: null,
   profileTab: 'posts',
+  analytics: null,
+  analyticsError: '',
+  analyticsDays: 28,
   notificationFilter: 'all'
 };
 
@@ -82,7 +85,7 @@ if (storedState?.settings?.appearanceVersion !== 2) {
   state.settings.theme = 'light';
 }
 
-const routes = new Set(['home', 'trending', 'guilds', 'guild', 'leaderboards', 'vibe-progress', 'notifications', 'messages', 'saved', 'profile', 'user', 'settings', 'take', 'auth']);
+const routes = new Set(['home', 'trending', 'guilds', 'guild', 'leaderboards', 'vibe-progress', 'notifications', 'messages', 'saved', 'profile', 'user', 'settings', 'analytics', 'take', 'auth']);
 const mainContent = document.querySelector('#mainContent');
 const composer = document.querySelector('#composer');
 const guildComposer = document.querySelector('#guildComposer');
@@ -96,14 +99,69 @@ function sanitizeInput(value) {
   return window.DOMPurify ? window.DOMPurify.sanitize(source, { ALLOWED_TAGS: [], ALLOWED_ATTR: [] }).trim() : source.replace(/<[^>]*>/g, '').trim();
 }
 
+function metaContent(name) {
+  return document.querySelector(`meta[name="${name}"]`)?.content?.trim() || '';
+}
+
+function adConfiguration() {
+  return {
+    client: metaContent('adsense-client'),
+    slots: {
+      header: metaContent('adsense-slot-header'), sidebar: metaContent('adsense-slot-sidebar'),
+      'right-rail': metaContent('adsense-slot-right-rail'), 'in-feed': metaContent('adsense-slot-in-feed'), footer: metaContent('adsense-slot-footer')
+    }
+  };
+}
+
+function initializeAds(root = document) {
+  const { client } = adConfiguration();
+  if (!/^ca-pub-\d{10,}$/.test(client) || location.protocol === 'file:') return;
+  root.querySelectorAll('.adsbygoogle:not([data-callout-ad-ready])').forEach(unit => {
+    const slot = unit.dataset.adSlot || '';
+    if (!/^\d+$/.test(slot)) return;
+    unit.dataset.adClient = client;
+    unit.dataset.calloutAdReady = 'true';
+    const container = unit.closest('.ad-slot');
+    container?.classList.add('is-ad-live');
+    try { (window.adsbygoogle = window.adsbygoogle || []).push({}); } catch (error) { console.warn('AdSense unit deferred:', error.message); }
+  });
+}
+
 function loadProductionAds() {
-  const client = document.querySelector('meta[name="adsense-client"]')?.content || '';
+  const { client } = adConfiguration();
   if (!/^ca-pub-\d{10,}$/.test(client) || location.protocol === 'file:') return;
   const script = document.createElement('script');
   script.async = true;
   script.crossOrigin = 'anonymous';
   script.src = `https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=${encodeURIComponent(client)}`;
+  script.addEventListener('load', () => initializeAds());
   document.head.appendChild(script);
+  initializeAds();
+}
+
+let lastTrackedPath = '';
+function loadGoogleAnalytics() {
+  const measurementId = metaContent('ga-measurement-id');
+  if (!/^G-[A-Z0-9]+$/i.test(measurementId) || location.protocol === 'file:') return;
+  window.dataLayer = window.dataLayer || [];
+  window.gtag = window.gtag || function gtag() { window.dataLayer.push(arguments); };
+  window.gtag('consent', 'default', { analytics_storage: 'denied', ad_storage: 'denied', ad_user_data: 'denied', ad_personalization: 'denied', wait_for_update: 500 });
+  window.gtag('js', new Date());
+  window.gtag('config', measurementId, { send_page_view: false, anonymize_ip: true });
+  const script = document.createElement('script');
+  script.async = true;
+  script.src = `https://www.googletagmanager.com/gtag/js?id=${encodeURIComponent(measurementId)}`;
+  document.head.appendChild(script);
+}
+
+function trackPageView() {
+  if (!window.gtag || lastTrackedPath === location.hash) return;
+  lastTrackedPath = location.hash;
+  window.gtag('event', 'page_view', { page_title: document.title, page_location: location.href, page_path: `/${currentRoute()}` });
+}
+
+function trackEvent(name, parameters = {}) {
+  window.gtag?.('event', name, parameters);
 }
 
 function persist() {
@@ -135,6 +193,7 @@ async function apiFetch(url, options = {}, retry = true) {
 
 function applySessionUser(user) {
   sessionUser = user;
+  document.querySelector('#analyticsNav').hidden = !user?.isAdmin;
   if (!user) { updateHeaderProfile(); return; }
   state.profile = {
     ...state.profile,
@@ -287,6 +346,7 @@ async function hydrateApp() {
   if (currentRoute() === 'guild') await hydrateGuildDetail();
   if (currentRoute() === 'user') await hydratePublicProfile();
   if (currentRoute() === 'profile') await hydrateOwnProfile();
+  if (currentRoute() === 'analytics') await hydrateAnalytics();
   renderRoute();
 }
 
@@ -314,6 +374,13 @@ async function hydratePublicProfile() {
 async function hydrateOwnProfile() {
   if (!sessionUser?.id) { state.ownProfileData = null; return; }
   try { state.ownProfileData = (await apiFetch(`/api/users/${sessionUser.id}`, {}, false)).user; } catch (error) { state.ownProfileData = null; console.error(error); }
+}
+async function hydrateAnalytics() {
+  if (!sessionUser?.isAdmin) { state.analytics = null; state.analyticsError = ''; return; }
+  try {
+    state.analyticsError = '';
+    state.analytics = (await apiFetch(`/api/analytics/summary?days=${state.analyticsDays}`)).analytics;
+  } catch (error) { state.analytics = null; state.analyticsError = error.message; }
 }
 async function hydrateAccountData() {
   if (!sessionUser) { state.savedPostIds = []; state.notifications = []; state.messages = []; state.friendships = []; return; }
@@ -356,12 +423,18 @@ function pageHeader(kicker, title, description, action = '') {
   </header>`;
 }
 
-function adBanner(slot = 'page-banner') {
-  return `<div class="ad-slot ad-leaderboard" data-ad-slot="${slot}"><span>ADVERTISEMENT</span><small>Responsive banner</small></div>`;
+function adUnit(placement, className, format, label) {
+  const { client, slots } = adConfiguration();
+  const slot = slots[placement] || '';
+  return `<div class="ad-slot ${className}" data-ad-placement="${placement}"><ins class="adsbygoogle" data-ad-client="${escapeHtml(client)}" data-ad-slot="${escapeHtml(slot)}" data-ad-format="${format}" data-full-width-responsive="true"></ins><span class="ad-placeholder-copy">ADVERTISEMENT <small>${label}</small></span></div>`;
+}
+
+function adBanner() {
+  return adUnit('header', 'ad-leaderboard', 'horizontal', 'Responsive banner');
 }
 
 function inFeedAd() {
-  return `<div class="ad-slot ad-infeed" data-ad-slot="in-feed"><ins class="adsbygoogle" style="display:block" data-ad-client="ca-pub-XXXXXXXXXXXXXXXX" data-ad-slot="IN_FEED_SLOT" data-ad-format="fluid" data-ad-layout-key="-fb+5w+4e-db+86"></ins><span>ADVERTISEMENT</span><small>In-feed responsive unit</small></div>`;
+  return adUnit('in-feed', 'ad-infeed', 'fluid', 'In-feed responsive unit').replace('data-ad-format="fluid"', 'data-ad-format="fluid" data-ad-layout-key="-fb+5w+4e-db+86"');
 }
 
 function emptyState(icon, title, text, action = '') {
@@ -682,6 +755,32 @@ function settingsView() {
     </form>`;
 }
 
+function analyticsView() {
+  if (!sessionUser) return emptyState('↗', 'Sign in required', 'The analytics dashboard is restricted to the Callout administrator.', '<button class="primary-action" type="button" data-go-auth>Sign in</button>');
+  if (!sessionUser.isAdmin) return emptyState('🔒', 'Admin access required', 'Traffic and performance data is private and is not available to standard accounts.');
+  if (state.analyticsError) return `${pageHeader('PRIVATE DASHBOARD', 'Analytics', 'Google Analytics traffic and performance reporting.')}<section class="analytics-setup"><strong>Analytics API unavailable</strong><p>${escapeHtml(state.analyticsError)}</p><button class="quiet-action" type="button" data-refresh-analytics>Try again</button></section>`;
+  if (!state.analytics) return `${pageHeader('PRIVATE DASHBOARD', 'Analytics', 'Loading Google Analytics traffic and performance data.')}<section class="analytics-loading"><span></span><span></span><span></span></section>`;
+  if (!state.analytics.configured) return `${pageHeader('PRIVATE DASHBOARD', 'Analytics', 'Google Analytics traffic and performance reporting.')}<section class="analytics-setup"><span class="settings-icon">GA</span><div><strong>Connect the Analytics Data API</strong><p>Tracking can run with a Measurement ID. Dashboard reporting additionally requires the property ID and a read-only service account.</p><code>GA_PROPERTY_ID · GA_CLIENT_EMAIL · GA_PRIVATE_KEY</code></div></section>`;
+
+  const analytics = state.analytics;
+  const summary = analytics.summary || {};
+  const maxViews = Math.max(1, ...(analytics.daily || []).map(item => item.screenPageViews));
+  const cards = [
+    ['Active users', summary.activeUsers, 'People who engaged'], ['Sessions', summary.sessions, 'Visits'],
+    ['Page views', summary.screenPageViews, 'Pages viewed'], ['New users', summary.newUsers, 'First-time visitors'],
+    ['Engagement', `${(Number(summary.engagementRate || 0) * 100).toFixed(1)}%`, 'Engaged sessions'],
+    ['Avg. session', `${Math.round(Number(summary.averageSessionDuration || 0))}s`, 'Average duration']
+  ];
+  const table = (rows, kind) => rows.length ? rows.map((row, index) => kind === 'pages'
+    ? `<tr><td>${index + 1}</td><td title="${escapeHtml(row.path)}">${escapeHtml(row.path)}</td><td>${Number(row.screenPageViews).toLocaleString()}</td><td>${Number(row.activeUsers).toLocaleString()}</td></tr>`
+    : `<tr><td>${index + 1}</td><td>${escapeHtml(row.channel)}</td><td>${Number(row.sessions).toLocaleString()}</td><td>${Number(row.activeUsers).toLocaleString()}</td></tr>`).join('') : '<tr><td colspan="4">No data has been collected for this range yet.</td></tr>';
+  return `${pageHeader('PRIVATE DASHBOARD', 'Analytics', 'Traffic, acquisition, and performance data from Google Analytics.', `<button class="quiet-action" type="button" data-refresh-analytics>Refresh</button>`)}
+    <div class="analytics-toolbar"><div class="analytics-ranges">${[7,28,90].map(days => `<button type="button" data-analytics-days="${days}" class="${state.analyticsDays === days ? 'active' : ''}">${days} days</button>`).join('')}</div><span><i></i><strong>${Number(analytics.realtime?.activeUsers || 0)}</strong> active now</span></div>
+    <section class="analytics-cards">${cards.map(([label,value,note]) => `<article><small>${label}</small><strong>${typeof value === 'number' ? value.toLocaleString() : value}</strong><span>${note}</span></article>`).join('')}</section>
+    <section class="analytics-chart"><header><div><span class="section-kicker">TRAFFIC TREND</span><h2>Daily page views</h2></div><small>Updated ${new Date(analytics.generatedAt).toLocaleString()}</small></header><div class="analytics-bars">${(analytics.daily || []).map(item => `<div title="${item.date}: ${item.screenPageViews} views"><span style="height:${Math.max(4, item.screenPageViews / maxViews * 100)}%"></span><small>${item.date.slice(5)}</small></div>`).join('') || '<p>No daily traffic yet.</p>'}</div></section>
+    <section class="analytics-tables"><article><header><span class="section-kicker">CONTENT</span><h2>Top pages</h2></header><div class="analytics-table-scroll"><table><thead><tr><th>#</th><th>Path</th><th>Views</th><th>Users</th></tr></thead><tbody>${table(analytics.pages || [], 'pages')}</tbody></table></div></article><article><header><span class="section-kicker">ACQUISITION</span><h2>Traffic channels</h2></header><div class="analytics-table-scroll"><table><thead><tr><th>#</th><th>Channel</th><th>Sessions</th><th>Users</th></tr></thead><tbody>${table(analytics.channels || [], 'channels')}</tbody></table></div></article></section>`;
+}
+
 function authView() {
   if (sessionUser) return `${pageHeader('SECURITY', 'Account access', 'Your session is protected by short-lived HTTP-only cookies.')}<section class="auth-session-card">${sessionUser.avatarUrl ? `<span class="avatar"><img src="${escapeHtml(sessionUser.avatarUrl)}" alt="" /></span>` : '<span class="avatar">✓</span>'}<div><span class="section-kicker">SIGNED IN</span><h2>${escapeHtml(sessionUser.displayName)}</h2><p>${escapeHtml(sessionUser.email)}</p></div><button class="quiet-action" type="button" data-logout>Sign out</button></section>`;
   return `${pageHeader('SECURE ACCESS', 'Join Callout', 'Sign in with email or Google. Authentication tokens are never stored in localStorage.')}
@@ -690,7 +789,7 @@ function authView() {
     <details class="reset-panel"><summary>Forgot your password?</summary><form id="resetRequestForm"><label>Email<input type="email" name="email" required /></label><button class="quiet-action" type="submit">Request reset</button></form><form id="resetConfirmForm" hidden><label>Email<input type="email" name="email" required /></label><label>Reset token<input name="token" required /></label><label>New password<input type="password" name="password" minlength="8" required /></label><button class="primary-action" type="submit">Update password</button></form></details>`;
 }
 
-const viewRenderers = { home: homeView, trending: trendingView, guilds: guildsView, guild: guildDetailView, leaderboards: leaderboardsView, 'vibe-progress': vibeProgressView, notifications: notificationsView, messages: messagesView, saved: savedView, profile: profileView, user: publicUserView, settings: settingsView, take: takeDetailView, auth: authView };
+const viewRenderers = { home: homeView, trending: trendingView, guilds: guildsView, guild: guildDetailView, leaderboards: leaderboardsView, 'vibe-progress': vibeProgressView, notifications: notificationsView, messages: messagesView, saved: savedView, profile: profileView, user: publicUserView, settings: settingsView, analytics: analyticsView, take: takeDetailView, auth: authView };
 
 function renderRoute() {
   const route = currentRoute();
@@ -700,6 +799,8 @@ function renderRoute() {
   mainContent.dataset.route = route;
   document.title = `${route === 'home' ? 'Callout' : `${route.charAt(0).toUpperCase()}${route.slice(1)} · Callout`}`;
   bindViewInteractions(route);
+  initializeAds(mainContent);
+  trackPageView();
   mainContent.focus({ preventScroll: true });
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
@@ -729,6 +830,7 @@ function bindPostInteractions() {
       const payload = await apiFetch(`/api/posts/${post.databaseId}/vote`, { method: 'POST', body: JSON.stringify({ value: nextVote }) });
       Object.assign(post, { alrightVotes: payload.post.alrightVotes, cringeVotes: payload.post.cringeVotes, userVote: payload.post.userVote, impressions: payload.post.impressions });
       await Promise.all([hydrateTrending(), hydrateSession(), hydrateLeaderboard()]); renderRoute();
+      trackEvent('rank_post', { rank_value: nextVote, post_category: post.category });
       showToast(payload.post.userVote ? `You called it ${nextVote === 'alright' ? 'Alright' : 'Cringe'}.` : 'Vote removed.');
     } catch (error) { showToast(error.message); }
   }));
@@ -773,6 +875,9 @@ function bindViewInteractions(route) {
   document.querySelector('[data-mark-read]')?.addEventListener('click', async () => { try { await apiFetch('/api/notifications/read', { method: 'POST' }); state.notifications.forEach(item => { item.read = true; }); renderRoute(); showToast('Notifications marked as read.'); } catch (error) { showToast(error.message); } });
   document.querySelector('[data-new-message]')?.addEventListener('click', renderMessageComposer);
   document.querySelector('[data-open-settings]')?.addEventListener('click', () => navigate('settings'));
+  document.querySelector('[data-go-auth]')?.addEventListener('click', () => navigate('auth'));
+  document.querySelectorAll('[data-analytics-days]').forEach(button => button.addEventListener('click', async () => { state.analyticsDays = Number(button.dataset.analyticsDays); state.analytics = null; renderRoute(); await hydrateAnalytics(); renderRoute(); }));
+  document.querySelector('[data-refresh-analytics]')?.addEventListener('click', async () => { state.analytics = null; state.analyticsError = ''; renderRoute(); await hydrateAnalytics(); renderRoute(); });
   document.querySelectorAll('[data-profile-tab]').forEach(button => button.addEventListener('click', () => { state.profileTab = button.dataset.profileTab; renderRoute(); }));
   document.querySelector('[data-back-feed]')?.addEventListener('click', () => navigate('home'));
   document.querySelector('#commentForm')?.addEventListener('submit', addComment);
@@ -836,7 +941,7 @@ async function createGuildFeedPost(event) {
   event.preventDefault();
   const content = sanitizeInput(event.currentTarget.elements.content.value);
   const error = postTextError(content); if (error) return showToast(error);
-  try { await apiFetch(`/api/guilds/${state.activeGuild.id}/posts`, { method: 'POST', body: JSON.stringify({ content, category: event.currentTarget.elements.category.value, media: [] }) }); await Promise.all([hydrateGuildDetail(), hydrateSession()]); renderRoute(); showToast('Posted to the guild.'); }
+  try { await apiFetch(`/api/guilds/${state.activeGuild.id}/posts`, { method: 'POST', body: JSON.stringify({ content, category: event.currentTarget.elements.category.value, media: [] }) }); trackEvent('create_post', { audience: 'guild' }); await Promise.all([hydrateGuildDetail(), hydrateSession()]); renderRoute(); showToast('Posted to the guild.'); }
   catch (requestError) { showToast(requestError.message); }
 }
 
@@ -1021,7 +1126,7 @@ async function loginUser(event) {
   const form = event.currentTarget;
   try {
     const payload = await apiFetch('/api/auth/login', { method: 'POST', body: JSON.stringify({ email: sanitizeInput(form.elements.email.value), password: form.elements.password.value }) }, false);
-    applySessionUser(payload.user); await Promise.all([hydratePosts(), hydrateAccountData(), hydrateGuilds(), hydrateLeaderboard()]); navigate('home'); showToast('Signed in securely.');
+    applySessionUser(payload.user); trackEvent('login', { method: 'email' }); await Promise.all([hydratePosts(), hydrateAccountData(), hydrateGuilds(), hydrateLeaderboard()]); navigate('home'); showToast('Signed in securely.');
   } catch (error) { showToast(error.message); }
 }
 
@@ -1030,7 +1135,7 @@ async function signupUser(event) {
   const form = event.currentTarget;
   try {
     const payload = await apiFetch('/api/auth/signup', { method: 'POST', body: JSON.stringify({ displayName: sanitizeInput(form.elements.displayName.value), email: sanitizeInput(form.elements.email.value), password: form.elements.password.value, ageConfirmed: form.elements.ageConfirmed.checked }) }, false);
-    applySessionUser(payload.user); await Promise.all([hydrateAccountData(), hydrateLeaderboard()]); navigate('settings'); showToast('Account created. Customize your profile.');
+    applySessionUser(payload.user); trackEvent('sign_up', { method: 'email' }); await Promise.all([hydrateAccountData(), hydrateLeaderboard()]); navigate('settings'); showToast('Account created. Customize your profile.');
   } catch (error) { showToast(error.message); }
 }
 
@@ -1098,7 +1203,7 @@ async function addComment(event) {
   const gifFile = event.currentTarget.elements.gifFile?.files?.[0];
   if (gifFile?.size > 2 * 1024 * 1024) return showToast('Comment GIFs must be 2 MB or smaller.');
   const gifUrl = gifFile ? await fileToDataUrl(gifFile) : String(event.currentTarget.elements.gifUrl?.value || '').trim();
-  try { await apiFetch('/api/comments', { method: 'POST', body: JSON.stringify({ postId: post.databaseId, text, parent: null, gifUrl }) }); await hydrateTake(post); await Promise.all([hydrateTrending(), hydrateSession(), hydrateLeaderboard()]); renderRoute(); showToast('Take added.'); }
+  try { await apiFetch('/api/comments', { method: 'POST', body: JSON.stringify({ postId: post.databaseId, text, parent: null, gifUrl }) }); trackEvent('add_take'); await hydrateTake(post); await Promise.all([hydrateTrending(), hydrateSession(), hydrateLeaderboard()]); renderRoute(); showToast('Take added.'); }
   catch (error) { showToast(error.message); }
 }
 
@@ -1116,7 +1221,7 @@ function openReplyComposer(id) {
     const text = sanitizeInput(event.currentTarget.elements.reply.value);
     if (!parent || !text) return;
     if (!sessionUser) { navigate('auth'); return; }
-    try { await apiFetch('/api/comments', { method: 'POST', body: JSON.stringify({ postId: post.databaseId, text, parent: String(parent.id) }) }); await hydrateTake(post); await Promise.all([hydrateSession(), hydrateLeaderboard()]); renderRoute(); showToast('Reply added.'); }
+    try { await apiFetch('/api/comments', { method: 'POST', body: JSON.stringify({ postId: post.databaseId, text, parent: String(parent.id) }) }); trackEvent('add_take', { reply: true }); await hydrateTake(post); await Promise.all([hydrateSession(), hydrateLeaderboard()]); renderRoute(); showToast('Reply added.'); }
     catch (error) { showToast(error.message); }
   });
 }
@@ -1322,6 +1427,7 @@ async function submitComposer(draft = false) {
   };
   try {
     await apiFetch('/api/posts', { method: 'POST', body: JSON.stringify(payload) });
+    if (!draft) trackEvent('create_post', { content_type: payload.contentType, audience: payload.visibility, scheduled: Boolean(payload.scheduledPublishedAt) });
     if (!draft) await Promise.all([hydratePosts(), hydrateSession(), hydrateLeaderboard(), hydrateTrending()]);
   } catch (error) { return showToast(error.message); }
   persist();
@@ -1346,7 +1452,7 @@ document.querySelector('#guildForm').addEventListener('submit', async event => {
   const description = sanitizeInput(document.querySelector('#guildDescription').value);
   if (!name || !description) return;
   if (!sessionUser) { guildComposer.close(); navigate('auth'); return showToast('Sign in to create a guild.'); }
-  try { await apiFetch('/api/guilds', { method: 'POST', body: JSON.stringify({ name, description, privacy: document.querySelector('#guildPrivacy').value }) }); await hydrateGuilds(); }
+  try { await apiFetch('/api/guilds', { method: 'POST', body: JSON.stringify({ name, description, privacy: document.querySelector('#guildPrivacy').value }) }); trackEvent('create_guild', { privacy: document.querySelector('#guildPrivacy').value }); await hydrateGuilds(); }
   catch (error) { return showToast(error.message); }
   form.reset();
   guildComposer.close();
@@ -1395,6 +1501,7 @@ window.addEventListener('hashchange', async () => {
   if (currentRoute() === 'guild') { await hydrateGuildDetail(); renderRoute(); }
   if (currentRoute() === 'user') { await hydratePublicProfile(); renderRoute(); }
   if (currentRoute() === 'profile') { await hydrateOwnProfile(); renderRoute(); }
+  if (currentRoute() === 'analytics') { await hydrateAnalytics(); renderRoute(); }
 });
 
 setInterval(async () => {
@@ -1406,6 +1513,7 @@ setInterval(async () => {
 updateHeaderProfile();
 applyDisplaySettings();
 if (!location.hash) history.replaceState(null, '', '#home');
+loadGoogleAnalytics();
 renderRoute();
 hydrateApp();
 loadProductionAds();

@@ -14,6 +14,7 @@
     "migrate:creator": "node scripts/migrate-creator-features.mjs"
   },
   "dependencies": {
+    "@google-analytics/data": "^6.1.0",
     "bcrypt": "^6.0.0",
     "cookie-parser": "^1.4.7",
     "dompurify": "^3.3.1",

@@ -10,6 +10,7 @@ import helmet from 'helmet';
 import passport from 'passport';
 import { Strategy as GoogleStrategy } from 'passport-google-oauth20';
 import { featureFlags } from './server/featureFlags.mjs';
+import { analyticsDataConfigured, getAnalyticsDashboard } from './server/analytics.mjs';
 import {
   ACCESS_COOKIE, REFRESH_COOKIE, clearAuthCookies, comparePassword, createPasswordResetToken,
   hashPassword, optionalAuth, requireAuth, schemas, setAuthCookies, signAccessToken, signRefreshToken,
@@ -29,6 +30,18 @@ const port = Number(process.env.PORT || 4173);
 const app = express();
 const messageStreams = new Map();
 const requireFeature = name => (_req, res, next) => featureFlags[name] ? next() : res.status(404).json({ error: 'This feature is not enabled yet.' });
+const adminEmails = () => new Set(String(process.env.ADMIN_EMAILS || '').split(',').map(email => email.trim().toLowerCase()).filter(Boolean));
+const isAdminAccount = user => Boolean(user?.email && adminEmails().has(String(user.email).toLowerCase()));
+const accountPayload = user => ({ ...publicUser(user), isAdmin: isAdminAccount(user) });
+
+async function requireAdmin(req, res, next) {
+  try {
+    const user = await findUserById(req.userId);
+    if (!isAdminAccount(user)) return res.status(403).json({ error: 'Analytics dashboard access is restricted.' });
+    req.adminUser = user;
+    next();
+  } catch (error) { next(error); }
+}
 
 function pushMessageUpdate(userId) {
   for (const response of messageStreams.get(String(userId)) || []) response.write(`event: messages\ndata: ${JSON.stringify({ updated: true })}\n\n`);
@@ -43,12 +56,12 @@ app.use(helmet({
   contentSecurityPolicy: {
     directives: {
       defaultSrc: ["'self'"],
-      scriptSrc: ["'self'", 'https://pagead2.googlesyndication.com'],
+      scriptSrc: ["'self'", 'https://pagead2.googlesyndication.com', 'https://www.googletagmanager.com'],
       styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
       fontSrc: ["'self'", 'https://fonts.gstatic.com'],
       imgSrc: ["'self'", 'data:', 'blob:', 'https:'],
       mediaSrc: ["'self'", 'data:', 'blob:', 'https:'],
-      connectSrc: ["'self'", 'https://accounts.google.com'],
+      connectSrc: ["'self'", 'https://accounts.google.com', 'https://www.google-analytics.com', 'https://analytics.google.com', 'https://region1.google-analytics.com'],
       frameSrc: ["'self'", 'https://accounts.google.com', 'https://googleads.g.doubleclick.net', 'https://tpc.googlesyndication.com'],
       objectSrc: ["'none'"],
       baseUri: ["'self'"],
@@ -100,7 +113,7 @@ if (googleConfigured) {
 
 app.get('/api/health', (_req, res) => {
   const healthy = process.env.NODE_ENV !== 'production' || databaseMode() === 'mongodb';
-  res.status(healthy ? 200 : 503).json({ ok: healthy, database: databaseMode(), googleOAuth: googleConfigured });
+  res.status(healthy ? 200 : 503).json({ ok: healthy, database: databaseMode(), googleOAuth: googleConfigured, analyticsTracking: /^G-[A-Z0-9]+$/i.test(process.env.GA_MEASUREMENT_ID || ''), analyticsDashboard: analyticsDataConfigured(), ads: /^ca-pub-\d{10,}$/.test(process.env.ADSENSE_CLIENT_ID || '') });
 });
 app.get('/api/features', (_req, res) => res.json({ features: featureFlags }));
 
@@ -109,7 +122,7 @@ app.post('/api/auth/signup', authLimiter, validate(schemas.signup), async (req, 
     if (await findUserByEmail(req.body.email)) return res.status(409).json({ error: 'An account with that email already exists.' });
     const user = await createUser({ email: req.body.email, displayName: req.body.displayName, password: await hashPassword(req.body.password) });
     await establishSession(res, user);
-    res.status(201).json({ user: publicUser(user) });
+    res.status(201).json({ user: accountPayload(user) });
   } catch (error) { next(error); }
 });
 
@@ -118,7 +131,7 @@ app.post('/api/auth/login', authLimiter, validate(schemas.login), async (req, re
     const user = await findUserByEmail(req.body.email, true);
     if (!user?.password || !(await comparePassword(req.body.password, user.password))) return res.status(401).json({ error: 'Invalid email or password.' });
     await establishSession(res, user);
-    res.json({ user: publicUser(user) });
+    res.json({ user: accountPayload(user) });
   } catch (error) { next(error); }
 });
 
@@ -154,7 +167,7 @@ app.post('/api/auth/refresh', async (req, res) => {
     const user = await findUserById(payload.sub, true);
     if (!user?.refreshTokenHash || !(await bcrypt.compare(token, user.refreshTokenHash))) throw new Error('Refresh token revoked');
     await establishSession(res, user);
-    res.json({ user: publicUser(user) });
+    res.json({ user: accountPayload(user) });
   } catch {
     clearAuthCookies(res);
     res.status(401).json({ error: 'Refresh token is invalid or expired.' });
@@ -178,7 +191,7 @@ app.post('/api/auth/logout', async (req, res) => {
 app.get('/api/auth/me', requireAuth, async (req, res) => {
   const user = await findUserById(req.userId);
   if (!user) return res.status(404).json({ error: 'User not found.' });
-  res.json({ user: publicUser(user) });
+  res.json({ user: accountPayload(user) });
 });
 
 if (googleConfigured) {
@@ -192,10 +205,10 @@ if (googleConfigured) {
 
 app.get('/api/profile', requireAuth, async (req, res) => {
   const user = await findUserById(req.userId);
-  res.json({ user: publicUser(user) });
+  res.json({ user: accountPayload(user) });
 });
 app.patch('/api/profile', requireAuth, validate(schemas.profile), async (req, res, next) => {
-  try { res.json({ user: publicUser(await updateUser(req.userId, req.body)) }); } catch (error) { next(error); }
+  try { res.json({ user: accountPayload(await updateUser(req.userId, req.body)) }); } catch (error) { next(error); }
 });
 
 app.get('/api/posts', optionalAuth, async (req, res, next) => {
@@ -371,6 +384,17 @@ app.delete('/api/notifications/mutes/:id', requireFeature('notificationControls'
   try { if (!(await deleteNotificationMute(req.userId, req.params.id))) return res.status(404).json({ error: 'Mute rule not found.' }); res.status(204).end(); } catch (error) { next(error); }
 });
 
+app.get('/api/analytics/summary', requireAuth, requireAdmin, async (req, res, next) => {
+  try {
+    const days = [7, 28, 90].includes(Number(req.query.days)) ? Number(req.query.days) : 28;
+    res.set('Cache-Control', 'private, no-store');
+    res.json({ analytics: await getAnalyticsDashboard(days) });
+  } catch (error) {
+    console.error('Google Analytics report failed:', error.message);
+    res.status(502).json({ error: 'Google Analytics data is temporarily unavailable. Verify the property and service-account access.' });
+  }
+});
+
 app.get('/api/messages', requireAuth, async (req, res, next) => {
   try { res.json({ messages: await listMessages(req.userId) }); } catch (error) { next(error); }
 });
@@ -394,13 +418,23 @@ app.post('/api/messages', requireAuth, validate(schemas.message), async (req, re
 app.get('/vendor/dompurify.min.js', (_req, res) => res.sendFile(path.join(root, 'node_modules', 'dompurify', 'dist', 'purify.min.js')));
 app.get('/privacy', (_req, res) => res.sendFile(path.join(root, 'privacy.html')));
 app.get('/terms', (_req, res) => res.sendFile(path.join(root, 'terms.html')));
-app.get('/', async (_req, res, next) => {
+async function renderIndex(_req, res, next) {
   try {
-    const template = await readFile(path.join(root, 'index.html'), 'utf8');
-    const clientId = /^ca-pub-\d{10,}$/.test(process.env.ADSENSE_CLIENT_ID || '') ? process.env.ADSENSE_CLIENT_ID : 'ca-pub-XXXXXXXXXXXXXXXX';
-    res.type('html').send(template.replaceAll('ca-pub-XXXXXXXXXXXXXXXX', clientId));
+    let template = await readFile(path.join(root, 'index.html'), 'utf8');
+    const replacements = {
+      'ca-pub-XXXXXXXXXXXXXXXX': /^ca-pub-\d{10,}$/.test(process.env.ADSENSE_CLIENT_ID || '') ? process.env.ADSENSE_CLIENT_ID : '',
+      'ADSENSE_HEADER_SLOT': /^\d+$/.test(process.env.ADSENSE_SLOT_HEADER || '') ? process.env.ADSENSE_SLOT_HEADER : '',
+      'ADSENSE_SIDEBAR_SLOT': /^\d+$/.test(process.env.ADSENSE_SLOT_SIDEBAR || '') ? process.env.ADSENSE_SLOT_SIDEBAR : '',
+      'ADSENSE_RIGHT_RAIL_SLOT': /^\d+$/.test(process.env.ADSENSE_SLOT_RIGHT_RAIL || '') ? process.env.ADSENSE_SLOT_RIGHT_RAIL : '',
+      'ADSENSE_IN_FEED_SLOT': /^\d+$/.test(process.env.ADSENSE_SLOT_IN_FEED || '') ? process.env.ADSENSE_SLOT_IN_FEED : '',
+      'ADSENSE_FOOTER_SLOT': /^\d+$/.test(process.env.ADSENSE_SLOT_FOOTER || '') ? process.env.ADSENSE_SLOT_FOOTER : '',
+      'G-XXXXXXXXXX': /^G-[A-Z0-9]+$/i.test(process.env.GA_MEASUREMENT_ID || '') ? process.env.GA_MEASUREMENT_ID : ''
+    };
+    for (const [placeholder, value] of Object.entries(replacements)) template = template.replaceAll(placeholder, value);
+    res.type('html').send(template);
   } catch (error) { next(error); }
-});
+}
+app.get(['/', '/index.html'], renderIndex);
 app.use(express.static(root, { index: 'index.html', extensions: ['html'] }));
 
 app.use((error, _req, res, _next) => {

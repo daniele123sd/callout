@@ -25,4 +25,24 @@ services:
       - key: GOOGLE_CALLBACK_URL
         sync: false
       - key: ADSENSE_CLIENT_ID
-        value: ca-pub-XXXXXXXXXXXXXXXX
+        sync: false
+      - key: ADSENSE_SLOT_HEADER
+        sync: false
+      - key: ADSENSE_SLOT_SIDEBAR
+        sync: false
+      - key: ADSENSE_SLOT_RIGHT_RAIL
+        sync: false
+      - key: ADSENSE_SLOT_IN_FEED
+        sync: false
+      - key: ADSENSE_SLOT_FOOTER
+        sync: false
+      - key: GA_MEASUREMENT_ID
+        sync: false
+      - key: GA_PROPERTY_ID
+        sync: false
+      - key: GA_CLIENT_EMAIL
+        sync: false
+      - key: GA_PRIVATE_KEY
+        sync: false
+      - key: ADMIN_EMAILS
+        sync: false

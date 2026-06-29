@@ -65,4 +65,4 @@ After the deployment reports healthy:
 
 ## 6. Optional domain and ads
 
-Add a custom domain in Render and update `APP_ORIGIN` plus the Google callback URL. Replace `ADSENSE_CLIENT_ID` and the placeholder slot IDs only after Google approves the domain for AdSense.
+Add a custom domain in Render and update `APP_ORIGIN` plus the Google callback URL. Follow [Google monetization and analytics setup](docs/GOOGLE_MONETIZATION_ANALYTICS.md) for AdSense units, GA4 reporting credentials, administrator access, and the required consent configuration.
