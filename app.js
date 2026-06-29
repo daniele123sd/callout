@@ -72,6 +72,8 @@ const state = {
   guildMembers: [],
   guildAudit: [],
   publicProfile: null,
+  ownProfileData: null,
+  profileTab: 'posts',
   notificationFilter: 'all'
 };
 
@@ -284,6 +286,7 @@ async function hydrateApp() {
   if (currentRoute() === 'take') await hydrateTake(activeTake());
   if (currentRoute() === 'guild') await hydrateGuildDetail();
   if (currentRoute() === 'user') await hydratePublicProfile();
+  if (currentRoute() === 'profile') await hydrateOwnProfile();
   renderRoute();
 }
 
@@ -307,6 +310,10 @@ async function hydratePublicProfile() {
   const id = decodeURIComponent(location.hash.split('/')[1] || '');
   if (!id) return;
   try { state.publicProfile = (await apiFetch(`/api/users/${id}`, {}, false)).user; } catch (error) { state.publicProfile = null; showToast(error.message); }
+}
+async function hydrateOwnProfile() {
+  if (!sessionUser?.id) { state.ownProfileData = null; return; }
+  try { state.ownProfileData = (await apiFetch(`/api/users/${sessionUser.id}`, {}, false)).user; } catch (error) { state.ownProfileData = null; console.error(error); }
 }
 async function hydrateAccountData() {
   if (!sessionUser) { state.savedPostIds = []; state.notifications = []; state.messages = []; state.friendships = []; return; }
@@ -602,20 +609,36 @@ function savedView() {
 
 function profileView() {
   const profile = state.profile;
-  const social = profile.socialLinks || {};
-  const links = [['𝕏', social.twitter], ['◎', social.instagram], ['◈', social.discord], ['▶', social.youtube], ['◉', social.twitch], ['↗', social.custom]].filter(([, value]) => value).map(([icon, value]) => `<span>${icon} ${escapeHtml(value)}</span>`);
+  const data = { ...profile, ...(state.ownProfileData || {}), socialLinks: { ...profile.socialLinks, ...(state.ownProfileData?.socialLinks || {}) } };
   return `${pageHeader('ACCOUNT', 'Your profile', 'A customizable public identity with Discord-level detail.', '<button class="quiet-action" type="button" data-open-settings>Edit profile</button>')}
     <section class="profile-hero discord-profile" style="--profile-accent:${escapeHtml(profile.themeColor)}">
       <div class="profile-cover">${profile.bannerUrl ? `<img src="${escapeHtml(profile.bannerUrl)}" alt="Profile banner" />` : '<span>CALL IT LIKE YOU SEE IT.</span>'}</div>
       <div class="profile-identity">${avatarMarkup('profile-avatar')}<div><div class="identity-line"><h2>${escapeHtml(profile.displayName)}</h2><i class="status-dot ${escapeHtml(profile.status)}"></i></div><p>${escapeHtml(profile.handle)}${profile.pronouns ? ` · ${escapeHtml(profile.pronouns)}` : ''}</p></div><div class="vibe-stat-card"><span>✦</span><div><strong>${Number(profile.vibeScore || 0).toLocaleString()}</strong><small>VIBE SCORE</small></div></div></div>
     </section>
-    <nav class="profile-tabs" aria-label="Profile sections"><button class="active">Posts</button><button>About</button><button>Guilds</button><button>Achievements</button><button>Media</button></nav>
-    <section class="profile-summary"><div><span class="section-kicker">ABOUT ME</span><div class="formatted-copy">${formatBio(profile.bio || 'No bio added yet.')}</div><p>Status: ${escapeHtml(profile.status.toUpperCase())}</p></div><div><span class="section-kicker">ACTIVITY</span><div class="profile-stats"><span><strong>${Number(profile.postCount || 0)}</strong> Posts</span><span><strong>${Number(profile.vibeScore || 0).toLocaleString()}</strong> Vibe</span><span><strong>${profile.vibeBadges?.length || 0}</strong> Badges</span></div><div class="profile-links">${links.length ? links.join('') : '<p>No social links added yet.</p>'}</div></div></section>
-    <section class="badges-card"><div><span class="section-kicker">VIBE BADGES</span><h2>Earned through participation</h2></div><div class="badge-grid">${(profile.vibeBadges?.length ? profile.vibeBadges : [{ icon: '✦', name: 'New Voice' }]).map(badge => `<span title="${escapeHtml(badge.name)}">${escapeHtml(badge.icon)}<strong>${escapeHtml(badge.name)}</strong></span>`).join('')}<span class="locked" title="Keep building your Vibe">◇<strong>Next badge</strong></span></div></section>`;
+    ${profileTabs()}${profileTabPanel(data)}`;
 }
 
 function formatBio(value) {
   return escapeHtml(value).replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>').replace(/\*([^*]+)\*/g, '<em>$1</em>').replace(/\n/g, '<br>');
+}
+
+const profileTabNames = ['posts', 'about', 'guilds', 'achievements', 'media'];
+function profileTabs() {
+  return `<nav class="profile-tabs" aria-label="Profile sections">${profileTabNames.map(tab => `<button type="button" data-profile-tab="${tab}" class="${state.profileTab === tab ? 'active' : ''}">${tab.charAt(0).toUpperCase()}${tab.slice(1)}</button>`).join('')}</nav>`;
+}
+
+function profileTabPanel(user) {
+  const tab = state.profileTab;
+  const posts = user.posts || [];
+  if (tab === 'posts') return `<section class="profile-tab-panel">${posts.length ? `<div class="profile-post-list">${posts.map(post => `<article><small>${escapeHtml(post.category || 'Take')} · ${timeLabel(new Date(post.createdAt).getTime())}</small><strong>${formatPostContent(post.content || '')}</strong><span>${Number(post.alrightVotes || 0)} Alright · ${Number(post.cringeVotes || 0)} Cringe</span></article>`).join('')}</div>` : emptyState('✦', 'No posts yet', 'Published takes will appear on this profile.')}</section>`;
+  if (tab === 'about') {
+    const social = user.socialLinks || {};
+    const links = [['𝕏', social.twitter], ['◎', social.instagram], ['◈', social.discord], ['▶', social.youtube], ['◉', social.twitch], ['↗', social.custom]].filter(([, value]) => value).map(([icon, value]) => `<span>${icon} ${escapeHtml(value)}</span>`);
+    return `<section class="profile-summary"><div><span class="section-kicker">ABOUT ME</span><div class="formatted-copy">${formatBio(user.bio || 'No bio added yet.')}</div><p>Status: ${escapeHtml(String(user.status || 'offline').toUpperCase())}</p></div><div><span class="section-kicker">ACTIVITY</span><div class="profile-stats"><span><strong>${Number(user.stats?.posts ?? user.postCount ?? 0)}</strong> Posts</span><span><strong>${Number(user.stats?.comments || 0)}</strong> Takes</span><span><strong>${Number(user.stats?.guilds || 0)}</strong> Guilds</span></div><div class="profile-links">${links.length ? links.join('') : '<p>No social links added yet.</p>'}</div></div></section>`;
+  }
+  if (tab === 'guilds') return `<section class="profile-tab-panel">${user.guilds?.length ? `<div class="profile-guild-list">${user.guilds.map(guild => `<button type="button" data-open-guild="${guild.id}"><span class="guild-monogram">${guild.iconUrl ? `<img src="${escapeHtml(guild.iconUrl)}" alt="" />` : escapeHtml(guild.name.charAt(0))}</span><span><strong>${escapeHtml(guild.name)}</strong><small>${Number(guild.memberCount || 0)} members</small></span></button>`).join('')}</div>` : emptyState('⚔', 'No guilds to show', 'Guild memberships will appear here.')}</section>`;
+  if (tab === 'achievements') return `<section class="badges-card"><div><span class="section-kicker">VIBE BADGES</span><h2>Earned through participation</h2></div><div class="badge-grid">${(user.vibeBadges?.length ? user.vibeBadges : [{ icon: '✦', name: 'New Voice' }]).map(badge => `<span title="${escapeHtml(badge.name)}">${escapeHtml(badge.icon)}<strong>${escapeHtml(badge.name)}</strong></span>`).join('')}<span class="locked" title="Keep building your Vibe">◇<strong>Next badge</strong></span></div></section>`;
+  return `<section class="profile-tab-panel">${user.media?.length ? `<div class="profile-media-grid">${user.media.flatMap(post => post.media || []).map(item => item.type === 'video' ? `<video src="${escapeHtml(item.url)}" controls></video>` : `<img src="${escapeHtml(item.url)}" alt="${escapeHtml(item.alt || 'Profile media')}" />`).join('')}</div>` : emptyState('▧', 'No media yet', 'Images, GIFs, and videos from published posts will appear here.')}</section>`;
 }
 
 function publicUserView() {
@@ -624,7 +647,7 @@ function publicUserView() {
   if (!user || String(user.id) !== id) return `${pageHeader('PROFILE', 'Loading profile…', 'Fetching the latest public account details.')}`;
   const badges = user.vibeBadges || [];
   const friendButton = user.requestIncoming ? `<button class="quiet-action" type="button" data-accept-friend="${user.friendshipId}">Accept friend</button>` : `<button class="quiet-action" type="button" data-friend-user="${user.id}" ${['accepted','pending'].includes(user.friendship) ? 'disabled' : ''}>${user.friendship === 'accepted' ? 'Friends ✓' : user.friendship === 'pending' ? 'Request pending' : 'Add friend'}</button>`;
-  return `<section class="public-user-card" style="--profile-accent:${escapeHtml(user.themeColor || '#ff4713')}"><div class="public-user-banner">${user.bannerUrl ? `<img src="${escapeHtml(user.bannerUrl)}" alt="" />` : ''}</div><div class="public-user-main"><span class="avatar avatar-frame-${escapeHtml(user.avatarFrame || 'none')}">${user.avatarUrl ? `<img src="${escapeHtml(user.avatarUrl)}" alt="" />` : escapeHtml((user.displayName || 'C').charAt(0))}</span><div><h1>${escapeHtml(user.displayName)}</h1><p>${escapeHtml(user.handle || '')}${user.pronouns ? ` · ${escapeHtml(user.pronouns)}` : ''}</p></div><div class="public-user-actions">${user.friendship === 'self' ? '<button class="quiet-action" data-open-settings>Edit profile</button>' : `${friendButton}<button class="primary-action" type="button" data-message-user="${user.id}">Message</button>`}</div></div><nav class="profile-tabs"><button class="active">Posts</button><button>About</button><button>Guilds</button><button>Achievements</button><button>Media</button></nav><div class="public-user-body"><article><span class="section-kicker">ABOUT ME</span><div class="formatted-copy">${formatBio(user.bio || 'No bio added yet.')}</div><div class="profile-stats"><span><strong>${user.stats?.posts || 0}</strong> Posts</span><span><strong>${user.stats?.comments || 0}</strong> Takes</span><span><strong>${user.stats?.guilds || 0}</strong> Guilds</span></div></article><article><span class="section-kicker">VIBE</span><h2>✦ ${Number(user.vibeScore || 0).toLocaleString()}</h2><div class="mini-badges">${badges.map(badge => `<span>${escapeHtml(badge.icon)} ${escapeHtml(badge.name)}</span>`).join('')}</div></article></div>${user.featuredPosts?.length ? `<section class="featured-profile-posts"><span class="section-kicker">FEATURED POSTS</span>${user.featuredPosts.map(post => `<article><strong>${escapeHtml(post.content || '')}</strong></article>`).join('')}</section>` : ''}</section>`;
+  return `<section class="public-user-card" style="--profile-accent:${escapeHtml(user.themeColor || '#ff4713')}"><div class="public-user-banner">${user.bannerUrl ? `<img src="${escapeHtml(user.bannerUrl)}" alt="" />` : ''}</div><div class="public-user-main"><span class="avatar avatar-frame-${escapeHtml(user.avatarFrame || 'none')}">${user.avatarUrl ? `<img src="${escapeHtml(user.avatarUrl)}" alt="" />` : escapeHtml((user.displayName || 'C').charAt(0))}</span><div><h1>${escapeHtml(user.displayName)}</h1><p>${escapeHtml(user.handle || '')}${user.pronouns ? ` · ${escapeHtml(user.pronouns)}` : ''}</p><small>✦ ${Number(user.vibeScore || 0).toLocaleString()} Vibe · ${badges.length} badges</small></div><div class="public-user-actions">${user.friendship === 'self' ? '<button class="quiet-action" data-open-settings>Edit profile</button>' : `${friendButton}<button class="primary-action" type="button" data-message-user="${user.id}">Message</button>`}</div></div>${profileTabs()}${profileTabPanel(user)}</section>`;
 }
 
 function settingsView() {
@@ -750,6 +773,7 @@ function bindViewInteractions(route) {
   document.querySelector('[data-mark-read]')?.addEventListener('click', async () => { try { await apiFetch('/api/notifications/read', { method: 'POST' }); state.notifications.forEach(item => { item.read = true; }); renderRoute(); showToast('Notifications marked as read.'); } catch (error) { showToast(error.message); } });
   document.querySelector('[data-new-message]')?.addEventListener('click', renderMessageComposer);
   document.querySelector('[data-open-settings]')?.addEventListener('click', () => navigate('settings'));
+  document.querySelectorAll('[data-profile-tab]').forEach(button => button.addEventListener('click', () => { state.profileTab = button.dataset.profileTab; renderRoute(); }));
   document.querySelector('[data-back-feed]')?.addEventListener('click', () => navigate('home'));
   document.querySelector('#commentForm')?.addEventListener('submit', addComment);
   document.querySelectorAll('[data-comment-emoji]').forEach(button => button.addEventListener('click', () => { const textarea = button.closest('form').elements.comment; textarea.value += button.dataset.commentEmoji; textarea.focus(); }));
@@ -1036,7 +1060,7 @@ async function logoutUser() {
   messageStream?.close(); messageStream = null;
   state.profile = { ...defaultState.profile, socialLinks: { ...defaultState.profile.socialLinks } };
   state.savedPostIds = []; state.notifications = []; state.messages = []; state.friendships = [];
-  state.userStanding = null; state.activeGuild = null; state.guildPosts = []; state.guildMessages = []; state.publicProfile = null;
+  state.userStanding = null; state.activeGuild = null; state.guildPosts = []; state.guildMessages = []; state.publicProfile = null; state.ownProfileData = null;
   updateHeaderProfile(); await Promise.all([hydratePosts(), hydrateGuilds(), hydrateLeaderboard()]); renderRoute(); showToast('Signed out.');
 }
 
@@ -1151,7 +1175,7 @@ async function saveSettings(event) {
   try {
     if (sessionUser) {
       const payload = await apiFetch('/api/profile', { method: 'PATCH', body: JSON.stringify({ displayName: state.profile.displayName, handle: state.profile.handle, avatarUrl: state.profile.avatarUrl, bio: state.profile.bio, bannerUrl: state.profile.bannerUrl, themeColor: state.profile.themeColor, avatarFrame: state.profile.avatarFrame, featuredPosts: state.profile.featuredPosts || [], pinnedGuilds: state.profile.pinnedGuilds || [], socialLinks: state.profile.socialLinks, pronouns: state.profile.pronouns, status: state.profile.status, preferences: { theme: state.settings.theme, notifications: state.settings.notifications, notificationDelivery: state.settings.notificationDelivery, directMessages: state.settings.directMessages, textSize: state.settings.textSize } }) });
-      applySessionUser(payload.user);
+      applySessionUser(payload.user); await hydrateOwnProfile();
     }
     persist(); applyDisplaySettings(); document.querySelector('#headerName').textContent = state.profile.displayName; renderRoute(); showToast('Settings saved.');
   } catch (error) { showToast(error.message); }
@@ -1366,9 +1390,11 @@ window.addEventListener('hashchange', async () => {
   renderRoute();
   if (currentRoute() === 'take') { await hydrateTake(activeTake()); renderRoute(); }
   if (currentRoute() === 'trending') { await hydrateTrending(); renderRoute(); }
+  if (currentRoute() === 'guilds') { await hydrateGuilds(); renderRoute(); }
   if (currentRoute() === 'notifications' || currentRoute() === 'messages') { await hydrateAccountData(); renderRoute(); }
   if (currentRoute() === 'guild') { await hydrateGuildDetail(); renderRoute(); }
   if (currentRoute() === 'user') { await hydratePublicProfile(); renderRoute(); }
+  if (currentRoute() === 'profile') { await hydrateOwnProfile(); renderRoute(); }
 });
 
 setInterval(async () => {

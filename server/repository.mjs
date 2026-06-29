@@ -838,6 +838,7 @@ export async function getPublicProfile(profileId, viewerId = '') {
     stats: { posts: serializedPosts.length, comments: commentCount, guilds: guilds.length },
     posts: serializedPosts, media: serializedPosts.filter(post => post.media?.length),
     featuredPosts: serializedPosts.filter(post => featuredIds.has(post.id)),
+    guilds: guilds.map(guild => serializeGuild(guild, viewerId)),
     pinnedGuilds: guilds.filter(guild => (account.pinnedGuilds || []).some(id => String(id) === String(guild._id || guild.id))).map(guild => serializeGuild(guild, viewerId))
   };
   if (!viewerId || String(profileId) === String(viewerId)) return { ...profile, friendship: String(profileId) === String(viewerId) ? 'self' : 'none' };

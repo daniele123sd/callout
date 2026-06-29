@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  createGuild, createGuildPost, createPost, createUser, getGuild, joinGuildByInvite, listDrafts, listGuildAudit,
+  createGuild, createGuildPost, createPost, createUser, getGuild, getPublicProfile, joinGuildByInvite, listDrafts, listGuildAudit,
   listGuildMembers, listGuildPosts, listNotificationMutes, listPosts, setNotificationMute, toggleGuildMembership,
   updateGuildMember, voteOnPoll
 } from '../server/repository.mjs';
@@ -22,6 +22,7 @@ test('guild roles enforce owner-only posting and record audited role changes', a
   assert.ok(await createGuildPost(guild.id, member.id, { content: 'Permitted', category: 'Life', media: [] }));
   assert.equal((await listGuildMembers(guild.id, owner.id)).find(item => item.user.id === member.id).roleKey, 'contributor');
   assert.ok((await listGuildAudit(guild.id, owner.id)).some(item => item.action === 'member.role_changed'));
+  assert.ok((await getPublicProfile(owner.id, owner.id)).guilds.some(item => item.id === guild.id));
 });
 
 test('private guilds queue join requests while invite codes grant access', async () => {
