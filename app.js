@@ -122,7 +122,14 @@ function initializeAds(root = document) {
     unit.dataset.adClient = client;
     unit.dataset.calloutAdReady = 'true';
     const container = unit.closest('.ad-slot');
-    container?.classList.add('is-ad-live');
+    container?.classList.add('is-ad-requested');
+    const syncAdStatus = () => {
+      const filled = unit.dataset.adStatus === 'filled';
+      container?.classList.toggle('is-ad-live', filled);
+      container?.classList.toggle('is-ad-unfilled', unit.dataset.adStatus === 'unfilled');
+    };
+    new MutationObserver(syncAdStatus).observe(unit, { attributes: true, attributeFilter: ['data-ad-status'] });
+    syncAdStatus();
     try { (window.adsbygoogle = window.adsbygoogle || []).push({}); } catch (error) { console.warn('AdSense unit deferred:', error.message); }
   });
 }
