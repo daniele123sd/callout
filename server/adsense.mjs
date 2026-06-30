@@ -8,7 +8,7 @@ const INTEGRATION_KEY = 'adsense';
 let memoryIntegration = null;
 
 const origin = () => String(process.env.APP_ORIGIN || '').replace(/\/$/, '');
-const redirectUri = () => `${origin()}/api/adsense/oauth/callback`;
+const redirectUri = () => `${origin()}/api/monetisation/oauth/callback`;
 const encryptionKey = () => crypto.createHash('sha256').update(`${process.env.JWT_SECRET || ''}:callout:adsense`).digest();
 
 export function adsenseOAuthConfigured() {

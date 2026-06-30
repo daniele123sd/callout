@@ -400,11 +400,11 @@ app.get('/api/analytics/summary', requireAuth, requireAdmin, async (req, res, ne
   }
 });
 
-app.get('/api/adsense/connect', requireAuth, requireAdmin, (req, res, next) => {
+app.get('/api/monetisation/connect', requireAuth, requireAdmin, (req, res, next) => {
   try { res.redirect(createAdsenseAuthorizationUrl(req.userId)); } catch (error) { next(error); }
 });
 
-app.get('/api/adsense/oauth/callback', requireAuth, requireAdmin, async (req, res) => {
+app.get('/api/monetisation/oauth/callback', requireAuth, requireAdmin, async (req, res) => {
   try {
     if (req.query.error) throw new Error(String(req.query.error));
     await completeAdsenseAuthorization({ code: req.query.code, state: req.query.state, userId: req.userId });
