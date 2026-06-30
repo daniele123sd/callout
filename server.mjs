@@ -11,6 +11,7 @@ import passport from 'passport';
 import { Strategy as GoogleStrategy } from 'passport-google-oauth20';
 import { featureFlags } from './server/featureFlags.mjs';
 import { analyticsDataConfigured, getAnalyticsDashboard } from './server/analytics.mjs';
+import { adsenseOAuthConfigured, completeAdsenseAuthorization, createAdsenseAuthorizationUrl, getAdsenseDashboard } from './server/adsense.mjs';
 import {
   ACCESS_COOKIE, REFRESH_COOKIE, clearAuthCookies, comparePassword, createPasswordResetToken,
   hashPassword, optionalAuth, requireAuth, schemas, setAuthCookies, signAccessToken, signRefreshToken,
@@ -388,10 +389,29 @@ app.get('/api/analytics/summary', requireAuth, requireAdmin, async (req, res, ne
   try {
     const days = [7, 28, 90].includes(Number(req.query.days)) ? Number(req.query.days) : 28;
     res.set('Cache-Control', 'private, no-store');
-    res.json({ analytics: await getAnalyticsDashboard(days) });
+    const [analytics, adsense] = await Promise.all([
+      getAnalyticsDashboard(days),
+      getAdsenseDashboard(days).catch(error => ({ configured: adsenseOAuthConfigured(), connected: false, error: error.message, rangeDays: days, siteStatus: 'GETTING_READY' }))
+    ]);
+    res.json({ analytics: { ...analytics, adsense } });
   } catch (error) {
     console.error('Google Analytics report failed:', error.message);
     res.status(502).json({ error: 'Google Analytics data is temporarily unavailable. Verify the property and service-account access.' });
+  }
+});
+
+app.get('/api/adsense/connect', requireAuth, requireAdmin, (req, res, next) => {
+  try { res.redirect(createAdsenseAuthorizationUrl(req.userId)); } catch (error) { next(error); }
+});
+
+app.get('/api/adsense/oauth/callback', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    if (req.query.error) throw new Error(String(req.query.error));
+    await completeAdsenseAuthorization({ code: req.query.code, state: req.query.state, userId: req.userId });
+    res.redirect('/#analytics');
+  } catch (error) {
+    console.error('AdSense authorization failed:', error.message);
+    res.redirect('/#analytics');
   }
 });
 
