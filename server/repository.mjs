@@ -66,7 +66,7 @@ const normalize = document => {
 export function publicUser(user) {
   const value = normalize(user);
   if (!value) return null;
-  const { password, refreshTokenHash, passwordResetHash, passwordResetExpiresAt, ...safe } = value;
+  const { password, refreshTokenHash, refreshTokenHashes, passwordResetHash, passwordResetExpiresAt, ...safe } = value;
   safe.id = String(safe._id || safe.id);
   safe.vibeScore = Number(safe.vibeScore || 0);
   safe.cringeScore = Number(safe.cringeScore || 0);
@@ -111,7 +111,7 @@ async function incrementVibe(userId, amount) {
 export async function findUserByEmail(email, secrets = false) {
   if (connected) {
     let query = User.findOne({ email: email.toLowerCase() });
-    if (secrets) query = query.select('+password +refreshTokenHash +passwordResetHash +passwordResetExpiresAt');
+    if (secrets) query = query.select('+password +refreshTokenHash +refreshTokenHashes +passwordResetHash +passwordResetExpiresAt');
     return query.exec();
   }
   return [...memoryUsers.values()].find(user => user.email === email.toLowerCase()) || null;
@@ -126,7 +126,7 @@ export async function findUserById(id, secrets = false) {
   if (connected) {
     if (!mongoose.isValidObjectId(id)) return null;
     let query = User.findById(id);
-    if (secrets) query = query.select('+password +refreshTokenHash +passwordResetHash +passwordResetExpiresAt');
+    if (secrets) query = query.select('+password +refreshTokenHash +refreshTokenHashes +passwordResetHash +passwordResetExpiresAt');
     return query.exec();
   }
   return memoryUsers.get(String(id)) || null;

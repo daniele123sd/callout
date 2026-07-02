@@ -4,6 +4,7 @@ import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import { BCRYPT_ROUNDS, hashPassword, sanitizePlainText, schemas, signAccessToken, signRefreshToken, verifyRefreshToken } from '../server/security.mjs';
 import { createPost, createUser, listPosts } from '../server/repository.mjs';
+import { User } from '../server/models/User.mjs';
 
 test('plain-text sanitizer removes executable markup and control characters', () => {
   assert.equal(sanitizePlainText('<script>alert(1)</script><b>Safe</b>\u0000'), 'Safe');
@@ -50,6 +51,15 @@ test('access and refresh JWTs use distinct token types', () => {
   assert.equal(verifyRefreshToken(refresh).type, 'refresh');
   const refreshPayload = jwt.decode(refresh);
   assert.ok(refreshPayload.exp - refreshPayload.iat >= 364 * 24 * 60 * 60);
+});
+
+test('accounts retain independent trusted-device refresh sessions', async () => {
+  const firstDevice = signRefreshToken('multi-device-user');
+  const secondDevice = signRefreshToken('multi-device-user');
+  const user = new User({ email: 'devices@example.com', displayName: 'Devices' });
+  user.refreshTokenHashes = [await hashPassword(firstDevice), await hashPassword(secondDevice)];
+  assert.equal(await bcrypt.compare(firstDevice, user.refreshTokenHashes[0]), true);
+  assert.equal(await bcrypt.compare(secondDevice, user.refreshTokenHashes[1]), true);
 });
 
 test('profile validation accepts persistent customization and preferences', () => {

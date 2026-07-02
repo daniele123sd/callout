@@ -69,6 +69,7 @@ const userSchema = new mongoose.Schema({
   preferences: { type: preferencesSchema, default: () => ({}) },
   password: { type: String, select: false },
   refreshTokenHash: { type: String, select: false, default: '' },
+  refreshTokenHashes: { type: [String], select: false, default: [] },
   passwordResetHash: { type: String, select: false, default: '' },
   passwordResetExpiresAt: { type: Date }
 }, { timestamps: { createdAt: true, updatedAt: true } });

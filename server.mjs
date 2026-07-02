@@ -91,8 +91,17 @@ async function establishSession(res, user) {
   const userId = String(user._id || user.id);
   const accessToken = signAccessToken(userId);
   const refreshToken = signRefreshToken(userId);
-  await updateUser(userId, { refreshTokenHash: await hashPassword(refreshToken) });
+  const account = await findUserById(userId, true);
+  const existingSessions = Array.isArray(account?.refreshTokenHashes) ? account.refreshTokenHashes : [];
+  await updateUser(userId, { refreshTokenHashes: [...existingSessions.slice(-7), await hashPassword(refreshToken)] });
   setAuthCookies(res, accessToken, refreshToken);
+}
+
+async function matchingRefreshSession(user, token) {
+  const sessionHashes = Array.isArray(user?.refreshTokenHashes) ? user.refreshTokenHashes : [];
+  const candidates = [...sessionHashes, ...(user?.refreshTokenHash ? [user.refreshTokenHash] : [])];
+  const matches = await Promise.all(candidates.map(hash => bcrypt.compare(token, hash).catch(() => false)));
+  return matches.some(Boolean);
 }
 
 const googleConfigured = Boolean(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET);
@@ -181,7 +190,7 @@ app.post('/api/auth/refresh', async (req, res) => {
     const payload = verifyRefreshToken(token);
     if (payload.type !== 'refresh') throw new Error('Invalid token type');
     const user = await findUserById(payload.sub, true);
-    if (!user?.refreshTokenHash || !(await bcrypt.compare(token, user.refreshTokenHash))) throw new Error('Refresh token revoked');
+    if (!user || !(await matchingRefreshSession(user, token))) throw new Error('Refresh token revoked');
     // Keep the existing trusted-device token during renewal. Rotating it here
     // lets simultaneous requests/tabs revoke each other and causes surprise logouts.
     setAuthCookies(res, signAccessToken(payload.sub), token);
@@ -194,11 +203,19 @@ app.post('/api/auth/refresh', async (req, res) => {
 
 app.post('/api/auth/logout', async (req, res) => {
   try {
-    const token = req.cookies?.[ACCESS_COOKIE];
-    if (token) {
+    const accessToken = req.cookies?.[ACCESS_COOKIE];
+    const refreshToken = req.cookies?.[REFRESH_COOKIE];
+    if (accessToken) {
       try {
-        const payload = (await import('jsonwebtoken')).default.decode(token);
-        if (payload?.sub) await updateUser(payload.sub, { refreshTokenHash: '' });
+        const payload = (await import('jsonwebtoken')).default.decode(accessToken);
+        if (payload?.sub && refreshToken) {
+          const user = await findUserById(payload.sub, true);
+          const sessions = Array.isArray(user?.refreshTokenHashes) ? user.refreshTokenHashes : [];
+          const matches = await Promise.all(sessions.map(hash => bcrypt.compare(refreshToken, hash).catch(() => false)));
+          const update = { refreshTokenHashes: sessions.filter((_hash, index) => !matches[index]) };
+          if (user?.refreshTokenHash && await bcrypt.compare(refreshToken, user.refreshTokenHash).catch(() => false)) update.refreshTokenHash = '';
+          await updateUser(payload.sub, update);
+        }
       } catch { /* cookie clearing is still sufficient */ }
     }
     clearAuthCookies(res);
