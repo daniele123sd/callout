@@ -11,6 +11,13 @@ const socialLinksSchema = new mongoose.Schema({
 
 const preferencesSchema = new mongoose.Schema({
   theme: { type: String, enum: ['light', 'dark', 'system'], default: 'light' },
+  palette: { type: String, enum: ['callout', 'midnight', 'mint', 'violet', 'sunset'], default: 'callout' },
+  reducedMotion: { type: Boolean, default: false },
+  feedDensity: { type: String, enum: ['compact', 'comfortable', 'spacious'], default: 'comfortable' },
+  voteEffect: { type: String, enum: ['pop', 'confetti', 'pulse', 'none'], default: 'pop' },
+  notificationSound: { type: String, enum: ['callout', 'spark', 'soft', 'none'], default: 'callout' },
+  widgetOrder: [{ type: String, enum: ['trending-guilds', 'activity', 'achievements', 'friends', 'topics'] }],
+  hiddenTopics: [{ type: String, maxlength: 40 }],
   notifications: {
     likes: { type: Boolean, default: true },
     comments: { type: Boolean, default: true },
@@ -44,6 +51,12 @@ const userSchema = new mongoose.Schema({
   bannerUrl: { type: String, default: '' },
   themeColor: { type: String, default: '#ff4713', match: /^#[0-9a-fA-F]{6}$/ },
   avatarFrame: { type: String, enum: ['none', 'spark', 'gold', 'violet', 'flame'], default: 'none' },
+  profileEffect: { type: String, enum: ['none', 'glow', 'bubbles', 'spotlight', 'confetti'], default: 'none' },
+  vibeAura: { type: String, enum: ['auto', 'none', 'rookie', 'star', 'legend'], default: 'auto' },
+  profileBackground: { type: String, enum: ['clean', 'grid', 'waves', 'stars', 'noise'], default: 'clean' },
+  profileLayout: [{ type: String, enum: ['posts', 'about', 'guilds', 'achievements', 'media', 'trophies'] }],
+  showcaseMode: { type: String, enum: ['featured', 'popular', 'controversial', 'recent'], default: 'featured' },
+  featuredBadges: [{ type: String, maxlength: 40 }],
   featuredPosts: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Post' }],
   pinnedGuilds: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Guild' }],
   socialLinks: { type: socialLinksSchema, default: () => ({}) },

@@ -21,7 +21,7 @@ import {
   acceptFriendRequest, canAccessPost, connectDatabase, createComment, createFriendRequest, createGuild, createGuildMessage, createGuildPost, createMessage, createPost, createReport, createUser, databaseMode, deletePost,
   findUserByEmail, findUserByGoogleId, findUserById, getGuild, getPublicProfile, joinGuildByInvite, listComments, listFriends, listGuildAudit, listGuildMembers, listGuildMessages, listGuildPosts, listGuilds, listLeaderboard, listMessages,
   deleteNotificationMute, listDrafts, listNotificationMutes, listNotifications, listPosts, listSavedPostIds, markNotificationsRead, publicUser, recordPostView, searchCallout, setNotificationMute,
-  toggleGuildMembership, toggleSavedPost, updateGuild, updateGuildMember, updateGuildRole, updatePost, updateUser, voteOnComment, voteOnPoll, voteOnPost
+  toggleGuildMembership, toggleSavedPost, updateGuild, updateGuildIdentity, updateGuildMember, updateGuildRole, updatePost, updateUser, voteOnComment, voteOnPoll, voteOnPost
 } from './server/repository.mjs';
 
 dotenv.config();
@@ -339,8 +339,11 @@ app.get('/api/guilds/:id/members', requireFeature('creatorGuilds'), requireAuth,
 app.patch('/api/guilds/:id/members/:userId', requireFeature('creatorGuilds'), requireAuth, validate(schemas.guildMember), async (req, res, next) => {
   try { const membership = await updateGuildMember(req.params.id, req.userId, req.params.userId, req.body); if (!membership) return res.status(403).json({ error: 'You cannot change this membership.' }); res.json({ membership }); } catch (error) { next(error); }
 });
+app.patch('/api/guilds/:id/identity', requireFeature('creatorGuilds'), requireAuth, validate(schemas.guildIdentity), async (req, res, next) => {
+  try { const membership = await updateGuildIdentity(req.params.id, req.userId, req.body); if (!membership) return res.status(403).json({ error: 'Join this guild before creating a guild profile.' }); res.json({ membership }); } catch (error) { next(error); }
+});
 app.patch('/api/guilds/:id/roles/:roleKey', requireFeature('creatorGuilds'), requireAuth, validate(schemas.guildRole), async (req, res, next) => {
-  try { const role = await updateGuildRole(req.params.id, req.userId, req.params.roleKey, req.body.permissions); if (!role) return res.status(403).json({ error: 'You cannot change this role.' }); res.json({ role }); } catch (error) { next(error); }
+  try { const role = await updateGuildRole(req.params.id, req.userId, req.params.roleKey, req.body); if (!role) return res.status(403).json({ error: 'You cannot change this role.' }); res.json({ role }); } catch (error) { next(error); }
 });
 app.get('/api/guilds/:id/audit', requireFeature('creatorGuilds'), requireAuth, async (req, res, next) => {
   try { const audit = await listGuildAudit(req.params.id, req.userId); if (!audit) return res.status(403).json({ error: 'Audit access is not permitted.' }); res.json({ audit }); } catch (error) { next(error); }

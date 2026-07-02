@@ -71,6 +71,7 @@ export function publicUser(user) {
   safe.vibeScore = Number(safe.vibeScore || 0);
   safe.cringeScore = Number(safe.cringeScore || 0);
   safe.vibeBadges = vibeBadges(safe.vibeScore);
+  safe.cosmeticUnlocks = cosmeticUnlocks(safe.vibeScore);
   delete safe._id;
   delete safe.__v;
   return safe;
@@ -83,6 +84,15 @@ export function vibeBadges(score = 0) {
   if (score >= 250) badges.push({ key: 'community-spark', name: 'Community Spark', icon: '🔥', threshold: 250 });
   if (score >= 1000) badges.push({ key: 'vibe-legend', name: 'Vibe Legend', icon: '♛', threshold: 1000 });
   return badges;
+}
+
+export function cosmeticUnlocks(score = 0) {
+  const unlocks = { frames: ['none'], effects: ['none'], auras: ['auto', 'none', 'rookie'], backgrounds: ['clean'], palettes: ['callout'] };
+  if (score >= 25) { unlocks.frames.push('spark'); unlocks.effects.push('glow'); unlocks.backgrounds.push('grid'); unlocks.palettes.push('mint'); }
+  if (score >= 100) { unlocks.frames.push('violet'); unlocks.effects.push('bubbles'); unlocks.auras.push('star'); unlocks.backgrounds.push('waves'); unlocks.palettes.push('violet'); }
+  if (score >= 250) { unlocks.frames.push('flame'); unlocks.effects.push('spotlight'); unlocks.backgrounds.push('stars'); unlocks.palettes.push('sunset'); }
+  if (score >= 1000) { unlocks.frames.push('gold'); unlocks.effects.push('confetti'); unlocks.auras.push('legend'); unlocks.backgrounds.push('noise'); unlocks.palettes.push('midnight'); }
+  return unlocks;
 }
 
 function publicIdentity(user) {
@@ -130,7 +140,7 @@ export async function createUser(values) {
   }
   if (connected) return User.create(userValues);
   const now = new Date();
-  const user = { id: crypto.randomUUID(), vibeScore: 0, cringeScore: 0, points: 0, postCount: 0, savedPosts: [], avatarUrl: '', bio: '', bannerUrl: '', themeColor: '#ff4713', avatarFrame: 'none', featuredPosts: [], pinnedGuilds: [], socialLinks: {}, pronouns: '', status: 'online', preferences: {}, createdAt: now, updatedAt: now, ...userValues };
+  const user = { id: crypto.randomUUID(), vibeScore: 0, cringeScore: 0, points: 0, postCount: 0, savedPosts: [], avatarUrl: '', bio: '', bannerUrl: '', themeColor: '#ff4713', avatarFrame: 'none', profileEffect: 'none', vibeAura: 'auto', profileBackground: 'clean', profileLayout: ['posts', 'about', 'guilds', 'achievements', 'media', 'trophies'], showcaseMode: 'featured', featuredBadges: [], featuredPosts: [], pinnedGuilds: [], socialLinks: {}, pronouns: '', status: 'online', preferences: { palette: 'callout', reducedMotion: false, feedDensity: 'comfortable', voteEffect: 'pop', notificationSound: 'callout', widgetOrder: ['trending-guilds', 'activity', 'achievements'], hiddenTopics: [] }, createdAt: now, updatedAt: now, ...userValues };
   memoryUsers.set(user.id, user);
   return user;
 }
@@ -445,7 +455,7 @@ export async function createGuild(userId, values) {
     await recordGuildAudit(guild._id, userId, 'guild.created', { name: guild.name });
     return serializeGuild(await guild.populate('creator', 'displayName handle avatarUrl'), userId);
   }
-  const guild = { id: crypto.randomUUID(), creator: String(userId), members: [String(userId)], inviteCode, privacy: 'public', settings: { allowJoinRequests: true, showMemberList: true }, createdAt: new Date(), ...values };
+  const guild = { id: crypto.randomUUID(), creator: String(userId), members: [String(userId)], inviteCode, privacy: 'public', backgroundPattern: 'clean', cardStyle: 'solid', iconShape: 'rounded', seasonalEffect: 'none', customEmojis: [], reactionSet: ['👍', '🔥', '😂', '💀'], landingLayout: ['announcement', 'about', 'rules', 'featured', 'members', 'progress'], welcomeMessage: '', onboardingQuestions: [], guildXp: 0, level: 1, achievements: [], settings: { allowJoinRequests: true, showMemberList: true, allowPerGuildProfiles: true, showOnlineStatus: true }, createdAt: new Date(), ...values };
   memoryGuilds.set(guild.id, guild);
   await ensureGuildRoles(guild.id);
   memoryGuildMemberships.set(membershipKey(guild.id, userId), { guild: guild.id, user: String(userId), roleKey: 'owner', status: 'active', joinedAt: new Date() });
@@ -460,12 +470,14 @@ export async function getGuild(guildId, userId = '') {
     if (!guild) return null;
     const access = await guildAccess(guildId, userId);
     const roles = access?.permissions?.manageRoles ? await ensureGuildRoles(guildId) : [];
-    return { ...serializeGuild(guild, userId), joined: access?.joined || false, joinPending: access?.pending || false, canViewContent: access?.joined || false, viewerRole: access?.roleKey || null, permissions: access?.permissions || {}, roles };
+    const membership = userId ? await GuildMembership.findOne({ guild: guildId, user: userId }).lean() : null;
+    return { ...serializeGuild(guild, userId), joined: access?.joined || false, joinPending: access?.pending || false, canViewContent: access?.joined || false, viewerRole: access?.roleKey || null, permissions: access?.permissions || {}, roles, viewerMembership: membership ? { guildProfile: membership.guildProfile || {}, contributionScore: Number(membership.contributionScore || 0), guildXp: Number(membership.guildXp || 0), streakDays: Number(membership.streakDays || 0), onboardingAnswers: membership.onboardingAnswers || [], onboardingCompletedAt: membership.onboardingCompletedAt } : null };
   }
   const guild = memoryGuilds.get(String(guildId));
   if (!guild) return null;
   const access = await guildAccess(guildId, userId);
-  return { ...serializeGuild({ ...guild, creator: memoryUsers.get(guild.creator) }, userId), joined: access?.joined || false, joinPending: access?.pending || false, canViewContent: access?.joined || false, viewerRole: access?.roleKey || null, permissions: access?.permissions || {}, roles: access?.permissions?.manageRoles ? await ensureGuildRoles(guildId) : [] };
+  const membership = userId ? memoryGuildMemberships.get(membershipKey(guildId, userId)) : null;
+  return { ...serializeGuild({ ...guild, creator: memoryUsers.get(guild.creator) }, userId), joined: access?.joined || false, joinPending: access?.pending || false, canViewContent: access?.joined || false, viewerRole: access?.roleKey || null, permissions: access?.permissions || {}, roles: access?.permissions?.manageRoles ? await ensureGuildRoles(guildId) : [], viewerMembership: membership ? { guildProfile: membership.guildProfile || {}, contributionScore: Number(membership.contributionScore || 0), guildXp: Number(membership.guildXp || 0), streakDays: Number(membership.streakDays || 0), onboardingAnswers: membership.onboardingAnswers || [], onboardingCompletedAt: membership.onboardingCompletedAt } : null };
 }
 
 async function isGuildMember(guildId, userId) {
@@ -500,7 +512,32 @@ export async function listGuildPosts(guildId, userId) {
 
 export async function createGuildPost(guildId, userId, values) {
   if (!(await guildAccess(guildId, userId))?.permissions?.createPosts) return null;
-  return createPost(userId, { ...values, guild: guildId });
+  const post = await createPost(userId, { ...values, guild: guildId });
+  await addGuildProgress(guildId, userId, 10);
+  return post;
+}
+
+async function addGuildProgress(guildId, userId, amount) {
+  const today = new Date();
+  if (connected) {
+    const membership = await GuildMembership.findOne({ guild: guildId, user: userId });
+    if (!membership) return;
+    const previous = membership.lastActiveAt ? new Date(membership.lastActiveAt) : null;
+    const dayGap = previous ? Math.floor((Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()) - Date.UTC(previous.getUTCFullYear(), previous.getUTCMonth(), previous.getUTCDate())) / 86400000) : null;
+    membership.streakDays = dayGap === 1 ? Number(membership.streakDays || 0) + 1 : dayGap === 0 ? Number(membership.streakDays || 0) : 1;
+    membership.guildXp = Number(membership.guildXp || 0) + amount;
+    membership.contributionScore = Number(membership.contributionScore || 0) + amount;
+    membership.lastActiveAt = today;
+    await membership.save();
+    const guild = await Guild.findByIdAndUpdate(guildId, { $inc: { guildXp: amount } }, { new: true });
+    if (guild) { guild.level = Math.max(1, Math.floor(Number(guild.guildXp || 0) / 250) + 1); await guild.save(); }
+    return;
+  }
+  const membership = memoryGuildMemberships.get(membershipKey(guildId, userId));
+  const guild = memoryGuilds.get(String(guildId));
+  if (!membership || !guild) return;
+  membership.guildXp = Number(membership.guildXp || 0) + amount; membership.contributionScore = Number(membership.contributionScore || 0) + amount; membership.streakDays = Math.max(1, Number(membership.streakDays || 0)); membership.lastActiveAt = today;
+  guild.guildXp = Number(guild.guildXp || 0) + amount; guild.level = Math.max(1, Math.floor(guild.guildXp / 250) + 1);
 }
 
 const serializeGuildMessage = message => {
@@ -516,9 +553,10 @@ export async function listGuildMessages(guildId, userId) {
 
 export async function createGuildMessage(guildId, userId, text) {
   if (!(await guildAccess(guildId, userId))?.permissions?.chat) return null;
-  if (connected) return serializeGuildMessage(await (await GuildMessage.create({ guild: guildId, sender: userId, text })).populate('sender', 'displayName handle avatarUrl'));
+  if (connected) { const message = serializeGuildMessage(await (await GuildMessage.create({ guild: guildId, sender: userId, text })).populate('sender', 'displayName handle avatarUrl')); await addGuildProgress(guildId, userId, 1); return message; }
   const message = { id: crypto.randomUUID(), guild: String(guildId), sender: String(userId), text, createdAt: new Date() };
   memoryGuildMessages.push(message);
+  await addGuildProgress(guildId, userId, 1);
   return serializeGuildMessage({ ...message, sender: memoryUsers.get(String(userId)) });
 }
 
@@ -588,7 +626,7 @@ export async function listGuildMembers(guildId, userId) {
       await Promise.all((guild.members || []).map(member => GuildMembership.updateOne({ guild: guildId, user: member }, { $setOnInsert: { guild: guildId, user: member, roleKey: String(member) === String(guild.creator) ? 'owner' : 'chatter', status: 'active', joinedAt: guild.createdAt || new Date() } }, { upsert: true })));
     }
     const memberships = await GuildMembership.find({ guild: guildId, ...(access.permissions.manageMembers ? {} : { status: 'active' }) }).populate('user', 'displayName handle avatarUrl status').sort({ status: 1, joinedAt: 1 }).lean();
-    return memberships.map(item => ({ id: String(item._id), user: publicIdentity(item.user), roleKey: item.roleKey, status: item.status, joinedAt: item.joinedAt }));
+    return memberships.map(item => ({ id: String(item._id), user: publicIdentity(item.user), roleKey: item.roleKey, status: item.status, joinedAt: item.joinedAt, guildProfile: item.guildProfile || {}, contributionScore: Number(item.contributionScore || 0), guildXp: Number(item.guildXp || 0), streakDays: Number(item.streakDays || 0) }));
   }
   return [...memoryGuildMemberships.values()].filter(item => item.guild === String(guildId) && (access.permissions.manageMembers || item.status === 'active')).map(item => ({ ...item, user: publicIdentity(memoryUsers.get(item.user)) }));
 }
@@ -616,18 +654,36 @@ export async function updateGuildMember(guildId, actorId, targetUserId, values) 
   return membership;
 }
 
-export async function updateGuildRole(guildId, userId, roleKey, permissions) {
+export async function updateGuildIdentity(guildId, userId, values) {
+  const access = await guildAccess(guildId, userId);
+  if (!access?.joined) return null;
+  const guildProfile = { nickname: values.nickname, avatarUrl: values.avatarUrl, bannerUrl: values.bannerUrl, bio: values.bio, themeColor: values.themeColor, avatarFrame: values.avatarFrame };
+  const update = { guildProfile, onboardingAnswers: values.onboardingAnswers || [], onboardingCompletedAt: values.onboardingAnswers?.length ? new Date() : null };
+  if (connected) {
+    const membership = await GuildMembership.findOneAndUpdate({ guild: guildId, user: userId }, update, { new: true, runValidators: true }).lean();
+    if (membership) await recordGuildAudit(guildId, userId, 'member.guild_profile_updated', { fields: Object.keys(guildProfile) }, userId);
+    return membership ? { ...membership, id: String(membership._id), _id: undefined } : null;
+  }
+  const membership = memoryGuildMemberships.get(membershipKey(guildId, userId));
+  if (!membership) return null;
+  Object.assign(membership, update, { updatedAt: new Date() });
+  await recordGuildAudit(guildId, userId, 'member.guild_profile_updated', { fields: Object.keys(guildProfile) }, userId);
+  return membership;
+}
+
+export async function updateGuildRole(guildId, userId, roleKey, values) {
   const access = await guildAccess(guildId, userId);
   if (!access?.permissions?.manageRoles || roleKey === 'owner') return null;
   const allowed = ['manageGuild', 'manageRoles', 'manageMembers', 'managePosts', 'createPosts', 'chat', 'viewAudit'];
-  const safePermissions = Object.fromEntries(Object.entries(permissions).filter(([key]) => allowed.includes(key)));
+  const safePermissions = Object.fromEntries(Object.entries(values.permissions || {}).filter(([key]) => allowed.includes(key)));
+  const cosmetics = Object.fromEntries(Object.entries({ name: values.name, color: values.color, icon: values.icon }).filter(([, value]) => value !== undefined));
   let role;
-  if (connected) role = await GuildRole.findOneAndUpdate({ guild: guildId, key: roleKey }, { permissions: safePermissions }, { new: true, runValidators: true }).lean();
+  if (connected) role = await GuildRole.findOneAndUpdate({ guild: guildId, key: roleKey }, { permissions: safePermissions, ...cosmetics }, { new: true, runValidators: true }).lean();
   else {
     role = (await ensureGuildRoles(guildId)).find(item => item.key === roleKey);
-    if (role) role.permissions = { ...role.permissions, ...safePermissions };
+    if (role) Object.assign(role, cosmetics, { permissions: { ...role.permissions, ...safePermissions } });
   }
-  if (role) await recordGuildAudit(guildId, userId, 'role.permissions_changed', { roleKey, permissions: safePermissions });
+  if (role) await recordGuildAudit(guildId, userId, 'role.updated', { roleKey, permissions: safePermissions, ...cosmetics });
   return role;
 }
 
@@ -833,7 +889,7 @@ export async function getPublicProfile(profileId, viewerId = '') {
   const featuredIds = new Set((account.featuredPosts || []).map(String));
   const profile = {
     id: account.id, displayName: account.displayName, handle: account.handle, avatarUrl: account.avatarUrl, bannerUrl: account.bannerUrl,
-    themeColor: account.themeColor, avatarFrame: account.avatarFrame || 'none', bio: account.bio, socialLinks: account.socialLinks, pronouns: account.pronouns,
+    themeColor: account.themeColor, avatarFrame: account.avatarFrame || 'none', profileEffect: account.profileEffect || 'none', vibeAura: account.vibeAura || 'auto', profileBackground: account.profileBackground || 'clean', profileLayout: account.profileLayout?.length ? account.profileLayout : ['posts', 'about', 'guilds', 'achievements', 'media', 'trophies'], showcaseMode: account.showcaseMode || 'featured', featuredBadges: account.featuredBadges || [], cosmeticUnlocks: account.cosmeticUnlocks, bio: account.bio, socialLinks: account.socialLinks, pronouns: account.pronouns,
     status: account.status, vibeScore: account.vibeScore, vibeBadges: account.vibeBadges, createdAt: account.createdAt,
     stats: { posts: serializedPosts.length, comments: commentCount, guilds: guilds.length },
     posts: serializedPosts, media: serializedPosts.filter(post => post.media?.length),

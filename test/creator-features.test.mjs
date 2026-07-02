@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {
   createGuild, createGuildPost, createPost, createUser, getGuild, getPublicProfile, joinGuildByInvite, listDrafts, listGuildAudit,
   listGuildMembers, listGuildPosts, listNotificationMutes, listPosts, setNotificationMute, toggleGuildMembership,
-  updateGuildMember, voteOnPoll
+  updateGuild, updateGuildIdentity, updateGuildMember, updateGuildRole, voteOnPoll
 } from '../server/repository.mjs';
 
 async function users() {
@@ -51,4 +51,24 @@ test('notification mute rules persist per user', async () => {
   const { owner } = await users();
   await setNotificationMute(owner.id, { scopeType: 'category', scopeId: 'likes', snoozedUntil: null });
   assert.equal((await listNotificationMutes(owner.id))[0].scopeId, 'likes');
+});
+
+test('guild style studio, role cosmetics, and member identities persist', async () => {
+  const { owner, member } = await users();
+  const guild = await createGuild(owner.id, { name: `Styled ${Date.now()}-${Math.random()}`, description: '', privacy: 'public' });
+  await toggleGuildMembership(member.id, guild.id);
+  await updateGuild(guild.id, owner.id, {
+    name: guild.name, description: 'A styled community', tagline: 'Distinct by design', rules: '', iconUrl: '', bannerUrl: '',
+    themeColor: '#7444e8', accentColor: '#ff4713', backgroundPattern: 'stars', cardStyle: 'glass', iconShape: 'hex', seasonalEffect: 'sparkles',
+    customEmojis: [{ name: 'callout', imageUrl: 'https://example.com/callout.png' }], reactionSet: ['🔥', '◇'],
+    landingLayout: ['progress', 'announcement', 'about'], welcomeMessage: 'Welcome in.', onboardingQuestions: [{ prompt: 'Pick a side', options: ['Alright', 'Cringe'], required: true }],
+    privacy: 'public', pinnedAnnouncement: '', settings: { allowJoinRequests: true, showMemberList: true, allowPerGuildProfiles: true, showOnlineStatus: true }, contentPrivacy: 'members'
+  });
+  await updateGuildIdentity(guild.id, member.id, { nickname: 'Guild Voice', avatarUrl: '', bannerUrl: '', bio: 'Only in this guild', themeColor: '#63e6be', avatarFrame: 'spark', onboardingAnswers: [{ question: 'Pick a side', answer: 'Alright' }] });
+  await updateGuildRole(guild.id, owner.id, 'contributor', { name: 'Creators', icon: '✦', color: '#63e6be', permissions: { createPosts: true, chat: true } });
+  const savedForMember = await getGuild(guild.id, member.id);
+  const savedForOwner = await getGuild(guild.id, owner.id);
+  assert.equal(savedForMember.backgroundPattern, 'stars');
+  assert.equal(savedForMember.viewerMembership.guildProfile.nickname, 'Guild Voice');
+  assert.equal(savedForOwner.roles.find(role => role.key === 'contributor').name, 'Creators');
 });

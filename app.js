@@ -12,6 +12,13 @@ const defaultState = {
     bannerUrl: '',
     themeColor: '#ff4713',
     avatarFrame: 'none',
+    profileEffect: 'none',
+    vibeAura: 'auto',
+    profileBackground: 'clean',
+    profileLayout: ['posts', 'about', 'guilds', 'achievements', 'media', 'trophies'],
+    showcaseMode: 'featured',
+    featuredBadges: [],
+    cosmeticUnlocks: { frames: ['none'], effects: ['none'], auras: ['auto', 'none', 'rookie'], backgrounds: ['clean'], palettes: ['callout'] },
     featuredPosts: [],
     pinnedGuilds: [],
     socialLinks: { twitter: '', instagram: '', discord: '', youtube: '', twitch: '', custom: '' },
@@ -23,12 +30,18 @@ const defaultState = {
   settings: {
     appearanceVersion: 2,
     theme: 'light',
+    palette: 'callout',
+    reducedMotion: false,
+    feedDensity: 'comfortable',
+    voteEffect: 'pop',
+    notificationSound: 'callout',
     notifications: { likes: true, comments: true, guildInvites: true, mentions: true, follows: true, guildActivity: true, directMessages: true },
     notificationDelivery: { inApp: true, push: false, email: false },
     directMessages: 'everyone',
     textSize: 'medium',
     blockedUsers: [],
     widgetOrder: ['trending-guilds', 'activity', 'achievements'],
+    hiddenTopics: [],
     leaderboardPeriod: 'all'
   }
 };
@@ -187,6 +200,23 @@ function showToast(message) {
   showToast.timer = setTimeout(() => toast.classList.remove('show'), 2200);
 }
 
+function playNotificationSound() {
+  if (state.settings.notificationSound === 'none') return;
+  try {
+    const AudioContext = window.AudioContext || window.webkitAudioContext; if (!AudioContext) return;
+    const context = new AudioContext(); const oscillator = context.createOscillator(); const gain = context.createGain();
+    oscillator.frequency.value = state.settings.notificationSound === 'spark' ? 880 : state.settings.notificationSound === 'soft' ? 440 : 660;
+    gain.gain.setValueAtTime(.035, context.currentTime); gain.gain.exponentialRampToValueAtTime(.001, context.currentTime + .16);
+    oscillator.connect(gain); gain.connect(context.destination); oscillator.start(); oscillator.stop(context.currentTime + .16);
+  } catch { /* sound is optional */ }
+}
+
+function runVoteEffect(button, value) {
+  const effect = state.settings.voteEffect || 'pop'; if (effect === 'none' || state.settings.reducedMotion) return;
+  const burst = document.createElement('span'); burst.className = `vote-feedback vote-feedback-${effect} ${value}`; burst.textContent = value === 'alright' ? '✓' : '🔥';
+  button.appendChild(burst); setTimeout(() => burst.remove(), 850);
+}
+
 async function apiFetch(url, options = {}, retry = true) {
   const response = await fetch(url, { credentials: 'same-origin', headers: { 'Content-Type': 'application/json', ...(options.headers || {}) }, ...options });
   if (response.status === 401 && retry && !url.includes('/api/auth/')) {
@@ -214,6 +244,13 @@ function applySessionUser(user) {
     bannerUrl: user.bannerUrl ?? state.profile.bannerUrl,
     themeColor: user.themeColor || state.profile.themeColor,
     avatarFrame: user.avatarFrame || state.profile.avatarFrame,
+    profileEffect: user.profileEffect || state.profile.profileEffect,
+    vibeAura: user.vibeAura || state.profile.vibeAura,
+    profileBackground: user.profileBackground || state.profile.profileBackground,
+    profileLayout: user.profileLayout?.length ? user.profileLayout : state.profile.profileLayout,
+    showcaseMode: user.showcaseMode || state.profile.showcaseMode,
+    featuredBadges: user.featuredBadges || state.profile.featuredBadges,
+    cosmeticUnlocks: user.cosmeticUnlocks || state.profile.cosmeticUnlocks,
     featuredPosts: user.featuredPosts || state.profile.featuredPosts,
     pinnedGuilds: user.pinnedGuilds || state.profile.pinnedGuilds,
     socialLinks: { ...state.profile.socialLinks, ...(user.socialLinks || {}) },
@@ -239,6 +276,7 @@ function startMessageStream() {
   messageStream.addEventListener('messages', async () => {
     if (document.activeElement?.matches('textarea,input')) return;
     await hydrateAccountData();
+    playNotificationSound();
     if (currentRoute() === 'messages' || currentRoute() === 'notifications') renderRoute();
   });
 }
@@ -620,22 +658,38 @@ function vibeProgressView() {
     <aside class="info-callout"><strong>How Vibe grows</strong><p>Post: +10 · Add a Take or reply: +4 · First reaction on a post or Take: +1. Repeated toggling does not generate extra Vibe.</p></aside>`;
 }
 
+const guildLandingSections = ['announcement', 'about', 'rules', 'featured', 'members', 'events', 'progress'];
+
+function guildIdentityEditor(guild) {
+  const identity = guild.viewerMembership?.guildProfile || {};
+  const questions = guild.onboardingQuestions || [];
+  return `<form class="guild-identity-form" id="guildIdentityForm"><div class="guild-studio-heading"><div><span class="section-kicker">MEMBER IDENTITY</span><h2>Your look inside ${escapeHtml(guild.name)}</h2><p>This identity is only shown in this guild.</p></div><span class="avatar avatar-frame-${escapeHtml(identity.avatarFrame || 'none')}" style="--identity:${escapeHtml(identity.themeColor || guild.themeColor || '#7444e8')}">${identity.avatarUrl ? `<img src="${escapeHtml(identity.avatarUrl)}" alt="" />` : escapeHtml((identity.nickname || state.profile.displayName || 'C').charAt(0))}</span></div><div class="form-grid"><label>Guild nickname<input name="nickname" maxlength="40" value="${escapeHtml(identity.nickname || '')}" placeholder="Use my Callout name" /></label><label>Identity color<input name="themeColor" type="color" value="${escapeHtml(identity.themeColor || guild.themeColor || '#7444e8')}" /></label><label>Avatar frame<select name="avatarFrame">${['none','spark','gold','violet','flame'].map(value => `<option value="${value}" ${identity.avatarFrame === value ? 'selected' : ''}>${value}</option>`).join('')}</select></label><label>Guild avatar<input name="avatarFile" type="file" accept="image/png,image/jpeg,image/webp,image/gif" /></label><label>Mini banner<input name="bannerFile" type="file" accept="image/png,image/jpeg,image/webp,image/gif" /></label></div><label>Guild bio<textarea name="bio" maxlength="300" placeholder="What should this community know about you?">${escapeHtml(identity.bio || '')}</textarea></label>${questions.length ? `<fieldset><legend>Member onboarding</legend>${questions.map((question, index) => `<label>${escapeHtml(question.prompt)}<select name="onboarding_${index}" ${question.required ? 'required' : ''}><option value="">Choose an answer</option>${question.options.map(option => `<option>${escapeHtml(option)}</option>`).join('')}</select></label>`).join('')}</fieldset>` : ''}<input type="hidden" name="avatarUrl" value="${escapeHtml(identity.avatarUrl || '')}" /><input type="hidden" name="bannerUrl" value="${escapeHtml(identity.bannerUrl || '')}" /><button class="primary-action" type="submit">Save guild identity</button></form>`;
+}
+
+function guildSettingsEditor(guild) {
+  const layout = guild.landingLayout?.length ? guild.landingLayout : ['announcement','about','rules','members','progress'];
+  const emojiText = (guild.customEmojis || []).map(item => `${item.name}|${item.imageUrl}`).join('\n');
+  const questions = (guild.onboardingQuestions || []).map(item => `${item.prompt}|${item.options.join(',')}|${item.required ? 'required' : 'optional'}`).join('\n');
+  return `<form class="guild-settings-form guild-style-studio" id="guildSettingsForm"><div class="guild-studio-heading"><div><span class="section-kicker">GUILD STYLE STUDIO</span><h2>Build a community with its own identity</h2></div><div class="guild-template-actions">${['minimal','cinema','gaming','debate'].map(template => `<button type="button" data-guild-template="${template}">${template}</button>`).join('')}</div></div><div class="form-grid"><label>Guild name<input name="name" maxlength="60" value="${escapeHtml(guild.name)}" required /></label><label>Tagline<input name="tagline" maxlength="100" value="${escapeHtml(guild.tagline || '')}" /></label></div><label>Description<textarea name="description" maxlength="240">${escapeHtml(guild.description || '')}</textarea></label><label>Welcome message<textarea name="welcomeMessage" maxlength="500">${escapeHtml(guild.welcomeMessage || '')}</textarea></label><label>Pinned announcement<textarea name="pinnedAnnouncement" maxlength="500">${escapeHtml(guild.pinnedAnnouncement || '')}</textarea></label><label>Rules<textarea name="rules" maxlength="1200">${escapeHtml(guild.rules || '')}</textarea></label><div class="form-grid"><label>Privacy<select name="privacy"><option value="public" ${guild.privacy !== 'private' ? 'selected' : ''}>Public</option><option value="private" ${guild.privacy === 'private' ? 'selected' : ''}>Private</option></select></label><label>Invite code<input value="${escapeHtml(guild.inviteCode || '')}" readonly /></label><label>Icon image<input name="iconFile" type="file" accept="image/png,image/jpeg,image/webp,image/gif" /></label><label>Banner image<input name="bannerFile" type="file" accept="image/png,image/jpeg,image/webp,image/gif" /></label><label>Theme color<input name="themeColor" type="color" value="${escapeHtml(guild.themeColor || '#7444e8')}" /></label><label>Accent color<input name="accentColor" type="color" value="${escapeHtml(guild.accentColor || '#ff4713')}" /></label><label>Background<select name="backgroundPattern">${['clean','grid','waves','stars','noise'].map(value => `<option value="${value}" ${guild.backgroundPattern === value ? 'selected' : ''}>${value}</option>`).join('')}</select></label><label>Card style<select name="cardStyle">${['solid','glass','outline','soft'].map(value => `<option value="${value}" ${guild.cardStyle === value ? 'selected' : ''}>${value}</option>`).join('')}</select></label><label>Icon shape<select name="iconShape">${['circle','rounded','shield','hex'].map(value => `<option value="${value}" ${guild.iconShape === value ? 'selected' : ''}>${value}</option>`).join('')}</select></label><label>Seasonal effect<select name="seasonalEffect">${['none','confetti','snow','embers','sparkles'].map(value => `<option value="${value}" ${guild.seasonalEffect === value ? 'selected' : ''}>${value}</option>`).join('')}</select></label></div><div class="guild-settings-toggles"><label><input name="allowJoinRequests" type="checkbox" ${guild.settings?.allowJoinRequests !== false ? 'checked' : ''} /> Allow join requests</label><label><input name="showMemberList" type="checkbox" ${guild.settings?.showMemberList !== false ? 'checked' : ''} /> Show member list</label><label><input name="allowPerGuildProfiles" type="checkbox" ${guild.settings?.allowPerGuildProfiles !== false ? 'checked' : ''} /> Per-guild member profiles</label><label><input name="showOnlineStatus" type="checkbox" ${guild.settings?.showOnlineStatus !== false ? 'checked' : ''} /> Online status</label></div><div class="form-grid"><label>Reaction pack<input name="reactionSet" value="${escapeHtml((guild.reactionSet || []).join(' '))}" placeholder="👍 🔥 😂 💀" /><small>2–8 emoji separated by spaces.</small></label><label>Custom emoji library<textarea name="customEmojis" placeholder="name|https://image-url">${escapeHtml(emojiText)}</textarea><small>One name and image URL per line.</small></label><label>Onboarding builder<textarea name="onboardingQuestions" placeholder="Question|Option one,Option two|required">${escapeHtml(questions)}</textarea><small>One question per line.</small></label></div><fieldset class="layout-picker"><legend>Public landing page order</legend><div id="guildLayoutEditor">${layout.map((section, index) => `<span data-guild-layout-item="${section}"><strong>${section}</strong><button type="button" data-guild-layout-move="${index}" data-direction="-1" ${index === 0 ? 'disabled' : ''}>↑</button><button type="button" data-guild-layout-move="${index}" data-direction="1" ${index === layout.length - 1 ? 'disabled' : ''}>↓</button></span>`).join('')}</div></fieldset><input type="hidden" name="iconUrl" value="${escapeHtml(guild.iconUrl || '')}" /><input type="hidden" name="bannerUrl" value="${escapeHtml(guild.bannerUrl || '')}" /><input type="hidden" name="contentPrivacy" value="members" /><button class="primary-action" type="submit">Save guild studio</button></form>`;
+}
+
 function guildDetailView() {
   const id = decodeURIComponent(location.hash.split('/')[1] || '');
   const guild = state.activeGuild?.id === id ? state.activeGuild : null;
   if (!guild) return `${pageHeader('GUILD', 'Loading guild…', 'Opening the public guild profile.')}`;
   const tab = location.hash.split('/')[2] || (guild.joined ? 'feed' : 'public');
-  const tabs = `<nav class="guild-tabs"><button data-guild-tab="public" class="${tab === 'public' ? 'active' : ''}">Public profile</button><button data-guild-tab="feed" class="${tab === 'feed' ? 'active' : ''}">Member feed</button><button data-guild-tab="chat" class="${tab === 'chat' ? 'active' : ''}">Group chat</button>${guild.joined ? `<button data-guild-tab="members" class="${tab === 'members' ? 'active' : ''}">Members</button>` : ''}${guild.permissions?.manageRoles ? `<button data-guild-tab="roles" class="${tab === 'roles' ? 'active' : ''}">Roles</button>` : ''}${guild.permissions?.viewAudit ? `<button data-guild-tab="audit" class="${tab === 'audit' ? 'active' : ''}">Audit</button>` : ''}${guild.permissions?.manageGuild ? `<button data-guild-tab="settings" class="${tab === 'settings' ? 'active' : ''}">Settings</button>` : ''}</nav>`;
-  const hero = `<section class="guild-hero" style="--guild-theme:${escapeHtml(guild.themeColor || '#7444e8')};--guild-accent:${escapeHtml(guild.accentColor || '#ff4713')}"><div class="guild-cover">${guild.bannerUrl ? `<img src="${escapeHtml(guild.bannerUrl)}" alt="" />` : ''}</div><div class="guild-hero-body"><span class="guild-profile-icon">${guild.iconUrl ? `<img src="${escapeHtml(guild.iconUrl)}" alt="" />` : escapeHtml(guild.name.charAt(0))}</span><div><span class="section-kicker">${guild.memberCount} MEMBERS</span><h1>${escapeHtml(guild.name)}</h1><p>${escapeHtml(guild.tagline || guild.description)}</p></div><button class="${guild.joined ? 'quiet-action' : 'primary-action'}" type="button" data-toggle-guild="${guild.id}" ${guild.owner ? 'disabled' : ''}>${guild.owner ? 'Owner' : guild.joined ? 'Leave guild' : 'Join guild'}</button></div></section>`;
+  const tabs = `<nav class="guild-tabs"><button data-guild-tab="public" class="${tab === 'public' ? 'active' : ''}">Public profile</button><button data-guild-tab="feed" class="${tab === 'feed' ? 'active' : ''}">Member feed</button><button data-guild-tab="chat" class="${tab === 'chat' ? 'active' : ''}">Group chat</button>${guild.joined ? `<button data-guild-tab="members" class="${tab === 'members' ? 'active' : ''}">Members</button><button data-guild-tab="identity" class="${tab === 'identity' ? 'active' : ''}">My identity</button>` : ''}${guild.permissions?.manageRoles ? `<button data-guild-tab="roles" class="${tab === 'roles' ? 'active' : ''}">Roles</button>` : ''}${guild.permissions?.viewAudit ? `<button data-guild-tab="audit" class="${tab === 'audit' ? 'active' : ''}">Audit</button>` : ''}${guild.permissions?.manageGuild ? `<button data-guild-tab="settings" class="${tab === 'settings' ? 'active' : ''}">Style studio</button>` : ''}</nav>`;
+  const hero = `<section class="guild-hero guild-bg-${escapeHtml(guild.backgroundPattern || 'clean')} guild-cards-${escapeHtml(guild.cardStyle || 'solid')} guild-effect-${escapeHtml(guild.seasonalEffect || 'none')}" style="--guild-theme:${escapeHtml(guild.themeColor || '#7444e8')};--guild-accent:${escapeHtml(guild.accentColor || '#ff4713')}"><div class="guild-cover">${guild.bannerUrl ? `<img src="${escapeHtml(guild.bannerUrl)}" alt="" />` : ''}</div><div class="guild-hero-body"><span class="guild-profile-icon guild-icon-${escapeHtml(guild.iconShape || 'rounded')}">${guild.iconUrl ? `<img src="${escapeHtml(guild.iconUrl)}" alt="" />` : escapeHtml(guild.name.charAt(0))}</span><div><span class="section-kicker">LEVEL ${Number(guild.level || 1)} · ${guild.memberCount} MEMBERS</span><h1>${escapeHtml(guild.name)}</h1><p>${escapeHtml(guild.tagline || guild.description)}</p><div class="guild-xp-track"><i style="width:${Math.min(100, Number(guild.guildXp || 0) % 100)}%"></i></div></div><button class="${guild.joined ? 'quiet-action' : 'primary-action'}" type="button" data-toggle-guild="${guild.id}" ${guild.owner ? 'disabled' : ''}>${guild.owner ? 'Owner' : guild.joined ? 'Leave guild' : 'Join guild'}</button></div></section>`;
   let body = '';
   if (tab === 'public') body = `${guild.pinnedAnnouncement ? `<aside class="guild-announcement"><strong>Pinned announcement</strong><p>${escapeHtml(guild.pinnedAnnouncement)}</p></aside>` : ''}<section class="guild-public-grid"><article><span class="section-kicker">ABOUT</span><h2>${escapeHtml(guild.description || 'No description yet.')}</h2></article><article><span class="section-kicker">RULES</span><div class="formatted-copy">${escapeHtml(guild.rules || 'Guild rules have not been added yet.').replace(/\n/g, '<br>')}</div></article></section>`;
   else if (!guild.canViewContent) body = emptyState('🔒', 'Members-only area', 'This guild is public from the outside, but its feed and group chat are visible only to members.', `<button class="primary-action" type="button" data-toggle-guild="${guild.id}">Join guild</button>`);
   else if (tab === 'feed') body = `${guild.permissions?.createPosts ? `<form class="guild-post-composer" id="guildPostForm"><textarea name="content" maxlength="2000" required placeholder="Share something with ${escapeHtml(guild.name)}…"></textarea><select name="category"><option>Life</option><option>Entertainment</option><option>Movies</option><option>Music</option><option>Games</option></select><button class="primary-action" type="submit">Post to guild</button></form>` : '<aside class="info-callout"><strong>Read-only role</strong><p>The owner must grant Contributor posting permission before you can publish here.</p></aside>'}${state.guildPosts.length ? feedMarkup(state.guildPosts) : emptyState('✦', 'No guild posts yet', 'Permitted contributors can start the first conversation here.')}`;
   else if (tab === 'chat') body = guild.permissions?.chat ? `<section class="guild-chat"><div class="chat-stream">${state.guildMessages.length ? state.guildMessages.map(message => `<article><span class="avatar">${message.sender?.avatarUrl ? `<img src="${escapeHtml(message.sender.avatarUrl)}" alt="" />` : escapeHtml((message.sender?.displayName || 'C').charAt(0))}</span><div><strong>${escapeHtml(message.sender?.displayName || 'Member')}</strong><small>${timeLabel(new Date(message.createdAt).getTime())}</small><p>${escapeHtml(message.text)}</p></div></article>`).join('') : '<div class="stage-empty"><h2>No messages yet</h2><p>Start the guild group chat.</p></div>'}</div><form id="guildChatForm"><textarea name="text" maxlength="2000" required placeholder="Message the guild…"></textarea><button class="primary-action" type="submit">Send</button></form></section>` : emptyState('🔒', 'Chat permission required', 'Ask a guild moderator to grant a role with chat access.');
-  else if (tab === 'members') body = `<section class="guild-member-list">${state.guildMembers.map(member => `<article><span class="avatar">${member.user?.avatarUrl ? `<img src="${escapeHtml(member.user.avatarUrl)}" alt="" />` : escapeHtml((member.user?.displayName || 'C').charAt(0))}</span><div><strong>${escapeHtml(member.user?.displayName || 'Member')}</strong><small><i class="status-dot ${escapeHtml(member.user?.status || 'invisible')}"></i> ${escapeHtml(member.roleKey)} · ${escapeHtml(member.status)}</small></div>${guild.permissions?.manageMembers && member.roleKey !== 'owner' ? `<select data-member-role="${member.user.id}">${['moderator','contributor','chatter','viewer'].map(role => `<option value="${role}" ${member.roleKey === role ? 'selected' : ''}>${role}</option>`).join('')}</select>${member.status === 'pending' ? `<button data-approve-member="${member.user.id}">Approve</button>` : ''}` : ''}</article>`).join('') || '<p>No members yet.</p>'}</section>`;
-  else if (tab === 'roles') body = `<section class="role-editor">${(guild.roles || []).filter(role => role.key !== 'owner').map(role => `<form data-role-form="${role.key}"><header><strong style="color:${escapeHtml(role.color)}">${escapeHtml(role.name)}</strong><small>${escapeHtml(role.key)}</small></header><div>${['manageGuild','manageRoles','manageMembers','managePosts','createPosts','chat','viewAudit'].map(permission => `<label><input type="checkbox" name="${permission}" ${role.permissions?.[permission] ? 'checked' : ''} />${permission.replace(/([A-Z])/g, ' $1')}</label>`).join('')}</div><button class="quiet-action" type="submit">Save role</button></form>`).join('')}</section>`;
+  else if (tab === 'members') body = `<section class="guild-member-list guild-identity-cards">${state.guildMembers.map(member => { const identity = member.guildProfile || {}; return `<article style="--member-accent:${escapeHtml(identity.themeColor || guild.themeColor || '#7444e8')}"><span class="avatar avatar-frame-${escapeHtml(identity.avatarFrame || 'none')}">${identity.avatarUrl || member.user?.avatarUrl ? `<img src="${escapeHtml(identity.avatarUrl || member.user.avatarUrl)}" alt="" />` : escapeHtml((identity.nickname || member.user?.displayName || 'C').charAt(0))}</span><div><strong>${escapeHtml(identity.nickname || member.user?.displayName || 'Member')}</strong><small><i class="status-dot ${escapeHtml(member.user?.status || 'invisible')}"></i> ${escapeHtml(member.roleKey)} · ${escapeHtml(member.status)}</small><span>${Number(member.contributionScore || 0)} contribution · ${Number(member.streakDays || 0)} day streak · ${Number(member.guildXp || 0)} XP</span></div>${guild.permissions?.manageMembers && member.roleKey !== 'owner' ? `<select data-member-role="${member.user.id}">${['moderator','contributor','chatter','viewer'].map(role => `<option value="${role}" ${member.roleKey === role ? 'selected' : ''}>${role}</option>`).join('')}</select>${member.status === 'pending' ? `<button data-approve-member="${member.user.id}">Approve</button>` : ''}` : ''}</article>`; }).join('') || '<p>No members yet.</p>'}</section>`;
+  else if (tab === 'identity') body = guildIdentityEditor(guild);
+  else if (tab === 'roles') body = `<section class="role-editor">${(guild.roles || []).filter(role => role.key !== 'owner').map(role => `<form data-role-form="${role.key}"><header><input name="icon" maxlength="12" value="${escapeHtml(role.icon || '◇')}" aria-label="Role icon" /><input name="name" maxlength="40" value="${escapeHtml(role.name)}" aria-label="Role name" /><input name="color" type="color" value="${escapeHtml(role.color)}" aria-label="Role color" /><small>${escapeHtml(role.key)}</small></header><div>${['manageGuild','manageRoles','manageMembers','managePosts','createPosts','chat','viewAudit'].map(permission => `<label><input type="checkbox" name="${permission}" ${role.permissions?.[permission] ? 'checked' : ''} />${permission.replace(/([A-Z])/g, ' $1')}</label>`).join('')}</div><button class="quiet-action" type="submit">Save role design</button></form>`).join('')}</section>`;
   else if (tab === 'audit') body = `<section class="audit-list">${state.guildAudit.map(item => `<article><strong>${escapeHtml(item.actor?.displayName || 'Member')}</strong><span>${escapeHtml(item.action)}</span><small>${new Date(item.createdAt).toLocaleString()}</small></article>`).join('') || '<p>No audited changes yet.</p>'}</section>`;
-  else body = `<form class="guild-settings-form" id="guildSettingsForm"><div class="form-grid"><label>Guild name<input name="name" maxlength="60" value="${escapeHtml(guild.name)}" required /></label><label>Tagline<input name="tagline" maxlength="100" value="${escapeHtml(guild.tagline || '')}" /></label></div><label>Description<textarea name="description" maxlength="240">${escapeHtml(guild.description || '')}</textarea></label><label>Pinned announcement<textarea name="pinnedAnnouncement" maxlength="500">${escapeHtml(guild.pinnedAnnouncement || '')}</textarea></label><label>Rules<textarea name="rules" maxlength="1200">${escapeHtml(guild.rules || '')}</textarea></label><div class="form-grid"><label>Privacy<select name="privacy"><option value="public" ${guild.privacy !== 'private' ? 'selected' : ''}>Public</option><option value="private" ${guild.privacy === 'private' ? 'selected' : ''}>Private</option></select></label><label>Invite code<input value="${escapeHtml(guild.inviteCode || '')}" readonly /></label><label>Icon image<input name="iconFile" type="file" accept="image/png,image/jpeg,image/webp,image/gif" /></label><label>Banner image<input name="bannerFile" type="file" accept="image/png,image/jpeg,image/webp,image/gif" /></label><label>Theme color<input name="themeColor" type="color" value="${escapeHtml(guild.themeColor || '#7444e8')}" /></label><label>Accent color<input name="accentColor" type="color" value="${escapeHtml(guild.accentColor || '#ff4713')}" /></label></div><label><input name="allowJoinRequests" type="checkbox" ${guild.settings?.allowJoinRequests !== false ? 'checked' : ''} /> Allow join requests</label><label><input name="showMemberList" type="checkbox" ${guild.settings?.showMemberList !== false ? 'checked' : ''} /> Show member list</label><input type="hidden" name="iconUrl" value="${escapeHtml(guild.iconUrl || '')}" /><input type="hidden" name="bannerUrl" value="${escapeHtml(guild.bannerUrl || '')}" /><input type="hidden" name="contentPrivacy" value="members" /><button class="primary-action" type="submit">Save guild</button></form>`;
+  else body = guildSettingsEditor(guild);
   return `${hero}${tabs}<div class="guild-workspace">${body}</div>`;
 }
 
@@ -691,25 +745,38 @@ function profileView() {
   const profile = state.profile;
   const data = { ...profile, ...(state.ownProfileData || {}), socialLinks: { ...profile.socialLinks, ...(state.ownProfileData?.socialLinks || {}) } };
   return `${pageHeader('ACCOUNT', 'Your profile', 'A customizable public identity with Discord-level detail.', '<button class="quiet-action" type="button" data-open-settings>Edit profile</button>')}
-    <section class="profile-hero discord-profile" style="--profile-accent:${escapeHtml(profile.themeColor)}">
+    <section class="profile-hero discord-profile profile-bg-${escapeHtml(profile.profileBackground)} profile-effect-${escapeHtml(profile.profileEffect)} aura-${escapeHtml(resolvedAura(profile))}" style="--profile-accent:${escapeHtml(profile.themeColor)}">
       <div class="profile-cover">${profile.bannerUrl ? `<img src="${escapeHtml(profile.bannerUrl)}" alt="Profile banner" />` : '<span>CALL IT LIKE YOU SEE IT.</span>'}</div>
       <div class="profile-identity">${avatarMarkup('profile-avatar')}<div><div class="identity-line"><h2>${escapeHtml(profile.displayName)}</h2><i class="status-dot ${escapeHtml(profile.status)}"></i></div><p>${escapeHtml(profile.handle)}${profile.pronouns ? ` · ${escapeHtml(profile.pronouns)}` : ''}</p></div><div class="vibe-stat-card"><span>✦</span><div><strong>${Number(profile.vibeScore || 0).toLocaleString()}</strong><small>VIBE SCORE</small></div></div></div>
     </section>
     ${profileTabs()}${profileTabPanel(data)}`;
 }
 
+function resolvedAura(user) {
+  if (user.vibeAura && user.vibeAura !== 'auto') return user.vibeAura;
+  const score = Number(user.vibeScore || 0);
+  return score >= 1000 ? 'legend' : score >= 100 ? 'star' : 'rookie';
+}
+
 function formatBio(value) {
   return escapeHtml(value).replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>').replace(/\*([^*]+)\*/g, '<em>$1</em>').replace(/\n/g, '<br>');
 }
 
-const profileTabNames = ['posts', 'about', 'guilds', 'achievements', 'media'];
-function profileTabs() {
-  return `<nav class="profile-tabs" aria-label="Profile sections">${profileTabNames.map(tab => `<button type="button" data-profile-tab="${tab}" class="${state.profileTab === tab ? 'active' : ''}">${tab.charAt(0).toUpperCase()}${tab.slice(1)}</button>`).join('')}</nav>`;
+const profileTabNames = ['posts', 'about', 'guilds', 'achievements', 'media', 'trophies'];
+function profileTabs(user = state.profile) {
+  const order = user.profileLayout?.length ? user.profileLayout : profileTabNames;
+  return `<nav class="profile-tabs" aria-label="Profile sections">${order.filter(tab => profileTabNames.includes(tab)).map(tab => `<button type="button" data-profile-tab="${tab}" class="${state.profileTab === tab ? 'active' : ''}">${tab.charAt(0).toUpperCase()}${tab.slice(1)}</button>`).join('')}</nav>`;
 }
 
 function profileTabPanel(user) {
   const tab = state.profileTab;
-  const posts = user.posts || [];
+  if (tab === 'trophies') {
+    const score = Number(user.cringeScore || 0);
+    const trophies = [{ icon: '◇', name: 'Fresh Voice', earned: true }, { icon: '⚡', name: 'Cringe Contender', earned: score >= 10 }, { icon: '🔥', name: 'Podium Menace', earned: score >= 50 }, { icon: '♛', name: 'Cringe Crown', earned: score >= 100 }];
+    return `<section class="trophy-cabinet"><header><span class="section-kicker">CRINGE TROPHIES</span><h2>Your competitive cabinet</h2></header><div>${trophies.map(trophy => `<article class="${trophy.earned ? '' : 'locked'}"><span>${trophy.icon}</span><strong>${trophy.name}</strong><small>${trophy.earned ? 'Earned' : 'Locked'}</small></article>`).join('')}</div></section>`;
+  }
+  const allPosts = user.posts || [];
+  const posts = user.showcaseMode === 'featured' && user.featuredPosts?.length ? user.featuredPosts : [...allPosts].sort((a, b) => user.showcaseMode === 'popular' ? (Number(b.alrightVotes || 0) + Number(b.cringeVotes || 0)) - (Number(a.alrightVotes || 0) + Number(a.cringeVotes || 0)) : user.showcaseMode === 'controversial' ? Math.abs(Number(a.alrightVotes || 0) - Number(a.cringeVotes || 0)) - Math.abs(Number(b.alrightVotes || 0) - Number(b.cringeVotes || 0)) : new Date(b.createdAt) - new Date(a.createdAt));
   if (tab === 'posts') return `<section class="profile-tab-panel">${posts.length ? `<div class="profile-post-list">${posts.map(post => `<article><small>${escapeHtml(post.category || 'Take')} · ${timeLabel(new Date(post.createdAt).getTime())}</small><strong>${formatPostContent(post.content || '')}</strong><span>${Number(post.alrightVotes || 0)} Alright · ${Number(post.cringeVotes || 0)} Cringe</span></article>`).join('')}</div>` : emptyState('✦', 'No posts yet', 'Published takes will appear on this profile.')}</section>`;
   if (tab === 'about') {
     const social = user.socialLinks || {};
@@ -727,7 +794,7 @@ function publicUserView() {
   if (!user || String(user.id) !== id) return `${pageHeader('PROFILE', 'Loading profile…', 'Fetching the latest public account details.')}`;
   const badges = user.vibeBadges || [];
   const friendButton = user.requestIncoming ? `<button class="quiet-action" type="button" data-accept-friend="${user.friendshipId}">Accept friend</button>` : `<button class="quiet-action" type="button" data-friend-user="${user.id}" ${['accepted','pending'].includes(user.friendship) ? 'disabled' : ''}>${user.friendship === 'accepted' ? 'Friends ✓' : user.friendship === 'pending' ? 'Request pending' : 'Add friend'}</button>`;
-  return `<section class="public-user-card" style="--profile-accent:${escapeHtml(user.themeColor || '#ff4713')}"><div class="public-user-banner">${user.bannerUrl ? `<img src="${escapeHtml(user.bannerUrl)}" alt="" />` : ''}</div><div class="public-user-main"><span class="avatar avatar-frame-${escapeHtml(user.avatarFrame || 'none')}">${user.avatarUrl ? `<img src="${escapeHtml(user.avatarUrl)}" alt="" />` : escapeHtml((user.displayName || 'C').charAt(0))}</span><div><h1>${escapeHtml(user.displayName)}</h1><p>${escapeHtml(user.handle || '')}${user.pronouns ? ` · ${escapeHtml(user.pronouns)}` : ''}</p><small>✦ ${Number(user.vibeScore || 0).toLocaleString()} Vibe · ${badges.length} badges</small></div><div class="public-user-actions">${user.friendship === 'self' ? '<button class="quiet-action" data-open-settings>Edit profile</button>' : `${friendButton}<button class="primary-action" type="button" data-message-user="${user.id}">Message</button>`}</div></div>${profileTabs()}${profileTabPanel(user)}</section>`;
+  return `<section class="public-user-card profile-bg-${escapeHtml(user.profileBackground || 'clean')} profile-effect-${escapeHtml(user.profileEffect || 'none')} aura-${escapeHtml(resolvedAura(user))}" style="--profile-accent:${escapeHtml(user.themeColor || '#ff4713')}"><div class="public-user-banner">${user.bannerUrl ? `<img src="${escapeHtml(user.bannerUrl)}" alt="" />` : ''}</div><div class="public-user-main"><span class="avatar avatar-frame-${escapeHtml(user.avatarFrame || 'none')}">${user.avatarUrl ? `<img src="${escapeHtml(user.avatarUrl)}" alt="" />` : escapeHtml((user.displayName || 'C').charAt(0))}</span><div><h1>${escapeHtml(user.displayName)}</h1><p>${escapeHtml(user.handle || '')}${user.pronouns ? ` · ${escapeHtml(user.pronouns)}` : ''}</p><small>✦ ${Number(user.vibeScore || 0).toLocaleString()} Vibe · ${badges.length} badges</small></div><div class="public-user-actions">${user.friendship === 'self' ? '<button class="quiet-action" data-open-settings>Edit profile</button>' : `${friendButton}<button class="primary-action" type="button" data-message-user="${user.id}">Message</button>`}</div></div>${profileTabs(user)}${profileTabPanel(user)}</section>`;
 }
 
 function settingsView() {
@@ -735,6 +802,14 @@ function settingsView() {
   const checked = value => value ? 'checked' : '';
   return `${pageHeader('PREFERENCES', 'Settings', 'Manage appearance, notifications, privacy, and account details.')}
     <form class="settings-form" id="settingsForm">
+      <section class="settings-section customization-studio"><div class="settings-section-head"><div><span class="settings-icon">✦</span><div><h2>Callout Style Studio</h2><p>Personalize your profile, feed, motion, and signature interactions.</p></div></div></div>
+        <div class="customization-grid"><label>Color palette<select name="palette">${['callout','midnight','mint','violet','sunset'].map(value => `<option value="${value}" ${settings.palette === value ? 'selected' : ''}>${value}</option>`).join('')}</select></label><label>Feed density<select name="feedDensity">${['compact','comfortable','spacious'].map(value => `<option value="${value}" ${settings.feedDensity === value ? 'selected' : ''}>${value}</option>`).join('')}</select></label><label>Vote animation<select name="voteEffect">${['pop','confetti','pulse','none'].map(value => `<option value="${value}" ${settings.voteEffect === value ? 'selected' : ''}>${value}</option>`).join('')}</select></label><label>Notification sound<select name="notificationSound">${['callout','spark','soft','none'].map(value => `<option value="${value}" ${settings.notificationSound === value ? 'selected' : ''}>${value}</option>`).join('')}</select></label><label>Profile effect<select name="profileEffect">${['none','glow','bubbles','spotlight','confetti'].map(value => `<option value="${value}" ${state.profile.profileEffect === value ? 'selected' : ''}>${value}</option>`).join('')}</select></label><label>Vibe aura<select name="vibeAura">${['auto','none','rookie','star','legend'].map(value => `<option value="${value}" ${state.profile.vibeAura === value ? 'selected' : ''}>${value}</option>`).join('')}</select></label><label>Profile background<select name="profileBackground">${['clean','grid','waves','stars','noise'].map(value => `<option value="${value}" ${state.profile.profileBackground === value ? 'selected' : ''}>${value}</option>`).join('')}</select></label><label>Take showcase<select name="showcaseMode">${['featured','popular','controversial','recent'].map(value => `<option value="${value}" ${state.profile.showcaseMode === value ? 'selected' : ''}>${value}</option>`).join('')}</select></label></div>
+        <label class="setting-row"><span><strong>Reduced motion</strong><small>Disable profile effects and animated feedback.</small></span><input class="switch-input" type="checkbox" name="reducedMotion" ${checked(settings.reducedMotion)} /><i></i></label>
+        <label>Hidden feed topics<input name="hiddenTopics" value="${escapeHtml((settings.hiddenTopics || []).join(', '))}" placeholder="e.g. remakes, spoilers, celebrity news" /><small>Comma-separated topics you do not want in your feed.</small></label>
+        <fieldset class="layout-picker"><legend>Profile section order</legend><div id="profileLayoutEditor">${(state.profile.profileLayout || profileTabNames).map((tab, index, list) => `<span data-layout-item="${tab}"><strong>${tab}</strong><button type="button" data-layout-move="${index}" data-direction="-1" ${index === 0 ? 'disabled' : ''}>↑</button><button type="button" data-layout-move="${index}" data-direction="1" ${index === list.length - 1 ? 'disabled' : ''}>↓</button></span>`).join('')}</div></fieldset>
+        <fieldset class="cosmetic-collection"><legend>Unlocked cosmetic collection</legend><div>${Object.entries(state.profile.cosmeticUnlocks || {}).map(([kind, values]) => `<article><strong>${escapeHtml(kind)}</strong>${values.map(value => `<span>${escapeHtml(value)}</span>`).join('')}</article>`).join('')}</div></fieldset>
+        <fieldset class="featured-badge-picker"><legend>Featured profile badges</legend><div>${(state.profile.vibeBadges || []).map(badge => `<label><input type="checkbox" name="featuredBadge" value="${escapeHtml(badge.name)}" ${(state.profile.featuredBadges || []).includes(badge.name) ? 'checked' : ''} /><span>${escapeHtml(badge.icon)} ${escapeHtml(badge.name)}</span></label>`).join('') || '<p>Earn Vibe badges to feature them on your profile.</p>'}</div><small>Select up to three.</small></fieldset>
+      </section>
       <section class="settings-section"><div class="settings-section-head"><div><span class="settings-icon">◐</span><div><h2>Appearance</h2><p>Choose how Callout looks on this device.</p></div></div></div>
         <div class="theme-options" role="radiogroup" aria-label="Theme"><label><input type="radio" name="theme" value="light" ${checked(settings.theme === 'light')} /><span>☀<strong>Light</strong><small>Bright and crisp</small></span></label><label><input type="radio" name="theme" value="dark" ${checked(settings.theme === 'dark')} /><span>◐<strong>Dark</strong><small>Easy on the eyes</small></span></label><label><input type="radio" name="theme" value="system" ${checked(settings.theme === 'system')} /><span>◫<strong>System</strong><small>Match your device</small></span></label></div>
       </section>
@@ -843,6 +918,7 @@ function bindPostInteractions() {
     try {
       const payload = await apiFetch(`/api/posts/${post.databaseId}/vote`, { method: 'POST', body: JSON.stringify({ value: nextVote }) });
       Object.assign(post, { alrightVotes: payload.post.alrightVotes, cringeVotes: payload.post.cringeVotes, userVote: payload.post.userVote, impressions: payload.post.impressions });
+      runVoteEffect(button, nextVote);
       await Promise.all([hydrateTrending(), hydrateSession(), hydrateLeaderboard()]); renderRoute();
       trackEvent('rank_post', { rank_value: nextVote, post_category: post.category });
       showToast(payload.post.userVote ? `You called it ${nextVote === 'alright' ? 'Alright' : 'Cringe'}.` : 'Vote removed.');
@@ -892,6 +968,12 @@ function bindViewInteractions(route) {
   document.querySelector('[data-go-auth]')?.addEventListener('click', () => navigate('auth'));
   document.querySelectorAll('[data-analytics-days]').forEach(button => button.addEventListener('click', async () => { state.analyticsDays = Number(button.dataset.analyticsDays); state.analytics = null; renderRoute(); await hydrateAnalytics(); renderRoute(); }));
   document.querySelector('[data-refresh-analytics]')?.addEventListener('click', async () => { state.analytics = null; state.analyticsError = ''; renderRoute(); await hydrateAnalytics(); renderRoute(); });
+  document.querySelectorAll('[data-layout-move]').forEach(button => button.addEventListener('click', () => {
+    const order = [...document.querySelectorAll('[data-layout-item]')].map(item => item.dataset.layoutItem);
+    const index = Number(button.dataset.layoutMove); const next = index + Number(button.dataset.direction);
+    if (next < 0 || next >= order.length) return;
+    [order[index], order[next]] = [order[next], order[index]]; state.profile.profileLayout = order; renderRoute();
+  }));
   document.querySelectorAll('[data-profile-tab]').forEach(button => button.addEventListener('click', () => { state.profileTab = button.dataset.profileTab; renderRoute(); }));
   document.querySelector('[data-back-feed]')?.addEventListener('click', () => navigate('home'));
   document.querySelector('#commentForm')?.addEventListener('submit', addComment);
@@ -913,6 +995,9 @@ function bindViewInteractions(route) {
   document.querySelector('#guildPostForm')?.addEventListener('submit', createGuildFeedPost);
   document.querySelector('#guildChatForm')?.addEventListener('submit', sendGuildChatMessage);
   document.querySelector('#guildSettingsForm')?.addEventListener('submit', saveGuildSettings);
+  document.querySelector('#guildIdentityForm')?.addEventListener('submit', saveGuildIdentity);
+  document.querySelectorAll('[data-guild-template]').forEach(button => button.addEventListener('click', applyGuildTemplate));
+  document.querySelectorAll('[data-guild-layout-move]').forEach(button => button.addEventListener('click', moveGuildLayoutSection));
   document.querySelectorAll('[data-role-form]').forEach(form => form.addEventListener('submit', saveGuildRole));
   document.querySelectorAll('[data-member-role]').forEach(select => select.addEventListener('change', updateGuildMemberRole));
   document.querySelectorAll('[data-approve-member]').forEach(button => button.addEventListener('click', approveGuildMember));
@@ -975,15 +1060,46 @@ async function saveGuildSettings(event) {
   event.preventDefault(); const form = event.currentTarget; const data = new FormData(form);
   try {
     const [iconUrl, bannerUrl] = await Promise.all([imageFieldValue(form.elements.iconFile.files[0], data.get('iconUrl')), imageFieldValue(form.elements.bannerFile.files[0], data.get('bannerUrl'))]);
-    await apiFetch(`/api/guilds/${state.activeGuild.id}`, { method: 'PATCH', body: JSON.stringify({ name: sanitizeInput(data.get('name')), description: sanitizeInput(data.get('description')), tagline: sanitizeInput(data.get('tagline')), pinnedAnnouncement: sanitizeInput(data.get('pinnedAnnouncement')), rules: sanitizeInput(data.get('rules')), iconUrl, bannerUrl, themeColor: data.get('themeColor'), accentColor: data.get('accentColor'), privacy: data.get('privacy'), settings: { allowJoinRequests: data.has('allowJoinRequests'), showMemberList: data.has('showMemberList') }, contentPrivacy: 'members' }) });
+    const customEmojis = String(data.get('customEmojis') || '').split(/\r?\n/).map(line => line.split('|')).filter(parts => parts.length >= 2 && parts[0].trim() && parts[1].trim()).map(([name, imageUrl]) => ({ name: sanitizeInput(name.trim()).toLowerCase().replace(/[^a-z0-9_]/g, '_').slice(0, 24), imageUrl: imageUrl.trim() })).filter(item => item.name.length >= 2);
+    const onboardingQuestions = String(data.get('onboardingQuestions') || '').split(/\r?\n/).map(line => line.split('|')).filter(parts => parts.length >= 2).map(([prompt, options, required]) => ({ prompt: sanitizeInput(prompt.trim()), options: options.split(',').map(option => sanitizeInput(option.trim())).filter(Boolean), required: String(required).trim().toLowerCase() === 'required' })).filter(item => item.prompt && item.options.length >= 2);
+    const reactionSet = [...new Set(String(data.get('reactionSet') || '').trim().split(/\s+/).filter(Boolean))].slice(0, 8);
+    const landingLayout = [...document.querySelectorAll('[data-guild-layout-item]')].map(item => item.dataset.guildLayoutItem);
+    await apiFetch(`/api/guilds/${state.activeGuild.id}`, { method: 'PATCH', body: JSON.stringify({ name: sanitizeInput(data.get('name')), description: sanitizeInput(data.get('description')), tagline: sanitizeInput(data.get('tagline')), welcomeMessage: sanitizeInput(data.get('welcomeMessage')), pinnedAnnouncement: sanitizeInput(data.get('pinnedAnnouncement')), rules: sanitizeInput(data.get('rules')), iconUrl, bannerUrl, themeColor: data.get('themeColor'), accentColor: data.get('accentColor'), backgroundPattern: data.get('backgroundPattern'), cardStyle: data.get('cardStyle'), iconShape: data.get('iconShape'), seasonalEffect: data.get('seasonalEffect'), customEmojis, reactionSet: reactionSet.length >= 2 ? reactionSet : ['👍','🔥'], landingLayout, onboardingQuestions, privacy: data.get('privacy'), settings: { allowJoinRequests: data.has('allowJoinRequests'), showMemberList: data.has('showMemberList'), allowPerGuildProfiles: data.has('allowPerGuildProfiles'), showOnlineStatus: data.has('showOnlineStatus') }, contentPrivacy: 'members' }) });
     await Promise.all([hydrateGuilds(), hydrateGuildDetail()]); renderRoute(); showToast('Guild settings saved.');
+  } catch (error) { showToast(error.message); }
+}
+
+function moveGuildLayoutSection(event) {
+  const items = [...document.querySelectorAll('[data-guild-layout-item]')];
+  const index = Number(event.currentTarget.dataset.guildLayoutMove); const next = index + Number(event.currentTarget.dataset.direction);
+  if (next < 0 || next >= items.length) return;
+  const parent = items[index].parentElement;
+  if (next > index) parent.insertBefore(items[next], items[index]); else parent.insertBefore(items[index], items[next]);
+  [...parent.children].forEach((item, position, list) => { item.querySelectorAll('button').forEach(button => { button.dataset.guildLayoutMove = position; button.disabled = (button.dataset.direction === '-1' && position === 0) || (button.dataset.direction === '1' && position === list.length - 1); }); });
+}
+
+function applyGuildTemplate(event) {
+  const form = document.querySelector('#guildSettingsForm');
+  const templates = { minimal: ['#111111','#ff4713','clean','outline'], cinema: ['#38185f','#f3bd25','stars','glass'], gaming: ['#5d2fe6','#2ee6a6','grid','solid'], debate: ['#ba2818','#ffda45','waves','soft'] };
+  const [theme, accent, background, cards] = templates[event.currentTarget.dataset.guildTemplate];
+  form.elements.themeColor.value = theme; form.elements.accentColor.value = accent; form.elements.backgroundPattern.value = background; form.elements.cardStyle.value = cards;
+  showToast(`${event.currentTarget.dataset.guildTemplate} template applied. Save to publish it.`);
+}
+
+async function saveGuildIdentity(event) {
+  event.preventDefault(); const form = event.currentTarget; const data = new FormData(form);
+  try {
+    const [avatarUrl, bannerUrl] = await Promise.all([imageFieldValue(form.elements.avatarFile.files[0], data.get('avatarUrl')), imageFieldValue(form.elements.bannerFile.files[0], data.get('bannerUrl'))]);
+    const onboardingAnswers = (state.activeGuild.onboardingQuestions || []).map((question, index) => ({ question: question.prompt, answer: sanitizeInput(data.get(`onboarding_${index}`) || '') })).filter(item => item.answer);
+    await apiFetch(`/api/guilds/${state.activeGuild.id}/identity`, { method: 'PATCH', body: JSON.stringify({ nickname: sanitizeInput(data.get('nickname')), avatarUrl, bannerUrl, bio: sanitizeInput(data.get('bio')), themeColor: data.get('themeColor'), avatarFrame: data.get('avatarFrame'), onboardingAnswers }) });
+    await hydrateGuildDetail(); renderRoute(); showToast('Guild identity saved.');
   } catch (error) { showToast(error.message); }
 }
 
 async function saveGuildRole(event) {
   event.preventDefault(); const form = event.currentTarget;
   const permissions = Object.fromEntries(['manageGuild','manageRoles','manageMembers','managePosts','createPosts','chat','viewAudit'].map(key => [key, form.elements[key].checked]));
-  try { await apiFetch(`/api/guilds/${state.activeGuild.id}/roles/${form.dataset.roleForm}`, { method: 'PATCH', body: JSON.stringify({ permissions }) }); await hydrateGuildDetail(); renderRoute(); showToast('Role permissions saved.'); }
+  try { await apiFetch(`/api/guilds/${state.activeGuild.id}/roles/${form.dataset.roleForm}`, { method: 'PATCH', body: JSON.stringify({ name: sanitizeInput(form.elements.name.value), icon: sanitizeInput(form.elements.icon.value), color: form.elements.color.value, permissions }) }); await hydrateGuildDetail(); renderRoute(); showToast('Role design saved.'); }
   catch (error) { showToast(error.message); }
 }
 
@@ -1253,6 +1369,9 @@ function applyDisplaySettings() {
   document.documentElement.dataset.theme = state.settings.theme;
   document.documentElement.dataset.resolvedTheme = state.settings.theme === 'system' ? (prefersDark ? 'dark' : 'light') : state.settings.theme;
   document.documentElement.dataset.textSize = state.settings.textSize;
+  document.documentElement.dataset.palette = state.settings.palette || 'callout';
+  document.documentElement.dataset.feedDensity = state.settings.feedDensity || 'comfortable';
+  document.documentElement.dataset.reducedMotion = state.settings.reducedMotion ? 'true' : 'false';
   document.querySelector('meta[name="theme-color"]')?.setAttribute('content', document.documentElement.dataset.resolvedTheme === 'dark' ? '#151513' : '#ff4713');
 }
 
@@ -1263,6 +1382,9 @@ function previewDisplaySettings() {
   document.documentElement.dataset.theme = form.elements.theme.value;
   document.documentElement.dataset.resolvedTheme = form.elements.theme.value === 'system' ? (prefersDark ? 'dark' : 'light') : form.elements.theme.value;
   document.documentElement.dataset.textSize = form.elements.textSize.value;
+  document.documentElement.dataset.palette = form.elements.palette?.value || state.settings.palette;
+  document.documentElement.dataset.feedDensity = form.elements.feedDensity?.value || state.settings.feedDensity;
+  document.documentElement.dataset.reducedMotion = form.elements.reducedMotion?.checked ? 'true' : 'false';
 }
 
 async function saveSettings(event) {
@@ -1270,6 +1392,12 @@ async function saveSettings(event) {
   const formData = new FormData(event.currentTarget);
   state.settings.theme = formData.get('theme');
   state.settings.textSize = formData.get('textSize');
+  state.settings.palette = formData.get('palette');
+  state.settings.feedDensity = formData.get('feedDensity');
+  state.settings.voteEffect = formData.get('voteEffect');
+  state.settings.notificationSound = formData.get('notificationSound');
+  state.settings.reducedMotion = formData.has('reducedMotion');
+  state.settings.hiddenTopics = sanitizeInput(formData.get('hiddenTopics')).split(',').map(value => value.trim()).filter(Boolean).slice(0, 30);
   state.settings.directMessages = formData.get('directMessages');
   state.settings.notifications = { likes: formData.has('notifyLikes'), comments: formData.has('notifyComments'), guildInvites: formData.has('notifyGuildInvites') };
   state.settings.notificationDelivery = { inApp: formData.has('deliveryInApp'), push: formData.has('deliveryPush'), email: formData.has('deliveryEmail') };
@@ -1282,6 +1410,12 @@ async function saveSettings(event) {
     bannerUrl: formData.get('bannerUrl') || '',
     themeColor: formData.get('themeColor'),
     avatarFrame: formData.get('avatarFrame'),
+    profileEffect: formData.get('profileEffect'),
+    vibeAura: formData.get('vibeAura'),
+    profileBackground: formData.get('profileBackground'),
+    profileLayout: [...document.querySelectorAll('[data-layout-item]')].map(item => item.dataset.layoutItem),
+    showcaseMode: formData.get('showcaseMode'),
+    featuredBadges: formData.getAll('featuredBadge').slice(0, 3),
     pronouns: sanitizeInput(formData.get('pronouns')),
     status: formData.get('status'),
     socialLinks: {
@@ -1293,7 +1427,7 @@ async function saveSettings(event) {
   state.profile.handle = `@${state.profile.handle.slice(1).replace(/[^a-z0-9_]/g, '').slice(0, 29)}`;
   try {
     if (sessionUser) {
-      const payload = await apiFetch('/api/profile', { method: 'PATCH', body: JSON.stringify({ displayName: state.profile.displayName, handle: state.profile.handle, avatarUrl: state.profile.avatarUrl, bio: state.profile.bio, bannerUrl: state.profile.bannerUrl, themeColor: state.profile.themeColor, avatarFrame: state.profile.avatarFrame, featuredPosts: state.profile.featuredPosts || [], pinnedGuilds: state.profile.pinnedGuilds || [], socialLinks: state.profile.socialLinks, pronouns: state.profile.pronouns, status: state.profile.status, preferences: { theme: state.settings.theme, notifications: state.settings.notifications, notificationDelivery: state.settings.notificationDelivery, directMessages: state.settings.directMessages, textSize: state.settings.textSize } }) });
+      const payload = await apiFetch('/api/profile', { method: 'PATCH', body: JSON.stringify({ displayName: state.profile.displayName, handle: state.profile.handle, avatarUrl: state.profile.avatarUrl, bio: state.profile.bio, bannerUrl: state.profile.bannerUrl, themeColor: state.profile.themeColor, avatarFrame: state.profile.avatarFrame, profileEffect: state.profile.profileEffect, vibeAura: state.profile.vibeAura, profileBackground: state.profile.profileBackground, profileLayout: state.profile.profileLayout, showcaseMode: state.profile.showcaseMode, featuredBadges: state.profile.featuredBadges || [], featuredPosts: state.profile.featuredPosts || [], pinnedGuilds: state.profile.pinnedGuilds || [], socialLinks: state.profile.socialLinks, pronouns: state.profile.pronouns, status: state.profile.status, preferences: { theme: state.settings.theme, palette: state.settings.palette, reducedMotion: state.settings.reducedMotion, feedDensity: state.settings.feedDensity, voteEffect: state.settings.voteEffect, notificationSound: state.settings.notificationSound, widgetOrder: state.settings.widgetOrder, hiddenTopics: state.settings.hiddenTopics, notifications: state.settings.notifications, notificationDelivery: state.settings.notificationDelivery, directMessages: state.settings.directMessages, textSize: state.settings.textSize } }) });
       applySessionUser(payload.user); await hydrateOwnProfile();
     }
     persist(); applyDisplaySettings(); document.querySelector('#headerName').textContent = state.profile.displayName; renderRoute(); showToast('Settings saved.');

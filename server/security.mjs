@@ -66,6 +66,12 @@ export const schemas = {
     avatarUrl: optionalBanner,
     themeColor: Joi.string().pattern(/^#[0-9a-fA-F]{6}$/).required(),
     avatarFrame: Joi.string().valid('none', 'spark', 'gold', 'violet', 'flame').default('none'),
+    profileEffect: Joi.string().valid('none', 'glow', 'bubbles', 'spotlight', 'confetti').default('none'),
+    vibeAura: Joi.string().valid('auto', 'none', 'rookie', 'star', 'legend').default('auto'),
+    profileBackground: Joi.string().valid('clean', 'grid', 'waves', 'stars', 'noise').default('clean'),
+    profileLayout: Joi.array().min(1).max(6).unique().items(Joi.string().valid('posts', 'about', 'guilds', 'achievements', 'media', 'trophies')).default(['posts', 'about', 'guilds', 'achievements', 'media', 'trophies']),
+    showcaseMode: Joi.string().valid('featured', 'popular', 'controversial', 'recent').default('featured'),
+    featuredBadges: Joi.array().max(3).unique().items(plain(40)).default([]),
     featuredPosts: Joi.array().max(3).items(recordId).default([]),
     pinnedGuilds: Joi.array().max(5).items(recordId).default([]),
     pronouns: plain(40).allow(''),
@@ -76,6 +82,13 @@ export const schemas = {
     }).required(),
     preferences: Joi.object({
       theme: Joi.string().valid('light', 'dark', 'system').required(),
+      palette: Joi.string().valid('callout', 'midnight', 'mint', 'violet', 'sunset').default('callout'),
+      reducedMotion: Joi.boolean().default(false),
+      feedDensity: Joi.string().valid('compact', 'comfortable', 'spacious').default('comfortable'),
+      voteEffect: Joi.string().valid('pop', 'confetti', 'pulse', 'none').default('pop'),
+      notificationSound: Joi.string().valid('callout', 'spark', 'soft', 'none').default('callout'),
+      widgetOrder: Joi.array().max(5).unique().items(Joi.string().valid('trending-guilds', 'activity', 'achievements', 'friends', 'topics')).default(['trending-guilds', 'activity', 'achievements']),
+      hiddenTopics: Joi.array().max(30).unique().items(plain(40)).default([]),
       notifications: Joi.object({
         likes: Joi.boolean().required(), comments: Joi.boolean().required(), guildInvites: Joi.boolean().required(),
         mentions: Joi.boolean().default(true), follows: Joi.boolean().default(true), guildActivity: Joi.boolean().default(true), directMessages: Joi.boolean().default(true)
@@ -115,13 +128,27 @@ export const schemas = {
     name: plain(60).required(), description: plain(240).allow(''), tagline: plain(100).allow(''), rules: plain(1200).allow(''),
     iconUrl: optionalBanner, bannerUrl: optionalBanner,
     themeColor: Joi.string().pattern(/^#[0-9a-fA-F]{6}$/).required(), accentColor: Joi.string().pattern(/^#[0-9a-fA-F]{6}$/).required(),
+    backgroundPattern: Joi.string().valid('clean', 'grid', 'waves', 'stars', 'noise').default('clean'),
+    cardStyle: Joi.string().valid('solid', 'soft', 'glass', 'outline').default('solid'),
+    iconShape: Joi.string().valid('rounded', 'circle', 'shield', 'hex').default('rounded'),
+    seasonalEffect: Joi.string().valid('none', 'confetti', 'snow', 'embers', 'sparkles').default('none'),
+    customEmojis: Joi.array().max(24).items(Joi.object({ name: Joi.string().lowercase().pattern(/^[a-z0-9_]{2,24}$/).required(), imageUrl: optionalBanner.required() })).default([]),
+    reactionSet: Joi.array().min(2).max(8).unique().items(plain(12)).default(['👍', '🔥', '😂', '💀']),
+    landingLayout: Joi.array().min(1).max(7).unique().items(Joi.string().valid('announcement', 'about', 'rules', 'featured', 'members', 'events', 'progress')).default(['announcement', 'about', 'rules', 'featured', 'members', 'progress']),
+    welcomeMessage: plain(500).allow('').default(''),
+    onboardingQuestions: Joi.array().max(8).items(Joi.object({ prompt: plain(160).required(), options: Joi.array().min(2).max(8).items(plain(60)).required(), required: Joi.boolean().default(false) })).default([]),
     privacy: Joi.string().valid('public', 'private').default('public'), pinnedAnnouncement: plain(500).allow('').default(''),
-    settings: Joi.object({ allowJoinRequests: Joi.boolean().required(), showMemberList: Joi.boolean().required() }).default({ allowJoinRequests: true, showMemberList: true }),
+    settings: Joi.object({ allowJoinRequests: Joi.boolean().required(), showMemberList: Joi.boolean().required(), allowPerGuildProfiles: Joi.boolean().default(true), showOnlineStatus: Joi.boolean().default(true) }).default({ allowJoinRequests: true, showMemberList: true, allowPerGuildProfiles: true, showOnlineStatus: true }),
     contentPrivacy: Joi.string().valid('members').required()
   }),
   guildInvite: Joi.object({ inviteCode: Joi.string().pattern(/^[A-Za-z0-9_-]{8,40}$/).required() }),
   guildMember: Joi.object({ roleKey: Joi.string().lowercase().pattern(/^[a-z0-9_-]{2,30}$/), status: Joi.string().valid('active', 'suspended') }).or('roleKey', 'status'),
-  guildRole: Joi.object({ permissions: Joi.object({
+  guildIdentity: Joi.object({
+    nickname: plain(40).allow('').default(''), avatarUrl: optionalBanner, bannerUrl: optionalBanner, bio: plain(300).allow('').default(''),
+    themeColor: Joi.string().pattern(/^#[0-9a-fA-F]{6}$/).required(), avatarFrame: Joi.string().valid('none', 'spark', 'gold', 'violet', 'flame').default('none'),
+    onboardingAnswers: Joi.array().max(8).items(Joi.object({ question: plain(160).required(), answer: plain(120).required() })).default([])
+  }),
+  guildRole: Joi.object({ name: plain(40), color: Joi.string().pattern(/^#[0-9a-fA-F]{6}$/), icon: plain(12), permissions: Joi.object({
     manageGuild: Joi.boolean(), manageRoles: Joi.boolean(), manageMembers: Joi.boolean(), managePosts: Joi.boolean(),
     createPosts: Joi.boolean(), chat: Joi.boolean(), viewAudit: Joi.boolean()
   }).min(1).required() }),

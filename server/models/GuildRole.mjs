@@ -15,6 +15,7 @@ const guildRoleSchema = new mongoose.Schema({
   key: { type: String, required: true, lowercase: true, trim: true, maxlength: 30 },
   name: { type: String, required: true, trim: true, maxlength: 40 },
   color: { type: String, default: '#6b7280', match: /^#[0-9a-fA-F]{6}$/ },
+  icon: { type: String, default: '◇', trim: true, maxlength: 12 },
   rank: { type: Number, default: 0 },
   builtIn: { type: Boolean, default: false },
   permissions: { type: permissionSchema, default: () => ({}) }
