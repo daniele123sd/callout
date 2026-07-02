@@ -1619,13 +1619,13 @@ function beginPublishing(draft = false) {
   }, 650);
 }
 
-async function finishPublishing(success) {
+async function finishPublishing(success, message = 'Your take is live.') {
   clearInterval(publishingTimer); publishingTimer = null;
   const overlay = document.querySelector('#publishingOverlay');
   if (!success) { overlay.hidden = true; return; }
   document.querySelector('#publishingProgress').style.width = '100%';
-  document.querySelector('#publishingStatus').textContent = 'Your take is live.';
-  await new Promise(resolve => setTimeout(resolve, 450));
+  document.querySelector('#publishingStatus').textContent = message;
+  await new Promise(resolve => setTimeout(resolve, 180));
   overlay.hidden = true;
 }
 
@@ -1682,12 +1682,22 @@ async function submitComposer(draft = false) {
     embedUrl: document.querySelector('#takeEmbed').value.trim(), scheduledPublishedAt: scheduledValue ? new Date(scheduledValue).toISOString() : null
   };
   setComposerBusy(true, draft); beginPublishing(draft);
+  let createdPost = null;
   try {
-    await apiFetch('/api/posts', { method: 'POST', body: JSON.stringify(payload) });
+    const result = await apiFetch('/api/posts', { method: 'POST', body: JSON.stringify(payload) });
+    createdPost = result?.post || null;
     if (!draft) trackEvent('create_post', { content_type: payload.contentType, audience: payload.visibility, scheduled: Boolean(payload.scheduledPublishedAt) });
-    if (!draft) await Promise.all([hydratePosts(), hydrateSession(), hydrateLeaderboard(), hydrateTrending()]);
   } catch (error) { await finishPublishing(false); setComposerBusy(false); return showToast(error.message); }
-  await finishPublishing(true);
+  const createdId = String(createdPost?.id || createdPost?._id || '');
+  if (!draft && createdId) {
+    const optimisticPost = mapPost({
+      ...createdPost,
+      author: { id: currentUserId(), displayName: state.profile.displayName, handle: state.profile.handle, avatarUrl: state.profile.avatarUrl },
+      commentCount: 0
+    });
+    state.posts = [optimisticPost, ...state.posts.filter(post => post.id !== optimisticPost.id)];
+  }
+  await finishPublishing(true, draft ? 'Draft saved.' : scheduledValue ? 'Take scheduled.' : 'Your take is live.');
   persist();
   input.value = '';
   pendingMedia = []; renderMediaPreview(); document.querySelector('#gifUrlInput').value = ''; document.querySelector('#gifUrlInput').hidden = true;
@@ -1695,7 +1705,12 @@ async function submitComposer(draft = false) {
   document.querySelector('#composerForm').reset(); document.querySelector('#pollBuilder').hidden = true;
   composerRequestId = ''; setComposerBusy(false); updateComposerPreview();
   composer.close();
-  if (!draft) { navigate('home'); renderRoute(); }
+  if (!draft) {
+    navigate(createdId && !scheduledValue ? `take/${createdId}` : 'home');
+    Promise.allSettled([hydratePosts(), hydrateSession(), hydrateLeaderboard(), hydrateTrending()]).then(() => {
+      if (currentRoute() === 'take' || currentRoute() === 'home') renderRoute();
+    });
+  }
   showToast(draft ? 'Draft saved.' : scheduledValue ? 'Take scheduled.' : 'Your take is live.');
 }
 
