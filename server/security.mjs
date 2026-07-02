@@ -99,6 +99,7 @@ export const schemas = {
     }).required()
   }),
   post: Joi.object({
+    clientRequestId: Joi.string().guid({ version: ['uuidv4'] }).allow('').default(''),
     content: postText.allow('').default(''),
     category: Joi.string().valid('Movies', 'Music', 'Entertainment', 'Games', 'Life').required(),
     contentType: Joi.string().valid('text', 'image', 'video', 'gif', 'poll').default('text'),

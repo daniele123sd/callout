@@ -10,6 +10,7 @@ const mediaSchema = new mongoose.Schema({
 
 const postSchema = new mongoose.Schema({
   author: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, index: true },
+  clientRequestId: { type: String, default: '', maxlength: 80 },
   guild: { type: mongoose.Schema.Types.ObjectId, ref: 'Guild', default: null, index: true },
   content: { type: String, default: '', maxlength: 2000 },
   category: { type: String, enum: ['Movies', 'Music', 'Entertainment', 'Games', 'Life'], required: true },
@@ -41,5 +42,7 @@ const postSchema = new mongoose.Schema({
     createdAt: { type: Date, default: Date.now }
   }]
 }, { timestamps: true });
+
+postSchema.index({ author: 1, clientRequestId: 1 }, { unique: true, partialFilterExpression: { clientRequestId: { $type: 'string', $gt: '' } } });
 
 export const Post = mongoose.models.Post || mongoose.model('Post', postSchema);

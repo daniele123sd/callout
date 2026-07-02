@@ -156,9 +156,19 @@ export async function updateUser(id, values) {
 export async function createPost(authorId, values) {
   const publishedNow = !values.draft && (!values.scheduledPublishedAt || new Date(values.scheduledPublishedAt) <= new Date());
   if (connected) {
-    const post = await Post.create({ author: authorId, ...values });
+    let post;
+    try {
+      post = await Post.create({ author: authorId, ...values });
+    } catch (error) {
+      if (error?.code !== 11000 || !values.clientRequestId) throw error;
+      return Post.findOne({ author: authorId, clientRequestId: values.clientRequestId }).exec();
+    }
     if (publishedNow) await User.findByIdAndUpdate(authorId, { $inc: { points: 10, vibeScore: 10, postCount: 1 } });
     return post;
+  }
+  if (values.clientRequestId) {
+    const existing = [...memoryPosts.values()].find(post => post.author === String(authorId) && post.clientRequestId === values.clientRequestId);
+    if (existing) return existing;
   }
   const prepared = { ...values, poll: values.poll ? { ...values.poll, options: values.poll.options.map(option => ({ id: crypto.randomUUID(), text: option.text, voters: [] })) } : null };
   const post = { id: crypto.randomUUID(), author: String(authorId), alrightVotes: 0, cringeVotes: 0, impressions: 0, votes: [], createdAt: new Date(), updatedAt: new Date(), ...prepared };
@@ -170,6 +180,7 @@ export async function createPost(authorId, values) {
 
 const serializePost = (post, userId = '') => {
   const value = normalize(post);
+  delete value.clientRequestId;
   const votes = value.votes || [];
   const userVote = votes.find(vote => String(vote.user?._id || vote.user) === String(userId))?.value || null;
   const poll = value.poll?.options?.length ? { ...value.poll, options: value.poll.options.map(option => ({ id: String(option._id || option.id), text: option.text, votes: option.voters?.length || 0, voted: (option.voters || []).some(voter => String(voter) === String(userId)), voters: undefined })) } : null;

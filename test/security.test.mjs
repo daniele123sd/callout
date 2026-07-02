@@ -79,3 +79,11 @@ test('created posts can be loaded with their author', async () => {
   assert.equal(posts[0].content, 'Persistent take');
   assert.equal(posts[0].author.handle, user.handle);
 });
+
+test('repeated post request ids create only one take', async () => {
+  const user = await createUser({ email: `idempotent-${Date.now()}@example.com`, displayName: 'One Click', password: 'hashed' });
+  const clientRequestId = crypto.randomUUID();
+  const first = await createPost(user.id, { clientRequestId, content: 'Publish this once', category: 'Life' });
+  const repeated = await createPost(user.id, { clientRequestId, content: 'Publish this once', category: 'Life' });
+  assert.equal(repeated.id, first.id);
+});

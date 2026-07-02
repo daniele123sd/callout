@@ -108,6 +108,9 @@ let sessionUser = null;
 let pendingMedia = [];
 let messageStream = null;
 let sessionRefreshRequest = null;
+let composerSubmissionInFlight = false;
+let composerRequestId = '';
+let publishingTimer = null;
 
 function sanitizeInput(value) {
   const source = String(value || '');
@@ -1493,6 +1496,8 @@ document.querySelector('#profileButton').addEventListener('click', () => navigat
 document.querySelector('#mobileMenu').addEventListener('click', () => document.querySelector('#sidebar').classList.toggle('open'));
 function openComposerForUser() {
   if (!sessionUser) { navigate('auth'); return showToast('Create an account or sign in to post a take.'); }
+  if (!composerRequestId) composerRequestId = crypto.randomUUID();
+  updateComposerPreview();
   composer.showModal();
 }
 
@@ -1532,7 +1537,7 @@ function renderMediaPreview() {
   const preview = document.querySelector('#mediaPreview');
   preview.hidden = pendingMedia.length === 0;
   preview.innerHTML = pendingMedia.map((item, index) => `<figure>${item.type === 'video' ? `<video src="${escapeHtml(item.url)}" muted></video>` : `<img src="${escapeHtml(item.url)}" alt="" />`}<button type="button" data-remove-media="${index}" aria-label="Remove attachment">×</button>${item.type === 'image' ? `<button class="edit-media" type="button" data-edit-media="${index}">Crop</button>` : ''}<figcaption>${escapeHtml(item.type.toUpperCase())}</figcaption></figure>`).join('');
-  preview.querySelectorAll('[data-remove-media]').forEach(button => button.addEventListener('click', () => { pendingMedia.splice(Number(button.dataset.removeMedia), 1); renderMediaPreview(); }));
+  preview.querySelectorAll('[data-remove-media]').forEach(button => button.addEventListener('click', () => { pendingMedia.splice(Number(button.dataset.removeMedia), 1); renderMediaPreview(); updateComposerPreview(); }));
   preview.querySelectorAll('[data-edit-media]').forEach(button => button.addEventListener('click', () => openImageEditor(Number(button.dataset.editMedia))));
 }
 
@@ -1556,30 +1561,94 @@ function openImageEditor(index) {
   editorImage = new Image(); editorImage.onload = () => { drawImageEditor(); document.querySelector('#imageEditorDialog').showModal(); }; editorImage.src = pendingMedia[index].url;
 }
 
-async function handleTakeMedia(event) {
-  const files = [...event.target.files]; event.target.value = '';
+async function addTakeMedia(files) {
   if (!files.length) return;
   if (pendingMedia.length + files.length > 5) return showToast('A take can contain up to 5 media items.');
   try {
     const prepared = await Promise.all(files.map(file => file.type.startsWith('video/') ? prepareVideo(file) : prepareImage(file)));
     pendingMedia.push(...prepared);
-    renderMediaPreview();
+    renderMediaPreview(); updateComposerPreview();
   } catch (error) { renderMediaPreview(); showToast(error.message); }
+}
+
+async function handleTakeMedia(event) {
+  const files = [...event.target.files]; event.target.value = '';
+  await addTakeMedia(files);
+}
+
+function updateComposerPreview() {
+  const text = document.querySelector('#takeText')?.value.trim() || '';
+  const category = document.querySelector('#takeCategory')?.value || 'Movies';
+  const audience = document.querySelector('#takeAudience')?.selectedOptions?.[0]?.textContent || 'Public';
+  const profile = sessionUser ? state.profile : defaultState.profile;
+  document.querySelector('#previewName').textContent = profile.displayName || 'Callout member';
+  document.querySelector('#previewCategory').textContent = `${category} · now`;
+  document.querySelector('#previewAudience').textContent = audience;
+  document.querySelector('#previewContent').textContent = text || 'Your take will appear here as you type.';
+  const avatar = document.querySelector('#previewAvatar');
+  avatar.innerHTML = profile.avatarUrl ? `<img src="${escapeHtml(profile.avatarUrl)}" alt="" />` : escapeHtml((profile.displayName || 'C').charAt(0).toUpperCase());
+  const media = document.querySelector('#previewMedia');
+  media.hidden = pendingMedia.length === 0;
+  media.className = `preview-media preview-media-${Math.min(4, pendingMedia.length)}`;
+  media.innerHTML = pendingMedia.slice(0, 4).map(item => item.type === 'video' ? `<video src="${escapeHtml(item.url)}" muted></video>` : `<img src="${escapeHtml(item.url)}" alt="" />`).join('');
+}
+
+function setComposerBusy(busy, draft = false) {
+  composerSubmissionInFlight = busy;
+  const publish = document.querySelector('.publish-button');
+  const draftButton = document.querySelector('#saveDraft');
+  const closeButton = document.querySelector('[data-close-composer]');
+  publish.disabled = busy; draftButton.disabled = busy; closeButton.disabled = busy;
+  publish.textContent = busy && !draft ? 'Posting...' : 'Post Take';
+  draftButton.textContent = busy && draft ? 'Saving...' : 'Save draft';
+}
+
+function beginPublishing(draft = false) {
+  const overlay = document.querySelector('#publishingOverlay');
+  const progress = document.querySelector('#publishingProgress');
+  const status = document.querySelector('#publishingStatus');
+  document.querySelector('#publishingTitle').textContent = draft ? 'Saving your draft' : 'Publishing your take';
+  document.querySelector('#publishingEstimate').textContent = draft ? 'This normally takes only a few seconds.' : 'Usually ready in 2-8 seconds. Please keep this tab open.';
+  overlay.hidden = false; progress.style.width = '12%'; status.textContent = draft ? 'Preparing your draft...' : 'Securing your post...';
+  let value = 12; let tick = 0;
+  clearInterval(publishingTimer);
+  publishingTimer = setInterval(() => {
+    value = Math.min(90, value + Math.max(2, Math.round((92 - value) * .13)));
+    progress.style.width = `${value}%`; tick += 1;
+    status.textContent = tick > 5 ? 'Almost there...' : tick > 2 ? 'Updating the Callout feed...' : 'Uploading your content...';
+  }, 650);
+}
+
+async function finishPublishing(success) {
+  clearInterval(publishingTimer); publishingTimer = null;
+  const overlay = document.querySelector('#publishingOverlay');
+  if (!success) { overlay.hidden = true; return; }
+  document.querySelector('#publishingProgress').style.width = '100%';
+  document.querySelector('#publishingStatus').textContent = 'Your take is live.';
+  await new Promise(resolve => setTimeout(resolve, 450));
+  overlay.hidden = true;
 }
 
 document.querySelector('#openComposer').addEventListener('click', openComposerForUser);
 document.querySelector('[data-close-composer]').addEventListener('click', () => composer.close());
 document.querySelector('#takeMedia').addEventListener('change', handleTakeMedia);
+const composerDropZone = document.querySelector('#composerDropZone');
+['dragenter', 'dragover'].forEach(type => composerDropZone.addEventListener(type, event => { event.preventDefault(); if (!composerSubmissionInFlight) composerDropZone.classList.add('is-dragging'); }));
+['dragleave', 'drop'].forEach(type => composerDropZone.addEventListener(type, event => { event.preventDefault(); composerDropZone.classList.remove('is-dragging'); }));
+composerDropZone.addEventListener('drop', event => { if (!composerSubmissionInFlight) addTakeMedia([...event.dataTransfer.files].filter(file => file.type.startsWith('image/') || file.type.startsWith('video/'))); });
+composerDropZone.addEventListener('keydown', event => { if ((event.key === 'Enter' || event.key === ' ') && event.target === composerDropZone) { event.preventDefault(); document.querySelector('#takeMedia').click(); } });
 document.querySelector('[data-close-image-editor]').addEventListener('click', () => document.querySelector('#imageEditorDialog').close());
 document.querySelector('#imageZoom').addEventListener('input', drawImageEditor);
 document.querySelector('#imageEditorCanvas').addEventListener('pointerdown', event => { editorDrag = { x: event.clientX, y: event.clientY }; event.currentTarget.setPointerCapture(event.pointerId); });
 document.querySelector('#imageEditorCanvas').addEventListener('pointermove', event => { if (!editorDrag) return; editorOffset.x += event.clientX - editorDrag.x; editorOffset.y += event.clientY - editorDrag.y; editorDrag = { x: event.clientX, y: event.clientY }; drawImageEditor(); });
 document.querySelector('#imageEditorCanvas').addEventListener('pointerup', () => { editorDrag = null; });
-document.querySelector('#imageEditorForm').addEventListener('submit', event => { event.preventDefault(); if (editingMediaIndex < 0) return; const source = document.querySelector('#imageEditorCanvas'); const output = document.createElement('canvas'); output.width = 1200; output.height = 1200; output.getContext('2d').drawImage(source, 0, 0, output.width, output.height); pendingMedia[editingMediaIndex] = { ...pendingMedia[editingMediaIndex], url: output.toDataURL('image/webp', .82), aspectRatio: 1 }; document.querySelector('#imageEditorDialog').close(); renderMediaPreview(); showToast('Crop applied.'); });
+document.querySelector('#imageEditorForm').addEventListener('submit', event => { event.preventDefault(); if (editingMediaIndex < 0) return; const source = document.querySelector('#imageEditorCanvas'); const output = document.createElement('canvas'); output.width = 1200; output.height = 1200; output.getContext('2d').drawImage(source, 0, 0, output.width, output.height); pendingMedia[editingMediaIndex] = { ...pendingMedia[editingMediaIndex], url: output.toDataURL('image/webp', .82), aspectRatio: 1 }; document.querySelector('#imageEditorDialog').close(); renderMediaPreview(); updateComposerPreview(); showToast('Crop applied.'); });
 document.querySelector('#addGifUrl').addEventListener('click', () => { const input = document.querySelector('#gifUrlInput'); input.hidden = !input.hidden; if (!input.hidden) input.focus(); });
 document.querySelectorAll('#postEmojiTray button').forEach(button => button.addEventListener('click', () => { const input = document.querySelector('#takeText'); input.value += button.textContent; input.dispatchEvent(new Event('input')); input.focus(); }));
 document.querySelector('[data-close-guild]').addEventListener('click', () => guildComposer.close());
-document.querySelector('#takeText').addEventListener('input', event => document.querySelector('#charCount').textContent = `${event.target.value.length} / 2000`);
+document.querySelector('#takeText').addEventListener('input', event => { document.querySelector('#charCount').textContent = `${event.target.value.length} / 2000`; updateComposerPreview(); });
+document.querySelector('#takeCategory').addEventListener('change', updateComposerPreview);
+document.querySelector('#takeAudience').addEventListener('change', updateComposerPreview);
 document.querySelectorAll('[data-format]').forEach(button => button.addEventListener('click', () => {
   const input = document.querySelector('#takeText');
   const wrappers = { bold: ['**', '**'], italic: ['*', '*'], spoiler: ['||', '||'] };
@@ -1590,6 +1659,7 @@ document.querySelector('#togglePoll').addEventListener('click', () => { const bu
 document.querySelector('#addPollOption').addEventListener('click', () => { const options = document.querySelector('#pollOptions'); if (options.children.length >= 6) return showToast('Polls support up to 6 choices.'); const input = document.createElement('input'); input.maxLength = 100; input.placeholder = `Option ${options.children.length + 1}`; options.appendChild(input); });
 
 async function submitComposer(draft = false) {
+  if (composerSubmissionInFlight) return;
   if (!sessionUser) { composer.close(); navigate('auth'); return showToast('Sign in to publish a take.'); }
   const input = document.querySelector('#takeText');
   const text = sanitizeInput(input.value);
@@ -1605,22 +1675,25 @@ async function submitComposer(draft = false) {
   if (media.length > 5) return showToast('A take can contain up to 5 media items.');
   const scheduledValue = document.querySelector('#takeSchedule').value;
   const payload = {
-    content: text, category, media, draft, poll, contentType: poll ? 'poll' : media[0]?.type || 'text',
+    clientRequestId: composerRequestId || (composerRequestId = crypto.randomUUID()), content: text, category, media, draft, poll, contentType: poll ? 'poll' : media[0]?.type || 'text',
     visibility: document.querySelector('#takeAudience').value,
     topics: document.querySelector('#takeTopics').value.split(',').map(value => sanitizeInput(value)).filter(Boolean).slice(0, 5),
     contentWarning: sanitizeInput(document.querySelector('#takeWarning').value), reactionSet: document.querySelector('#takeReactionSet').value,
     embedUrl: document.querySelector('#takeEmbed').value.trim(), scheduledPublishedAt: scheduledValue ? new Date(scheduledValue).toISOString() : null
   };
+  setComposerBusy(true, draft); beginPublishing(draft);
   try {
     await apiFetch('/api/posts', { method: 'POST', body: JSON.stringify(payload) });
     if (!draft) trackEvent('create_post', { content_type: payload.contentType, audience: payload.visibility, scheduled: Boolean(payload.scheduledPublishedAt) });
     if (!draft) await Promise.all([hydratePosts(), hydrateSession(), hydrateLeaderboard(), hydrateTrending()]);
-  } catch (error) { return showToast(error.message); }
+  } catch (error) { await finishPublishing(false); setComposerBusy(false); return showToast(error.message); }
+  await finishPublishing(true);
   persist();
   input.value = '';
   pendingMedia = []; renderMediaPreview(); document.querySelector('#gifUrlInput').value = ''; document.querySelector('#gifUrlInput').hidden = true;
   document.querySelector('#charCount').textContent = '0 / 2000';
   document.querySelector('#composerForm').reset(); document.querySelector('#pollBuilder').hidden = true;
+  composerRequestId = ''; setComposerBusy(false); updateComposerPreview();
   composer.close();
   if (!draft) { navigate('home'); renderRoute(); }
   showToast(draft ? 'Draft saved.' : scheduledValue ? 'Take scheduled.' : 'Your take is live.');
