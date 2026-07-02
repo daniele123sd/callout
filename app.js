@@ -400,7 +400,7 @@ function mapPost(post) {
     poll: post.poll || null, topics: post.topics || [], contentWarning: post.contentWarning || '', embedUrl: post.embedUrl || '', reactionSet: post.reactionSet || 'classic', visibility: post.visibility || 'public',
     alrightVotes: Number(post.alrightVotes || 0), cringeVotes: Number(post.cringeVotes || 0), impressions: Number(post.impressions || 0),
     userVote: post.userVote || null, commentCount: Number(post.commentCount || 0), comments: Array.isArray(post.comments) ? post.comments : [],
-    createdAt: new Date(post.createdAt || Date.now()).getTime()
+    createdAt: new Date(post.createdAt || Date.now()).getTime(), publishing: Boolean(post.publishing)
   };
 }
 
@@ -527,7 +527,8 @@ function postTemplate(post, detail = false) {
   const cringePercent = 100 - alrightPercent;
   const isSaved = state.savedPostIds.includes(post.id);
   const commentCount = post.comments?.length ? countComments(post.comments) : Number(post.commentCount || 0);
-  return `<article class="take-card ${detail ? 'take-card-detail' : 'take-card-feed'}" data-post-id="${post.id}">
+  return `<article class="take-card ${detail ? 'take-card-detail' : 'take-card-feed'} ${post.publishing ? 'take-publishing' : ''}" data-post-id="${post.id}">
+    ${post.publishing ? '<div class="take-publishing-status"><span></span><strong>Publishing</strong><small>Your take is being securely saved in the background.</small></div>' : ''}
     <div class="take-top">
       ${postAvatarMarkup(post)}
       <div class="take-content" ${detail ? '' : `data-open-take="${post.id}" role="link" tabindex="0" aria-label="Open take: ${escapeHtml(post.text)}"`}>
@@ -1346,7 +1347,7 @@ function activeTake() {
 }
 
 async function hydrateTake(post) {
-  if (!post?.databaseId) return;
+  if (!post?.databaseId || post.publishing) return;
   try {
     await apiFetch(`/api/posts/${post.databaseId}/view`, { method: 'POST' }, false);
     const payload = await apiFetch(`/api/posts/${post.databaseId}/comments`, {}, false);
@@ -1681,13 +1682,30 @@ async function submitComposer(draft = false) {
     contentWarning: sanitizeInput(document.querySelector('#takeWarning').value), reactionSet: document.querySelector('#takeReactionSet').value,
     embedUrl: document.querySelector('#takeEmbed').value.trim(), scheduledPublishedAt: scheduledValue ? new Date(scheduledValue).toISOString() : null
   };
-  setComposerBusy(true, draft); beginPublishing(draft);
+  const instantPublish = !draft && !scheduledValue;
+  const temporaryId = instantPublish ? `pending-${composerRequestId}` : '';
+  if (instantPublish) {
+    const pendingPost = mapPost({
+      ...payload, id: temporaryId, publishing: true, createdAt: new Date().toISOString(), commentCount: 0,
+      author: { id: currentUserId(), displayName: state.profile.displayName, handle: state.profile.handle, avatarUrl: state.profile.avatarUrl }
+    });
+    state.posts = [pendingPost, ...state.posts.filter(post => post.id !== temporaryId)];
+    setComposerBusy(true, false); composer.close(); navigate(`take/${temporaryId}`);
+    showToast('Publishing in the background...');
+  } else {
+    setComposerBusy(true, draft); beginPublishing(draft);
+  }
   let createdPost = null;
   try {
     const result = await apiFetch('/api/posts', { method: 'POST', body: JSON.stringify(payload) });
     createdPost = result?.post || null;
     if (!draft) trackEvent('create_post', { content_type: payload.contentType, audience: payload.visibility, scheduled: Boolean(payload.scheduledPublishedAt) });
-  } catch (error) { await finishPublishing(false); setComposerBusy(false); return showToast(error.message); }
+  } catch (error) {
+    if (instantPublish) {
+      state.posts = state.posts.filter(post => post.id !== temporaryId); persist(); navigate('home'); setComposerBusy(false); composer.showModal(); updateComposerPreview();
+    } else await finishPublishing(false);
+    setComposerBusy(false); return showToast(`Publishing failed: ${error.message}`);
+  }
   const createdId = String(createdPost?.id || createdPost?._id || '');
   if (!draft && createdId) {
     const optimisticPost = mapPost({
@@ -1695,9 +1713,9 @@ async function submitComposer(draft = false) {
       author: { id: currentUserId(), displayName: state.profile.displayName, handle: state.profile.handle, avatarUrl: state.profile.avatarUrl },
       commentCount: 0
     });
-    state.posts = [optimisticPost, ...state.posts.filter(post => post.id !== optimisticPost.id)];
+    state.posts = [optimisticPost, ...state.posts.filter(post => post.id !== optimisticPost.id && post.id !== temporaryId)];
   }
-  await finishPublishing(true, draft ? 'Draft saved.' : scheduledValue ? 'Take scheduled.' : 'Your take is live.');
+  if (!instantPublish) await finishPublishing(true, draft ? 'Draft saved.' : scheduledValue ? 'Take scheduled.' : 'Your take is live.');
   persist();
   input.value = '';
   pendingMedia = []; renderMediaPreview(); document.querySelector('#gifUrlInput').value = ''; document.querySelector('#gifUrlInput').hidden = true;
@@ -1706,7 +1724,9 @@ async function submitComposer(draft = false) {
   composerRequestId = ''; setComposerBusy(false); updateComposerPreview();
   composer.close();
   if (!draft) {
-    navigate(createdId && !scheduledValue ? `take/${createdId}` : 'home');
+    if (instantPublish && createdId && decodeURIComponent(location.hash.split('/')[1] || '') === temporaryId) {
+      history.replaceState(null, '', `#take/${encodeURIComponent(createdId)}`); renderRoute();
+    } else navigate(createdId && !scheduledValue ? `take/${createdId}` : 'home');
     Promise.allSettled([hydratePosts(), hydrateSession(), hydrateLeaderboard(), hydrateTrending()]).then(() => {
       if (currentRoute() === 'take' || currentRoute() === 'home') renderRoute();
     });
