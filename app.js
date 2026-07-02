@@ -88,6 +88,7 @@ const state = {
   ownProfileData: null,
   profileTab: 'posts',
   analytics: null,
+  botAutomation: null,
   analyticsError: '',
   analyticsDays: 28,
   notificationFilter: 'all'
@@ -367,7 +368,7 @@ function mapPost(post) {
     id, databaseId: id,
     authorId: String(post.author?.id || post.author?._id || post.author || ''),
     authorHandle: post.author?.handle || '@member', authorName: post.author?.displayName || 'Callout member',
-    authorAvatarUrl: post.author?.avatarUrl || '', text: String(post.content || ''), category: post.category, media: Array.isArray(post.media) ? post.media : [],
+    authorAvatarUrl: post.author?.avatarUrl || '', authorAutomated: Boolean(post.author?.isAutomated), authorPersona: post.author?.automationPersona || '', text: String(post.content || ''), category: post.category, media: Array.isArray(post.media) ? post.media : [],
     poll: post.poll || null, topics: post.topics || [], contentWarning: post.contentWarning || '', embedUrl: post.embedUrl || '', reactionSet: post.reactionSet || 'classic', visibility: post.visibility || 'public',
     alrightVotes: Number(post.alrightVotes || 0), cringeVotes: Number(post.cringeVotes || 0), impressions: Number(post.impressions || 0),
     userVote: post.userVote || null, commentCount: Number(post.commentCount || 0), comments: Array.isArray(post.comments) ? post.comments : [],
@@ -421,10 +422,11 @@ async function hydrateOwnProfile() {
   try { state.ownProfileData = (await apiFetch(`/api/users/${sessionUser.id}`, {}, false)).user; } catch (error) { state.ownProfileData = null; console.error(error); }
 }
 async function hydrateAnalytics() {
-  if (!sessionUser?.isAdmin) { state.analytics = null; state.analyticsError = ''; return; }
+  if (!sessionUser?.isAdmin) { state.analytics = null; state.botAutomation = null; state.analyticsError = ''; return; }
   try {
     state.analyticsError = '';
-    state.analytics = (await apiFetch(`/api/analytics/summary?days=${state.analyticsDays}`)).analytics;
+    const [analytics, automation] = await Promise.all([apiFetch(`/api/analytics/summary?days=${state.analyticsDays}`), apiFetch('/api/admin/bots')]);
+    state.analytics = analytics.analytics; state.botAutomation = automation;
   } catch (error) { state.analytics = null; state.analyticsError = error.message; }
 }
 async function hydrateAccountData() {
@@ -501,7 +503,7 @@ function postTemplate(post, detail = false) {
     <div class="take-top">
       ${postAvatarMarkup(post)}
       <div class="take-content" ${detail ? '' : `data-open-take="${post.id}" role="link" tabindex="0" aria-label="Open take: ${escapeHtml(post.text)}"`}>
-        <div class="take-byline"><strong>${escapeHtml(post.authorHandle || '@member')}</strong><small>${timeLabel(post.createdAt || Date.now())} in ${escapeHtml(post.category)}</small></div>
+        <div class="take-byline"><strong>${escapeHtml(post.authorHandle || '@member')}</strong>${post.authorAutomated ? '<span class="automation-label" title="This account is operated automatically by Callout">AUTOMATED</span>' : ''}<small>${timeLabel(post.createdAt || Date.now())} in ${escapeHtml(post.category)}</small></div>
         ${post.contentWarning ? `<details class="content-warning"><summary>Content warning: ${escapeHtml(post.contentWarning)}</summary><h2>${formatPostContent(post.text)}</h2></details>` : `<h2>${formatPostContent(post.text)}</h2>`}
         ${post.topics?.length ? `<div class="post-topics">${post.topics.map(topic => `<span>${escapeHtml(topic)}</span>`).join('')}</div>` : ''}
       </div>
@@ -559,7 +561,7 @@ function commentNode(comment, depth = 0) {
   const avatar = typeof author === 'object' && author.avatarUrl ? `<img src="${escapeHtml(author.avatarUrl)}" alt="" />` : escapeHtml(authorName.charAt(0).toUpperCase());
   return `<article class="reddit-comment" style="--depth:${Math.min(depth, 5)}" data-comment-id="${comment.id}">
     <div class="comment-rail"><span class="avatar comment-avatar">${avatar}</span><i></i></div>
-    <div class="comment-content"><div class="comment-author"><strong>${escapeHtml(authorName)}</strong><span>•</span><time>${timeLabel(comment.createdAt)}</time></div>
+    <div class="comment-content"><div class="comment-author"><strong>${escapeHtml(authorName)}</strong>${typeof author === 'object' && author.isAutomated ? '<span class="automation-label">AUTOMATED</span>' : ''}<span>•</span><time>${timeLabel(comment.createdAt)}</time></div>
       <p>${escapeHtml(comment.text)}</p>
       ${comment.gifUrl ? `<img class="comment-gif" src="${escapeHtml(comment.gifUrl)}" alt="GIF attached to Take" loading="lazy" />` : ''}
       <div class="reddit-actions"><button type="button" data-upvote-comment="${comment.id}" class="${comment.upvoted ? 'active' : ''}">↑ ${comment.votes || 0}</button><button type="button" data-reply-comment="${comment.id}">↩ Reply</button><button type="button">•••</button></div>
@@ -638,7 +640,7 @@ function guildsView() {
 }
 
 function leaderboardsView() {
-  const rows = state.leaderboard.map(user => `<button type="button" data-leader-user="${user.id}" class="ranking-row ${String(user.id) === String(sessionUser?.id) ? 'is-you' : ''}"><strong>#${user.rank}</strong><span class="ranking-user">${user.avatarUrl ? `<span class="avatar"><img src="${escapeHtml(user.avatarUrl)}" alt="" /></span>` : `<span class="avatar">${escapeHtml((user.displayName || 'C').charAt(0))}</span>`}<span><b>${escapeHtml(user.displayName)}${String(user.id) === String(sessionUser?.id) ? ' (You)' : ''}</b><small>${escapeHtml(user.handle || '')}</small></span></span><b>${Number(user.cringeScore || 0).toLocaleString()} cringe</b><small>${escapeHtml(user.cringeBadge?.icon || '◇')} ${escapeHtml(user.cringeBadge?.name || 'Fresh Face')}</small></button>`).join('');
+  const rows = state.leaderboard.map(user => `<button type="button" data-leader-user="${user.id}" class="ranking-row ${String(user.id) === String(sessionUser?.id) ? 'is-you' : ''}"><strong>#${user.rank}</strong><span class="ranking-user">${user.avatarUrl ? `<span class="avatar"><img src="${escapeHtml(user.avatarUrl)}" alt="" /></span>` : `<span class="avatar">${escapeHtml((user.displayName || 'C').charAt(0))}</span>`}<span><b>${escapeHtml(user.displayName)}${String(user.id) === String(sessionUser?.id) ? ' (You)' : ''}</b><small>${escapeHtml(user.handle || '')}${user.isAutomated ? ' · AUTOMATED' : ''}</small></span></span><b>${Number(user.cringeScore || 0).toLocaleString()} cringe</b><small>${escapeHtml(user.cringeBadge?.icon || '◇')} ${escapeHtml(user.cringeBadge?.name || 'Fresh Face')}</small></button>`).join('');
   return `${pageHeader('GLOBAL CRINGE RANK', 'Leaderboard', 'A competitive ranking based only on Cringe votes received on your posts.')}
     <section class="ranking-card">
       <div class="ranking-head"><span>RANK</span><span>USER</span><span>CRINGE</span><span>BADGE</span></div>
@@ -794,7 +796,7 @@ function publicUserView() {
   if (!user || String(user.id) !== id) return `${pageHeader('PROFILE', 'Loading profile…', 'Fetching the latest public account details.')}`;
   const badges = user.vibeBadges || [];
   const friendButton = user.requestIncoming ? `<button class="quiet-action" type="button" data-accept-friend="${user.friendshipId}">Accept friend</button>` : `<button class="quiet-action" type="button" data-friend-user="${user.id}" ${['accepted','pending'].includes(user.friendship) ? 'disabled' : ''}>${user.friendship === 'accepted' ? 'Friends ✓' : user.friendship === 'pending' ? 'Request pending' : 'Add friend'}</button>`;
-  return `<section class="public-user-card profile-bg-${escapeHtml(user.profileBackground || 'clean')} profile-effect-${escapeHtml(user.profileEffect || 'none')} aura-${escapeHtml(resolvedAura(user))}" style="--profile-accent:${escapeHtml(user.themeColor || '#ff4713')}"><div class="public-user-banner">${user.bannerUrl ? `<img src="${escapeHtml(user.bannerUrl)}" alt="" />` : ''}</div><div class="public-user-main"><span class="avatar avatar-frame-${escapeHtml(user.avatarFrame || 'none')}">${user.avatarUrl ? `<img src="${escapeHtml(user.avatarUrl)}" alt="" />` : escapeHtml((user.displayName || 'C').charAt(0))}</span><div><h1>${escapeHtml(user.displayName)}</h1><p>${escapeHtml(user.handle || '')}${user.pronouns ? ` · ${escapeHtml(user.pronouns)}` : ''}</p><small>✦ ${Number(user.vibeScore || 0).toLocaleString()} Vibe · ${badges.length} badges</small></div><div class="public-user-actions">${user.friendship === 'self' ? '<button class="quiet-action" data-open-settings>Edit profile</button>' : `${friendButton}<button class="primary-action" type="button" data-message-user="${user.id}">Message</button>`}</div></div>${profileTabs(user)}${profileTabPanel(user)}</section>`;
+  return `<section class="public-user-card profile-bg-${escapeHtml(user.profileBackground || 'clean')} profile-effect-${escapeHtml(user.profileEffect || 'none')} aura-${escapeHtml(resolvedAura(user))}" style="--profile-accent:${escapeHtml(user.themeColor || '#ff4713')}"><div class="public-user-banner">${user.bannerUrl ? `<img src="${escapeHtml(user.bannerUrl)}" alt="" />` : ''}</div><div class="public-user-main"><span class="avatar avatar-frame-${escapeHtml(user.avatarFrame || 'none')}">${user.avatarUrl ? `<img src="${escapeHtml(user.avatarUrl)}" alt="" />` : escapeHtml((user.displayName || 'C').charAt(0))}</span><div><h1>${escapeHtml(user.displayName)}${user.isAutomated ? ' <span class="automation-label">AUTOMATED</span>' : ''}</h1><p>${escapeHtml(user.handle || '')}${user.pronouns ? ` · ${escapeHtml(user.pronouns)}` : ''}</p><small>${user.isAutomated ? `${escapeHtml(user.automationPersona || 'Callout automation')} · Clearly labelled automated account` : `✦ ${Number(user.vibeScore || 0).toLocaleString()} Vibe · ${badges.length} badges`}</small></div><div class="public-user-actions">${user.isAutomated ? '<span class="automation-notice">Operated by Callout</span>' : user.friendship === 'self' ? '<button class="quiet-action" data-open-settings>Edit profile</button>' : `${friendButton}<button class="primary-action" type="button" data-message-user="${user.id}">Message</button>`}</div></div>${profileTabs(user)}${profileTabPanel(user)}</section>`;
 }
 
 function settingsView() {
@@ -862,10 +864,12 @@ function analyticsView() {
   const adsenseSection = adsense.connected
     ? `<section class="adsense-analytics"><header><div><span class="section-kicker">MONETISATION</span><h2>AdSense earnings</h2></div><span class="adsense-status ${adsense.siteStatus === 'READY' ? 'ready' : 'pending'}">${escapeHtml(siteStatus)}</span></header><div class="adsense-metrics"><article><small>Estimated earnings</small><strong>${money(adsense.summary?.estimatedEarnings)}</strong><span>${state.analyticsDays}-day estimate</span></article><article><small>Ad impressions</small><strong>${Number(adsense.summary?.impressions || 0).toLocaleString()}</strong><span>Paid ad displays</span></article><article><small>Ad clicks</small><strong>${Number(adsense.summary?.clicks || 0).toLocaleString()}</strong><span>Valid clicks</span></article><article><small>Impression RPM</small><strong>${money(adsense.summary?.impressionsRpm)}</strong><span>Revenue per 1,000 impressions</span></article></div><p>Figures come directly from Google AdSense and may be adjusted after invalid-traffic checks.</p></section>`
     : `<section class="adsense-analytics adsense-connect"><header><div><span class="section-kicker">MONETISATION</span><h2>AdSense earnings</h2></div><span class="adsense-status pending">${escapeHtml(siteStatus)}</span></header><div><strong>${adsense.error ? 'AdSense needs to be reconnected' : 'Google is reviewing Callout'}</strong><p>${adsense.error ? escapeHtml(adsense.error) : 'Paid ads cannot appear until Google changes the site from Getting ready to Ready. Connect the read-only reporting API now so earnings will appear here automatically after approval.'}</p><a class="primary-action" href="/api/admin/reporting/connect">Connect AdSense reporting</a></div></section>`;
+  const automation = state.botAutomation || { bots: [], intervalMinutes: 360 };
+  const botsSection = `<section class="bot-admin"><header><div><span class="section-kicker">COMMUNITY AUTOMATION</span><h2>Automated hosts</h2><p>Clearly labelled accounts using original curated opinions. One action at most every ${Number(automation.intervalMinutes)} minutes.</p></div><button class="primary-action" type="button" data-run-bots>Run one action</button></header><div>${automation.bots.map(bot => `<article><span class="avatar">${escapeHtml((bot.displayName || 'B').charAt(0))}</span><div><strong>${escapeHtml(bot.displayName)}</strong><small>${escapeHtml(bot.handle)} · ${escapeHtml(bot.persona || '')}</small><span>${bot.lastRunAt ? `Last active ${timeLabel(new Date(bot.lastRunAt).getTime())}` : 'Ready for first activity'} · ${Number(bot.postCount || 0)} posts</span></div><label class="bot-toggle"><input type="checkbox" data-toggle-bot="${bot.id}" ${bot.enabled ? 'checked' : ''} /><i></i><span>${bot.enabled ? 'Active' : 'Paused'}</span></label></article>`).join('') || '<p>Automated accounts are being initialized.</p>'}</div></section>`;
   return `${pageHeader('PRIVATE DASHBOARD', 'Analytics', 'Traffic, acquisition, and performance data from Google Analytics and AdSense.', `<button class="quiet-action" type="button" data-refresh-analytics>Refresh</button>`)}
     <div class="analytics-toolbar"><div class="analytics-ranges">${[7,28,90].map(days => `<button type="button" data-analytics-days="${days}" class="${state.analyticsDays === days ? 'active' : ''}">${days} days</button>`).join('')}</div><span><i></i><strong>${Number(analytics.realtime?.activeUsers || 0)}</strong> active now</span></div>
     <section class="analytics-cards">${cards.map(([label,value,note]) => `<article><small>${label}</small><strong>${typeof value === 'number' ? value.toLocaleString() : value}</strong><span>${note}</span></article>`).join('')}</section>
-    ${adsenseSection}
+    ${adsenseSection}${botsSection}
     <section class="analytics-chart"><header><div><span class="section-kicker">TRAFFIC TREND</span><h2>Daily page views</h2></div><small>Updated ${new Date(analytics.generatedAt).toLocaleString()}</small></header><div class="analytics-bars">${(analytics.daily || []).map(item => `<div title="${item.date}: ${item.screenPageViews} views"><span style="height:${Math.max(4, item.screenPageViews / maxViews * 100)}%"></span><small>${item.date.slice(5)}</small></div>`).join('') || '<p>No daily traffic yet.</p>'}</div></section>
     <section class="analytics-tables"><article><header><span class="section-kicker">CONTENT</span><h2>Top pages</h2></header><div class="analytics-table-scroll"><table><thead><tr><th>#</th><th>Path</th><th>Views</th><th>Users</th></tr></thead><tbody>${table(analytics.pages || [], 'pages')}</tbody></table></div></article><article><header><span class="section-kicker">ACQUISITION</span><h2>Traffic channels</h2></header><div class="analytics-table-scroll"><table><thead><tr><th>#</th><th>Channel</th><th>Sessions</th><th>Users</th></tr></thead><tbody>${table(analytics.channels || [], 'channels')}</tbody></table></div></article></section>`;
 }
@@ -968,6 +972,15 @@ function bindViewInteractions(route) {
   document.querySelector('[data-go-auth]')?.addEventListener('click', () => navigate('auth'));
   document.querySelectorAll('[data-analytics-days]').forEach(button => button.addEventListener('click', async () => { state.analyticsDays = Number(button.dataset.analyticsDays); state.analytics = null; renderRoute(); await hydrateAnalytics(); renderRoute(); }));
   document.querySelector('[data-refresh-analytics]')?.addEventListener('click', async () => { state.analytics = null; state.analyticsError = ''; renderRoute(); await hydrateAnalytics(); renderRoute(); });
+  document.querySelector('[data-run-bots]')?.addEventListener('click', async event => {
+    event.currentTarget.disabled = true;
+    try { const payload = await apiFetch('/api/admin/bots/run', { method: 'POST' }); state.botAutomation.bots = payload.bots; await Promise.all([hydratePosts(), hydrateTrending()]); renderRoute(); showToast(`${payload.result.bot || 'Automation'} completed a ${payload.result.action} action.`); }
+    catch (error) { showToast(error.message); event.currentTarget.disabled = false; }
+  });
+  document.querySelectorAll('[data-toggle-bot]').forEach(input => input.addEventListener('change', async () => {
+    try { await apiFetch(`/api/admin/bots/${input.dataset.toggleBot}`, { method: 'PATCH', body: JSON.stringify({ enabled: input.checked }) }); state.botAutomation = await apiFetch('/api/admin/bots'); renderRoute(); showToast(input.checked ? 'Automated account activated.' : 'Automated account paused.'); }
+    catch (error) { input.checked = !input.checked; showToast(error.message); }
+  }));
   document.querySelectorAll('[data-layout-move]').forEach(button => button.addEventListener('click', () => {
     const order = [...document.querySelectorAll('[data-layout-item]')].map(item => item.dataset.layoutItem);
     const index = Number(button.dataset.layoutMove); const next = index + Number(button.dataset.direction);

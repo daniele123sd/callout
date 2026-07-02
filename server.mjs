@@ -12,6 +12,7 @@ import { Strategy as GoogleStrategy } from 'passport-google-oauth20';
 import { featureFlags } from './server/featureFlags.mjs';
 import { analyticsDataConfigured, getAnalyticsDashboard } from './server/analytics.mjs';
 import { adsenseOAuthConfigured, completeAdsenseAuthorization, createAdsenseAuthorizationUrl, getAdsenseDashboard } from './server/adsense.mjs';
+import { botStatus, initializeBots, runBotCycle, setBotEnabled } from './server/bots.mjs';
 import {
   ACCESS_COOKIE, REFRESH_COOKIE, clearAuthCookies, comparePassword, createPasswordResetToken,
   hashPassword, optionalAuth, requireAuth, schemas, setAuthCookies, signAccessToken, signRefreshToken,
@@ -117,6 +118,20 @@ app.get('/api/health', (_req, res) => {
   res.status(healthy ? 200 : 503).json({ ok: healthy, database: databaseMode(), googleOAuth: googleConfigured, analyticsTracking: /^G-[A-Z0-9]+$/i.test(process.env.GA_MEASUREMENT_ID || ''), analyticsDashboard: analyticsDataConfigured(), ads: /^ca-pub-\d{10,}$/.test(process.env.ADSENSE_CLIENT_ID || '') });
 });
 app.get('/api/features', (_req, res) => res.json({ features: featureFlags }));
+
+app.get('/api/admin/bots', requireAuth, requireAdmin, async (_req, res, next) => {
+  try { res.json({ bots: await botStatus(), intervalMinutes: Math.max(60, Number(process.env.BOT_INTERVAL_MINUTES || 360)) }); } catch (error) { next(error); }
+});
+app.post('/api/admin/bots/run', requireAuth, requireAdmin, async (_req, res, next) => {
+  try { res.json({ result: await runBotCycle({ force: true }), bots: await botStatus() }); } catch (error) { next(error); }
+});
+app.patch('/api/admin/bots/:id', requireAuth, requireAdmin, async (req, res, next) => {
+  try {
+    const bot = await setBotEnabled(req.params.id, req.body.enabled);
+    if (!bot) return res.status(404).json({ error: 'Automated account not found.' });
+    res.json({ bot: publicUser(bot) });
+  } catch (error) { next(error); }
+});
 
 app.post('/api/auth/signup', authLimiter, validate(schemas.signup), async (req, res, next) => {
   try {
@@ -479,6 +494,11 @@ async function startServer() {
   app.listen(port, () => {
     console.log(`Callout is running at http://localhost:${port} (${databaseMode()} store)`);
     if (process.env.NODE_ENV !== 'production') connectDatabase().catch(error => console.warn(`Database connection failed: ${error.message}`));
+    if (process.env.BOTS_ENABLED !== 'false') {
+      initializeBots().then(result => console.log(`Automated accounts ready (${result.seededPosts} initial posts created).`)).catch(error => console.error(`Bot initialization failed: ${error.message}`));
+      const botTimer = setInterval(() => runBotCycle().catch(error => console.error(`Bot cycle failed: ${error.message}`)), 30 * 60_000);
+      botTimer.unref();
+    }
   });
 }
 
