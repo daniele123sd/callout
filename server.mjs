@@ -182,7 +182,9 @@ app.post('/api/auth/refresh', async (req, res) => {
     if (payload.type !== 'refresh') throw new Error('Invalid token type');
     const user = await findUserById(payload.sub, true);
     if (!user?.refreshTokenHash || !(await bcrypt.compare(token, user.refreshTokenHash))) throw new Error('Refresh token revoked');
-    await establishSession(res, user);
+    // Keep the existing trusted-device token during renewal. Rotating it here
+    // lets simultaneous requests/tabs revoke each other and causes surprise logouts.
+    setAuthCookies(res, signAccessToken(payload.sub), token);
     res.json({ user: accountPayload(user) });
   } catch {
     clearAuthCookies(res);

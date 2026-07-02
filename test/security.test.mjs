@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import bcrypt from 'bcrypt';
+import jwt from 'jsonwebtoken';
 import { BCRYPT_ROUNDS, hashPassword, sanitizePlainText, schemas, signAccessToken, signRefreshToken, verifyRefreshToken } from '../server/security.mjs';
 import { createPost, createUser, listPosts } from '../server/repository.mjs';
 
@@ -47,6 +48,8 @@ test('access and refresh JWTs use distinct token types', () => {
   const refresh = signRefreshToken('test-user');
   assert.notEqual(access, refresh);
   assert.equal(verifyRefreshToken(refresh).type, 'refresh');
+  const refreshPayload = jwt.decode(refresh);
+  assert.ok(refreshPayload.exp - refreshPayload.iat >= 364 * 24 * 60 * 60);
 });
 
 test('profile validation accepts persistent customization and preferences', () => {

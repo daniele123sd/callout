@@ -107,6 +107,7 @@ const actionDialog = document.querySelector('#actionDialog');
 let sessionUser = null;
 let pendingMedia = [];
 let messageStream = null;
+let sessionRefreshRequest = null;
 
 function sanitizeInput(value) {
   const source = String(value || '');
@@ -220,9 +221,20 @@ function runVoteEffect(button, value) {
 
 async function apiFetch(url, options = {}, retry = true) {
   const response = await fetch(url, { credentials: 'same-origin', headers: { 'Content-Type': 'application/json', ...(options.headers || {}) }, ...options });
-  if (response.status === 401 && retry && !url.includes('/api/auth/')) {
-    const refreshed = await fetch('/api/auth/refresh', { method: 'POST', credentials: 'same-origin' });
-    if (refreshed.ok) return apiFetch(url, options, false);
+  if (response.status === 401 && retry && url !== '/api/auth/refresh') {
+    // Only one refresh may rotate the device token at a time. Without this lock,
+    // concurrent page requests can invalidate each other and clear a valid login.
+    if (!sessionRefreshRequest) {
+      sessionRefreshRequest = fetch('/api/auth/refresh', { method: 'POST', credentials: 'same-origin' })
+        .then(async refreshed => {
+          if (!refreshed.ok) return false;
+          const payload = await refreshed.json().catch(() => null);
+          if (payload?.user) applySessionUser(payload.user);
+          return true;
+        })
+        .finally(() => { sessionRefreshRequest = null; });
+    }
+    if (await sessionRefreshRequest) return apiFetch(url, options, false);
   }
   const payload = response.status === 204 ? null : await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(payload?.error || 'Request failed.');
@@ -359,7 +371,7 @@ function updateGuildChrome() {
 }
 
 async function hydrateSession() {
-  try { const payload = await apiFetch('/api/auth/me', {}, false); applySessionUser(payload.user); } catch { sessionUser = null; updateHeaderProfile(); }
+  try { const payload = await apiFetch('/api/auth/me'); applySessionUser(payload.user); } catch { sessionUser = null; updateHeaderProfile(); }
 }
 
 function mapPost(post) {

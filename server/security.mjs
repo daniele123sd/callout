@@ -177,7 +177,7 @@ export function signAccessToken(userId) {
 }
 
 export function signRefreshToken(userId) {
-  return jwt.sign({ sub: String(userId), type: 'refresh', nonce: crypto.randomUUID() }, refreshSecret(), { expiresIn: '7d', issuer: 'callout' });
+  return jwt.sign({ sub: String(userId), type: 'refresh', nonce: crypto.randomUUID() }, refreshSecret(), { expiresIn: '365d', issuer: 'callout' });
 }
 
 export function verifyRefreshToken(token) {
@@ -187,7 +187,9 @@ export function verifyRefreshToken(token) {
 export function setAuthCookies(res, accessToken, refreshToken) {
   const secure = process.env.NODE_ENV === 'production';
   res.cookie(ACCESS_COOKIE, accessToken, { httpOnly: true, secure, sameSite: 'lax', maxAge: 15 * 60 * 1000, path: '/' });
-  res.cookie(REFRESH_COOKIE, refreshToken, { httpOnly: true, secure, sameSite: 'lax', maxAge: 7 * 24 * 60 * 60 * 1000, path: '/api/auth' });
+  // The refresh cookie is renewed whenever it is used, keeping a trusted device
+  // signed in while retaining short-lived access tokens for request security.
+  res.cookie(REFRESH_COOKIE, refreshToken, { httpOnly: true, secure, sameSite: 'lax', maxAge: 365 * 24 * 60 * 60 * 1000, path: '/api/auth' });
 }
 
 export function clearAuthCookies(res) {
