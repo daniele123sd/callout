@@ -237,7 +237,11 @@ async function apiFetch(url, options = {}, retry = true) {
     if (await sessionRefreshRequest) return apiFetch(url, options, false);
   }
   const payload = response.status === 204 ? null : await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(payload?.error || 'Request failed.');
+  if (!response.ok) {
+    const error = new Error(payload?.error || 'Request failed.');
+    error.status = response.status;
+    throw error;
+  }
   return payload;
 }
 
@@ -371,7 +375,16 @@ function updateGuildChrome() {
 }
 
 async function hydrateSession() {
-  try { const payload = await apiFetch('/api/auth/me'); applySessionUser(payload.user); } catch { sessionUser = null; updateHeaderProfile(); }
+  try {
+    const payload = await apiFetch('/api/auth/me');
+    applySessionUser(payload.user);
+  } catch (error) {
+    // A temporary network/server failure is not proof that the user signed out.
+    if (error?.status === 401 || error?.status === 403 || error?.status === 404) {
+      sessionUser = null;
+      updateHeaderProfile();
+    }
+  }
 }
 
 function mapPost(post) {
