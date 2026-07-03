@@ -459,12 +459,23 @@ async function hydrateAnalytics() {
 }
 async function hydrateAccountData() {
   if (!sessionUser) { state.savedPostIds = []; state.notifications = []; state.messages = []; state.friendships = []; return; }
+  const [saved, notifications, messages, friends] = await Promise.allSettled([apiFetch('/api/saved'), apiFetch('/api/notifications'), apiFetch('/api/messages'), apiFetch('/api/friends')]);
+  if (saved.status === 'fulfilled') state.savedPostIds = (saved.value.savedPostIds || []).map(String);
+  if (notifications.status === 'fulfilled') state.notifications = notifications.value.notifications || [];
+  if (messages.status === 'fulfilled') state.messages = messages.value.messages || [];
+  if (friends.status === 'fulfilled') state.friendships = friends.value.friendships || [];
   try {
-    const [saved, notifications, messages, friends] = await Promise.all([apiFetch('/api/saved'), apiFetch('/api/notifications'), apiFetch('/api/messages'), apiFetch('/api/friends')]);
-    state.savedPostIds = (saved.savedPostIds || []).map(String); state.notifications = notifications.notifications || []; state.messages = messages.messages || []; state.friendships = friends.friendships || [];
     const unread = state.notifications.filter(item => !item.read).length;
     const badge = document.querySelector('#notificationBadge'); badge.textContent = unread; badge.hidden = unread === 0;
   } catch (error) { console.error(error); }
+}
+
+async function hydrateSavedPosts() {
+  if (!sessionUser) { state.savedPostIds = []; return; }
+  try {
+    const saved = await apiFetch('/api/saved');
+    state.savedPostIds = (saved.savedPostIds || []).map(String); persist();
+  } catch (error) { console.error('Unable to load saved posts:', error); }
 }
 
 function currentRoute() {
@@ -1792,6 +1803,7 @@ window.addEventListener('hashchange', async () => {
   if (currentRoute() === 'trending') { await hydrateTrending(); renderRoute(); }
   if (currentRoute() === 'guilds') { await hydrateGuilds(); renderRoute(); }
   if (currentRoute() === 'notifications' || currentRoute() === 'messages') { await hydrateAccountData(); renderRoute(); }
+  if (currentRoute() === 'saved') { await hydrateSavedPosts(); renderRoute(); }
   if (currentRoute() === 'guild') { await hydrateGuildDetail(); renderRoute(); }
   if (currentRoute() === 'user') { await hydratePublicProfile(); renderRoute(); }
   if (currentRoute() === 'profile') { await hydrateOwnProfile(); renderRoute(); }
