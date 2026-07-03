@@ -349,6 +349,16 @@ a { color: inherit; text-decoration: none; }
 .comment-sort { display: flex; align-items: center; justify-content: space-between; padding: 14px 0; border-bottom: 1px solid var(--line); font-size: 12px; }
 .comment-sort button { border: 0; color: var(--muted); background: transparent; font-size: 11px; font-weight: 800; }
 .comment-stack { padding-top: 6px; }
+.reddit-thread.has-comments { margin-top:8px;padding-top:10px; }
+.comment-thread-tools { display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:38px;padding-bottom:8px;border-bottom:1px solid var(--line); }
+.comment-thread-tools span { display:flex;align-items:center;gap:7px; }
+.comment-thread-tools strong { font:15px Archivo Black,sans-serif; }
+.comment-thread-tools small { min-width:22px;padding:3px 6px;border:1px solid var(--line);border-radius:999px;color:var(--muted);font-size:9px;font-weight:900;text-align:center; }
+.comment-thread-tools button { min-height:32px;padding:0 11px;border:1.5px solid #101114;border-radius:8px;background:var(--paper);color:var(--ink);font-size:10px;font-weight:900;cursor:pointer; }
+.comment-thread-tools button:hover { background:var(--soft);transform:translateY(-1px); }
+.reddit-thread.has-comments .comment-composer { margin:8px 0 2px;padding:12px;border:1px solid var(--line);border-radius:12px;background:var(--soft); }
+.reddit-thread.has-comments .comment-stack { padding-top:0; }
+.comment-thread-tools[hidden],.comment-composer[hidden] { display:none !important; }
 .reddit-comment { position: relative; display: grid; grid-template-columns: 42px 1fr; gap: 10px; margin-top: 17px; margin-left: calc(var(--depth) * 26px); }
 .comment-rail { position: relative; display: flex; justify-content: center; }
 .comment-rail i { position: absolute; top: 45px; bottom: -18px; left: 50%; width: 2px; border-radius: 2px; background: #ddd9d1; transform: translateX(-50%); }
@@ -589,6 +599,7 @@ html[data-resolved-theme="dark"] .guild-public-grid article, html[data-resolved-
   .comment-composer { grid-template-columns: 38px 1fr; }
   .comment-composer > button { grid-column: 2; }
   .reddit-thread { padding: 17px 14px; }
+  .reddit-thread.has-comments { margin-top:6px;padding-top:8px; }
   .reddit-comment { margin-left: calc(var(--depth) * 12px); grid-template-columns: 36px 1fr; }
   .settings-save { align-items: stretch; flex-direction: column; }
   .auth-grid { grid-template-columns: 1fr; }

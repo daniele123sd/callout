@@ -697,10 +697,10 @@ function emptyThreadPreview() {
 
 function commentThreadDetail(post) {
   const comments = post.comments || [];
-  return `<section class="reddit-thread">
-    <div class="comment-head"><div><span class="section-kicker">DISCUSSION</span><h2>Takes</h2></div><span class="comment-count">${countComments(comments)} Takes</span></div>
-    <form class="comment-composer" id="commentForm"><span class="avatar comment-avatar">C</span><div class="comment-entry"><label class="sr-only" for="commentText">Add a Take</label><textarea id="commentText" name="comment" required maxlength="500" placeholder="Add your Take..."></textarea><span class="comment-tools"><button type="button" data-comment-emoji="🔥">🔥</button><button type="button" data-comment-emoji="😂">😂</button><button type="button" data-comment-emoji="💀">💀</button><label class="comment-gif-picker">GIF file<input type="file" name="gifFile" accept="image/gif" /></label><input type="url" name="gifUrl" aria-label="GIF URL" placeholder="or HTTPS GIF URL" /></span></div><button type="submit">Post Take</button></form>
-    <div class="comment-sort"><strong>Best</strong><button type="button">Sort: Newest⌄</button></div>
+  const hasTakes = comments.length > 0;
+  return `<section class="reddit-thread ${hasTakes ? 'has-comments' : 'is-empty'}">
+    ${hasTakes ? `<div class="comment-thread-tools"><span><strong>Takes</strong><small>${countComments(comments)}</small></span><button type="button" data-expand-comment>＋ Add a Take</button></div>` : `<div class="comment-head"><div><span class="section-kicker">DISCUSSION</span><h2>Takes</h2></div><span class="comment-count">0 Takes</span></div>`}
+    <form class="comment-composer" id="commentForm" ${hasTakes ? 'hidden' : ''}><span class="avatar comment-avatar">C</span><div class="comment-entry"><label class="sr-only" for="commentText">Add a Take</label><textarea id="commentText" name="comment" required maxlength="500" placeholder="Add your Take..."></textarea><span class="comment-tools"><button type="button" data-comment-emoji="🔥">🔥</button><button type="button" data-comment-emoji="😂">😂</button><button type="button" data-comment-emoji="💀">💀</button><label class="comment-gif-picker">GIF file<input type="file" name="gifFile" accept="image/gif" /></label><input type="url" name="gifUrl" aria-label="GIF URL" placeholder="or HTTPS GIF URL" /></span></div><button type="submit">Post Take</button></form>
     <div class="comment-stack">${comments.length ? comments.map(comment => commentNode(comment)).join('') : emptyThreadPreview()}</div>
   </section>`;
 }
@@ -1133,6 +1133,13 @@ function bindViewInteractions(route) {
   document.querySelectorAll('[data-profile-tab]').forEach(button => button.addEventListener('click', () => { state.profileTab = button.dataset.profileTab; renderRoute(); }));
   document.querySelector('[data-back-feed]')?.addEventListener('click', () => navigate('home'));
   document.querySelector('#commentForm')?.addEventListener('submit', addComment);
+  document.querySelector('[data-expand-comment]')?.addEventListener('click', event => {
+    const form = document.querySelector('#commentForm');
+    if (!form) return;
+    form.hidden = false;
+    event.currentTarget.closest('.comment-thread-tools')?.setAttribute('hidden', '');
+    form.querySelector('textarea')?.focus();
+  });
   document.querySelectorAll('[data-comment-emoji]').forEach(button => button.addEventListener('click', () => { const textarea = button.closest('form').elements.comment; textarea.value += button.dataset.commentEmoji; textarea.focus(); }));
   document.querySelector('#settingsForm')?.addEventListener('submit', saveSettings);
   document.querySelectorAll('input[name="theme"], input[name="textSize"]').forEach(input => input.addEventListener('change', previewDisplaySettings));
