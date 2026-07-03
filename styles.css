@@ -755,6 +755,9 @@ html[data-resolved-theme="dark"] .rail-guild-card button { color:#d7dae0;backgro
 .leaderboard-compact-head { display:flex;align-items:center;justify-content:space-between;margin:0 0 9px;padding:0 2px;color:var(--ink);font-size:11px;letter-spacing:.08em; }
 .leaderboard-compact-head span { display:flex;align-items:center;gap:6px;color:var(--muted);font-weight:800;letter-spacing:0;text-transform:uppercase; }
 .leaderboard-compact-head i { width:7px;height:7px;border-radius:50%;background:#55df50;box-shadow:0 0 0 3px rgba(85,223,80,.2); }
+.compact-page-head { min-height:38px;margin-bottom:10px; }
+.compact-page-action { min-height:34px;padding:0 13px;border:2px solid #101114;border-radius:9px;background:#101114;color:#f1f1ed;font-size:11px;font-weight:900;cursor:pointer;box-shadow:2px 3px 0 #55df50; }
+.compact-page-action:hover { transform:translateY(-1px);box-shadow:2px 4px 0 #55df50; }
 .callout-glyph { width:24px;height:24px;display:inline-block;flex:0 0 auto;overflow:visible; }
 .rail-ranking-kinds .callout-glyph { width:20px;height:20px; }
 .leaderboard-switcher { display:grid;grid-template-columns:1fr 1fr 1fr;gap:9px;padding:7px;border:2px solid #101114;border-radius:15px;background:var(--paper);box-shadow:4px 5px 0 #101114; }

@@ -737,7 +737,7 @@ function trendingView() {
   const posts = state.trendingPosts;
   const interactions = posts.reduce((sum, post) => sum + post.alrightVotes + post.cringeVotes + Number(post.commentCount || 0), 0);
   const closeCalls = posts.filter(post => { const total = post.alrightVotes + post.cringeVotes; return total && Math.abs((post.alrightVotes / total) - .5) <= .1; }).length;
-  return `${pageHeader('DISCOVER', 'Trending', 'Fast-moving takes and conversations will surface here as community activity grows.')}
+  return `<div class="leaderboard-compact-head compact-page-head"><strong>TRENDING</strong><span><i></i> Updated live</span></div>
     ${adBanner('trending-banner')}
     <div class="segmented-control"><button class="active" type="button">Takes</button><button type="button">Topics</button><button type="button">Guilds</button></div>
     <section class="trend-stats"><div><span>LIVE SIGNAL</span><strong>${posts.length}</strong><small>Active debates</small></div><div><span>MOMENTUM</span><strong>${interactions}</strong><small>Total interactions</small></div><div><span>CLOSE CALLS</span><strong>${closeCalls}</strong><small>Near 50/50</small></div></section>
@@ -752,7 +752,7 @@ function guildsView() {
   const content = state.guilds.length
     ? `<section class="guild-grid">${state.guilds.map(guildCard).join('')}</section>`
     : emptyState('⚔', 'No guilds available yet', 'Public guilds will appear here once they are created. Start a focused community without filling the directory with demo data.', '<button class="primary-action" type="button" data-create-guild>Create the first guild</button>');
-  return `${pageHeader('COMMUNITIES', 'Guilds', 'Create or join public communities built around shared taste.', '<button class="primary-action" type="button" data-create-guild>＋ Create Guild</button>')}
+  return `<div class="leaderboard-compact-head compact-page-head"><strong>GUILDS</strong><button class="compact-page-action" type="button" data-create-guild>＋ Create Guild</button></div>
     <div class="directory-tools"><label><svg><use href="#i-search"></use></svg><input type="search" placeholder="Search guilds" aria-label="Search guilds" /></label><button class="filter-button" type="button">All guilds⌄</button></div>
     ${content}`;
 }
