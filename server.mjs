@@ -19,10 +19,10 @@ import {
   validate, verifyRefreshToken
 } from './server/security.mjs';
 import {
-  acceptFriendRequest, canAccessPost, connectDatabase, createComment, createFriendRequest, createGuild, createGuildMessage, createGuildPost, createMessage, createPost, createReport, createUser, databaseMode, deletePost,
-  findUserByEmail, findUserByGoogleId, findUserById, getGuild, getPublicProfile, joinGuildByInvite, listComments, listFriends, listGuildAudit, listGuildMembers, listGuildMessages, listGuildPosts, listGuilds, listLeaderboard, listMessages,
-  deleteNotificationMute, listDrafts, listNotificationMutes, listNotifications, listPosts, listSavedPostIds, listSavedPosts, markNotificationsRead, publicUser, recordPostView, searchCallout, setNotificationMute,
-  toggleGuildMembership, toggleSavedPost, updateGuild, updateGuildIdentity, updateGuildMember, updateGuildRole, updatePost, adminUpdatePost, updateUser, voteOnComment, voteOnPoll, voteOnPost
+  acceptFriendRequest, canAccessPost, connectDatabase, createComment, createFeatureIdea, createFriendRequest, createGuild, createGuildMessage, createGuildPost, createMessage, createPost, createReport, createUser, databaseMode, deletePost,
+  findUserByEmail, findUserByGoogleId, findUserById, getGuild, getPublicProfile, getPublicPost, joinGuildByInvite, listComments, listFriends, listGuildAudit, listGuildMembers, listGuildMessages, listGuildPosts, listGuilds, listLeaderboard, listMessages,
+  deleteNotificationMute, listDrafts, listFeatureIdeas, listNotificationMutes, listNotifications, listPosts, listSavedPostIds, listSavedPosts, markNotificationsRead, publicUser, recordPostView, searchCallout, setNotificationMute,
+  toggleGuildMembership, toggleSavedPost, updateGuild, updateGuildIdentity, updateGuildMember, updateGuildRole, updatePost, adminUpdatePost, updateUser, voteOnComment, voteOnPoll, voteOnPost, reactToPost
 } from './server/repository.mjs';
 
 dotenv.config();
@@ -86,6 +86,7 @@ const authLimiter = rateLimit({
   legacyHeaders: false,
   message: { error: 'Too many authentication attempts. Try again in one minute.' }
 });
+const ideaLimiter = rateLimit({ windowMs: 60 * 60 * 1000, limit: 5, standardHeaders: 'draft-7', legacyHeaders: false, message: { error: 'The archive needs a moment. Try another idea later.' } });
 
 async function establishSession(res, user) {
   const userId = String(user._id || user.id);
@@ -256,6 +257,25 @@ app.patch('/api/profile', requireAuth, validate(schemas.profile), async (req, re
 app.get('/api/posts', optionalAuth, async (req, res, next) => {
   try { res.json({ posts: await listPosts(req.userId) }); } catch (error) { next(error); }
 });
+app.get('/api/ideas', async (req, res, next) => {
+  try { const mood = ['electric','chaotic','soft','dark','wild'].includes(req.query.mood) ? req.query.mood : ''; res.json({ ideas: await listFeatureIdeas(mood) }); } catch (error) { next(error); }
+});
+app.post('/api/ideas', ideaLimiter, validate(schemas.featureIdea), async (req, res, next) => {
+  try { res.status(201).json({ idea: await createFeatureIdea(req.body) }); } catch (error) { next(error); }
+});
+app.get('/embed/post/:id', async (req, res, next) => {
+  try {
+    const post = await getPublicPost(req.params.id);
+    if (!post) return res.status(404).send('Post not found.');
+    const esc = value => String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
+    const total = Number(post.alrightVotes || 0) + Number(post.cringeVotes || 0);
+    const based = total ? Math.round(Number(post.alrightVotes || 0) / total * 100) : 50;
+    const origin = String(process.env.APP_ORIGIN || `${req.protocol}://${req.get('host')}`).replace(/\/$/, '');
+    res.removeHeader('X-Frame-Options');
+    res.setHeader('Content-Security-Policy', "default-src 'none'; img-src https: data:; style-src 'unsafe-inline'; frame-ancestors *; base-uri 'none'");
+    res.type('html').send(`<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Callout Take</title><style>*{box-sizing:border-box}body{margin:0;padding:12px;background:#f4f1e9;color:#101114;font-family:Arial,sans-serif}.card{overflow:hidden;border:3px solid #101114;border-radius:18px;background:#fff;box-shadow:7px 8px 0 #101114}.brand{display:flex;justify-content:space-between;align-items:center;padding:12px 16px;border-bottom:2px solid #101114;background:#55df50;font-weight:900}.brand span:last-child{font-size:11px}.content{padding:18px}.user{display:flex;align-items:center;gap:9px}.avatar{display:grid;place-items:center;width:38px;height:38px;overflow:hidden;border:2px solid #101114;border-radius:50%;background:#bdeeff;font-weight:900}.avatar img{width:100%;height:100%;object-fit:cover}.user div{display:grid}.user small{color:#62646a}.content h1{margin:18px 0 22px;font-size:clamp(20px,5vw,32px);line-height:1.08;text-transform:uppercase}.meter{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:10px;padding:12px;border-top:2px solid #101114;background:#faf8f1;font-weight:900}.bar{height:14px;overflow:hidden;border:2px solid #101114;border-radius:999px;background:linear-gradient(90deg,#55df50 0 ${based}%,#ff5938 ${based}% 100%)}.footer{display:flex;justify-content:space-between;padding:10px 16px;border-top:1px solid #bbb;font-size:11px;font-weight:800}.footer a{color:#6534d9;text-decoration:none}</style></head><body><article class="card"><div class="brand"><span>CALLOUT</span><span>CALL IT LIKE YOU SEE IT.</span></div><div class="content"><div class="user"><span class="avatar">${post.author?.avatarUrl ? `<img src="${esc(post.author.avatarUrl)}" alt="">` : esc((post.author?.displayName || 'C').charAt(0))}</span><div><strong>${esc(post.author?.displayName || 'Callout member')}</strong><small>${esc(post.author?.handle || '@member')} · ${esc(post.category)}</small></div></div><h1>${esc(post.content)}</h1></div><div class="meter"><span>${based}% BASED</span><div class="bar"></div><span>${100 - based}% CRINGE</span></div><div class="footer"><span>${total.toLocaleString()} votes · ${Number(post.impressions || 0).toLocaleString()} views</span><a href="${origin}/#take/${esc(post.id)}" target="_blank">OPEN ON CALLOUT →</a></div></article></body></html>`);
+  } catch (error) { next(error); }
+});
 app.get('/api/posts/trending', optionalAuth, async (req, res, next) => {
   try { res.json({ posts: await listPosts(req.userId, { trending: true }) }); } catch (error) { next(error); }
 });
@@ -288,6 +308,14 @@ app.post('/api/posts/:id/vote', requireAuth, validate(schemas.vote), async (req,
     const post = await voteOnPost(req.params.id, req.userId, req.body.value);
     if (!post) return res.status(404).json({ error: 'Post not found.' });
     if (post.forbidden) return res.status(400).json({ error: 'You cannot rank your own take.' });
+    res.json({ post });
+  } catch (error) { next(error); }
+});
+app.post('/api/posts/:id/reactions', requireAuth, validate(schemas.emojiReaction), async (req, res, next) => {
+  try {
+    if (!(await canAccessPost(req.params.id, req.userId))) return res.status(403).json({ error: 'This post is not available to you.' });
+    const post = await reactToPost(req.params.id, req.userId, req.body.key);
+    if (!post) return res.status(404).json({ error: 'Post not found.' });
     res.json({ post });
   } catch (error) { next(error); }
 });

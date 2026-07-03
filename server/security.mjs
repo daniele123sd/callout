@@ -122,6 +122,8 @@ export const schemas = {
     return value;
   }, 'composer requirements'),
   vote: Joi.object({ value: Joi.string().valid('alright', 'cringe').required() }),
+  emojiReaction: Joi.object({ key: Joi.string().valid('fire', 'dead', 'laugh', 'sideeye', 'mindblown').required() }),
+  featureIdea: Joi.object({ text: plain(400).min(8).required(), mood: Joi.string().valid('electric', 'chaotic', 'soft', 'dark', 'wild').required() }),
   adminPost: Joi.object({
     content: postText.allow('').required(),
     category: Joi.string().valid('Movies', 'Music', 'Entertainment', 'Games', 'Life').required(),

@@ -47,6 +47,11 @@ const postSchema = new mongoose.Schema({
     user: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
     value: { type: String, enum: ['alright', 'cringe'], required: true },
     createdAt: { type: Date, default: Date.now }
+  }],
+  emojiReactions: [{
+    _id: false,
+    key: { type: String, enum: ['fire', 'dead', 'laugh', 'sideeye', 'mindblown'], required: true },
+    users: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }]
   }]
 }, { timestamps: true });
 

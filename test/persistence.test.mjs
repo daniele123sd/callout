@@ -1,10 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  acceptFriendRequest, adminUpdatePost, canAccessPost, createComment, createFriendRequest, createGuild, createGuildMessage, createGuildPost, createMessage, createPost, createUser, findUserById, getGuild, getPublicProfile,
-  listComments, listFriends, listGuildMessages, listGuildPosts, listGuilds, listLeaderboard, listMessages, listNotifications,
+  acceptFriendRequest, adminUpdatePost, canAccessPost, createComment, createFeatureIdea, createFriendRequest, createGuild, createGuildMessage, createGuildPost, createMessage, createPost, createUser, findUserById, getGuild, getPublicProfile,
+  listComments, listFeatureIdeas, listFriends, listGuildMessages, listGuildPosts, listGuilds, listLeaderboard, listMessages, listNotifications,
   listPosts, listSavedPostIds, listSavedPosts, searchCallout, toggleGuildMembership,
-  toggleSavedPost, updateGuild, updateGuildMember, voteOnPost
+  reactToPost, toggleSavedPost, updateGuild, updateGuildMember, voteOnPost
 } from '../server/repository.mjs';
 
 async function accounts() {
@@ -47,6 +47,20 @@ test('admin post corrections preserve genuine votes as metric adjustments', asyn
   assert.equal(corrected.impressions, 120);
   assert.equal(corrected.alrightVotes, 40);
   assert.equal(corrected.cringeVotes, 7);
+});
+
+test('custom post reactions persist per user and anonymous ideas store no identity', async () => {
+  const { author, reader } = await accounts();
+  const post = await createPost(author.id, { content: 'Reaction test', category: 'Life' });
+  let reacted = await reactToPost(post.id, reader.id, 'sideeye');
+  assert.equal(reacted.emojiReactions.sideeye.count, 1);
+  assert.equal(reacted.emojiReactions.sideeye.reacted, true);
+  reacted = await reactToPost(post.id, reader.id, 'sideeye');
+  assert.equal(reacted.emojiReactions.sideeye.count, 0);
+  const idea = await createFeatureIdea({ text: 'Let guilds host anonymous debate nights.', mood: 'wild' });
+  assert.equal(idea.mood, 'wild');
+  assert.equal('user' in idea, false);
+  assert.ok((await listFeatureIdeas('wild')).some(item => item.id === idea.id));
 });
 
 test('guild membership, Cringe ranking, search and messages use shared records', async () => {

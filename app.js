@@ -98,6 +98,7 @@ const state = {
   analyticsError: '',
   analyticsDays: 28,
   notificationFilter: 'all'
+  ,ideas: [], ideaMood: 'all'
 };
 
 if (storedState?.settings?.appearanceVersion !== 2) {
@@ -105,7 +106,8 @@ if (storedState?.settings?.appearanceVersion !== 2) {
   state.settings.theme = 'light';
 }
 
-const routes = new Set(['home', 'trending', 'guilds', 'guild', 'leaderboards', 'vibe-progress', 'notifications', 'messages', 'saved', 'profile', 'user', 'settings', 'customize', 'accessibility', 'analytics', 'take', 'auth']);
+const routes = new Set(['home', 'trending', 'guilds', 'guild', 'ideas', 'leaderboards', 'vibe-progress', 'notifications', 'messages', 'saved', 'profile', 'user', 'settings', 'customize', 'accessibility', 'analytics', 'take', 'auth']);
+const postReactions = [{ key: 'fire', face: '🔥', label: 'Fire' }, { key: 'dead', face: '💀', label: 'Dead' }, { key: 'laugh', face: '😂', label: 'Laughing' }, { key: 'sideeye', face: '👀', label: 'Side-eye' }, { key: 'mindblown', face: '🤯', label: 'Mind blown' }];
 const mainContent = document.querySelector('#mainContent');
 const composer = document.querySelector('#composer');
 const guildComposer = document.querySelector('#guildComposer');
@@ -456,7 +458,7 @@ function mapPost(post) {
     authorAvatarUrl: post.author?.avatarUrl || '', authorAutomated: Boolean(post.author?.isAutomated), authorPersona: post.author?.automationPersona || '', text: String(post.content || ''), category: post.category, media: Array.isArray(post.media) ? post.media : [],
     poll: post.poll || null, topics: post.topics || [], contentWarning: post.contentWarning || '', embedUrl: post.embedUrl || '', reactionSet: post.reactionSet || 'classic', visibility: post.visibility || 'public',
     alrightVotes: Number(post.alrightVotes || 0), cringeVotes: Number(post.cringeVotes || 0), impressions: Number(post.impressions || 0),
-    userVote: post.userVote || null, commentCount: Number(post.commentCount || 0), comments: Array.isArray(post.comments) ? post.comments : [],
+    userVote: post.userVote || null, emojiReactions: post.emojiReactions || {}, commentCount: Number(post.commentCount || 0), comments: Array.isArray(post.comments) ? post.comments : [],
     createdAt: new Date(post.createdAt || Date.now()).getTime(), publishing: Boolean(post.publishing)
   };
 }
@@ -472,7 +474,7 @@ async function hydratePosts() {
 
 async function hydrateApp() {
   await hydrateSession();
-  await Promise.all([hydratePosts(), hydrateGuilds(), hydrateLeaderboard(), hydrateTrending(), hydrateAccountData()]);
+  await Promise.all([hydratePosts(), hydrateGuilds(), hydrateLeaderboard(), hydrateTrending(), hydrateIdeas(), hydrateAccountData()]);
   if (currentRoute() === 'take') await hydrateTake(activeTake());
   if (currentRoute() === 'guild') await hydrateGuildDetail();
   if (currentRoute() === 'user') await hydratePublicProfile();
@@ -500,6 +502,7 @@ async function hydrateLeaderboard() {
   } catch (error) { console.error(error); }
 }
 async function hydrateTrending() { try { state.trendingPosts = ((await apiFetch('/api/posts/trending', {}, false)).posts || []).map(mapPost); } catch (error) { console.error(error); } }
+async function hydrateIdeas() { try { state.ideas = (await apiFetch('/api/ideas', {}, false)).ideas || []; } catch (error) { console.error(error); } }
 async function hydrateGuildDetail() {
   const id = decodeURIComponent(location.hash.split('/')[1] || '');
   if (!id) return;
@@ -640,6 +643,7 @@ function postTemplate(post, detail = false) {
       <b class="percent cringe-percent">${cringePercent}%</b>
       <button class="vote-button cringe ${post.userVote === 'cringe' ? 'selected' : ''}" type="button" data-vote="cringe"><span class="vote-face">${calloutGlyph('cringe')}</span><strong>CRINGE</strong></button>
     </div>
+    <div class="post-emoji-reactions" aria-label="React to this post">${postReactions.map(reaction => { const value = post.emojiReactions?.[reaction.key] || {}; return `<button type="button" data-post-reaction="${reaction.key}" aria-label="${reaction.label}" title="${reaction.label}" class="emoji-reaction emoji-${reaction.key} ${value.reacted ? 'reacted' : ''}"><span>${reaction.face}</span><b>${Number(value.count || 0)}</b></button>`; }).join('')}</div>
     <div class="take-footer"><span>${total} ${total === 1 ? 'vote' : 'votes'}　•　${commentCount} ${commentCount === 1 ? 'Take' : 'Takes'}</span>${detail ? '' : `<button class="comment-link" type="button" data-open-take="${post.id}">Open take →</button>`}</div>
   </article>`;
 }
@@ -755,6 +759,26 @@ function guildsView() {
   return `<div class="leaderboard-compact-head compact-page-head"><strong>GUILDS</strong><button class="compact-page-action" type="button" data-create-guild>＋ Create Guild</button></div>
     <div class="directory-tools"><label><svg><use href="#i-search"></use></svg><input type="search" placeholder="Search guilds" aria-label="Search guilds" /></label><button class="filter-button" type="button">All guilds⌄</button></div>
     ${content}`;
+}
+
+function ideasView() {
+  const moods = { electric: ['ELECTRIC', '#55df50'], chaotic: ['CHAOTIC', '#ff5938'], soft: ['SOFT', '#ffcfdf'], dark: ['DARK', '#292e37'], wild: ['WILD', '#9a63ed'] };
+  const visible = state.ideaMood === 'all' ? state.ideas : state.ideas.filter(idea => idea.mood === state.ideaMood);
+  return `<section class="idea-archive-hero"><span class="idea-eye">◉</span><div><span class="section-kicker">NO NAMES. JUST SIGNALS.</span><h1>THE UNSAID<br>IDEA ARCHIVE</h1><p>Leave the feature you wish existed. No profile, no handle, no credit. Just a coded fragment for Callout’s future.</p></div><button type="button" data-open-idea-form>SUBMIT AN IDEA ↗</button></section>
+    <nav class="idea-moods"><button class="${state.ideaMood === 'all' ? 'active' : ''}" data-idea-mood="all">ALL SIGNALS</button>${Object.entries(moods).map(([key,[label]]) => `<button class="${state.ideaMood === key ? 'active' : ''}" data-idea-mood="${key}">${label}</button>`).join('')}</nav>
+    <section class="idea-wall">${visible.length ? visible.map((idea,index) => `<article class="idea-card idea-${escapeHtml(idea.mood)}" style="--tilt:${index % 3 === 0 ? '-1.2deg' : index % 3 === 1 ? '.8deg' : '-.3deg'}"><header><span>TRANSMISSION ${escapeHtml(idea.code)}</span><i></i></header><p>${escapeHtml(idea.text)}</p><footer><span>FROM: UNKNOWN</span><small>${new Date(idea.createdAt).toLocaleDateString()}</small></footer></article>`).join('') : `<div class="idea-empty"><span>?</span><h2>Nothing has surfaced yet.</h2><p>The first anonymous signal could be yours.</p></div>`}</section>`;
+}
+
+function openIdeaSubmission() {
+  showActionDialog(actionDialogShell('ANONYMOUS TRANSMISSION', 'Leave no name behind', `<form id="ideaSubmissionForm" class="idea-submit-form"><p>Your account identity is not attached to this submission. Avoid names or sensitive personal information.</p><label>The feature you want<textarea name="text" minlength="8" maxlength="400" required placeholder="I wish Callout could..."></textarea></label><fieldset><legend>Choose its signal</legend>${[['electric','#55df50'],['chaotic','#ff5938'],['soft','#ffcfdf'],['dark','#292e37'],['wild','#9a63ed']].map(([mood,color]) => `<label style="--mood:${color}"><input type="radio" name="mood" value="${mood}" ${mood === 'electric' ? 'checked' : ''}><span>${mood}</span></label>`).join('')}</fieldset><button class="primary-action" type="submit">Send into the archive</button></form>`));
+  document.querySelector('#ideaSubmissionForm').addEventListener('submit', submitFeatureIdea);
+}
+
+async function submitFeatureIdea(event) {
+  event.preventDefault(); const form = event.currentTarget; const submit = form.querySelector('button[type="submit"]');
+  submit.disabled = true; submit.textContent = 'Transmitting…';
+  try { await apiFetch('/api/ideas', { method: 'POST', body: JSON.stringify({ text: sanitizeInput(form.elements.text.value), mood: form.elements.mood.value }) }, false); await hydrateIdeas(); closeActionDialog(); renderRoute(); showToast('Your anonymous signal entered the archive.'); }
+  catch (error) { submit.disabled = false; submit.textContent = 'Send into the archive'; showToast(error.message); }
 }
 
 function rankingsExperienceView() {
@@ -1024,7 +1048,7 @@ function authView() {
     <details class="reset-panel"><summary>Forgot your password?</summary><form id="resetRequestForm"><label>Email<input type="email" name="email" required /></label><button class="quiet-action" type="submit">Request reset</button></form><form id="resetConfirmForm" hidden><label>Email<input type="email" name="email" required /></label><label>Reset token<input name="token" required /></label><label>New password<input type="password" name="password" minlength="8" required /></label><button class="primary-action" type="submit">Update password</button></form></details>`;
 }
 
-const viewRenderers = { home: homeView, trending: trendingView, guilds: guildsView, guild: guildDetailView, leaderboards: rankingsExperienceView, 'vibe-progress': vibeProgressView, notifications: notificationsView, messages: messagesView, saved: savedView, profile: profileView, user: publicUserView, settings: settingsView, customize: settingsView, accessibility: settingsView, analytics: analyticsView, take: takeDetailView, auth: authView };
+const viewRenderers = { home: homeView, trending: trendingView, guilds: guildsView, guild: guildDetailView, ideas: ideasView, leaderboards: rankingsExperienceView, 'vibe-progress': vibeProgressView, notifications: notificationsView, messages: messagesView, saved: savedView, profile: profileView, user: publicUserView, settings: settingsView, customize: settingsView, accessibility: settingsView, analytics: analyticsView, take: takeDetailView, auth: authView };
 
 function renderRoute() {
   const route = currentRoute();
@@ -1088,11 +1112,21 @@ function bindPostInteractions() {
     try { const payload = await apiFetch(`/api/posts/${button.dataset.pollPost}/poll-vote`, { method: 'POST', body: JSON.stringify({ optionId: button.dataset.pollOption }) }); Object.assign(findPostById(button.dataset.pollPost), mapPost(payload.post)); renderRoute(); }
     catch (error) { showToast(error.message); }
   }));
+  document.querySelectorAll('[data-post-reaction]').forEach(button => button.addEventListener('click', async () => {
+    if (!sessionUser) { navigate('auth'); return showToast('Sign in to react.'); }
+    const post = button.closest('[data-post-id]');
+    try {
+      const payload = await apiFetch(`/api/posts/${post.dataset.postId}/reactions`, { method: 'POST', body: JSON.stringify({ key: button.dataset.postReaction }) });
+      Object.assign(findPostById(post.dataset.postId), mapPost(payload.post)); renderRoute();
+    } catch (error) { showToast(error.message); }
+  }));
 }
 
 function bindViewInteractions(route) {
   bindPostInteractions();
   document.querySelectorAll('[data-open-composer]').forEach(button => button.addEventListener('click', openComposerForUser));
+  document.querySelector('[data-open-idea-form]')?.addEventListener('click', openIdeaSubmission);
+  document.querySelectorAll('[data-idea-mood]').forEach(button => button.addEventListener('click', () => { state.ideaMood = button.dataset.ideaMood; renderRoute(); }));
   document.querySelectorAll('[data-create-guild]').forEach(button => button.addEventListener('click', () => guildComposer.showModal()));
   document.querySelectorAll('.segmented-control button').forEach(button => button.addEventListener('click', () => {
     button.parentElement.querySelectorAll('button').forEach(item => item.classList.remove('active'));
@@ -1330,7 +1364,7 @@ function openPostMenu(id) {
   const post = findPostById(id);
   if (!post) return;
   const isAuthor = post.authorId === currentUserId();
-  showActionDialog(actionDialogShell('POST OPTIONS', 'What would you like to do?', `<div class="post-menu-list">${isAuthor ? '<button type="button" data-edit-post>✎ <span><strong>Edit Post</strong><small>Update the wording or category</small></span></button><button class="danger" type="button" data-delete-post>⌫ <span><strong>Delete Post</strong><small>Remove this take permanently</small></span></button>' : ''}<button type="button" data-share-post>↗ <span><strong>Share</strong><small>Copy a direct link to this take</small></span></button>${isAuthor ? '' : '<button type="button" data-report-post>⚑ <span><strong>Report</strong><small>Send this take for review</small></span></button>'}</div>`));
+  showActionDialog(actionDialogShell('POST OPTIONS', 'What would you like to do?', `<div class="post-menu-list">${isAuthor ? '<button type="button" data-edit-post>✎ <span><strong>Edit Post</strong><small>Update the wording or category</small></span></button><button class="danger" type="button" data-delete-post>⌫ <span><strong>Delete Post</strong><small>Remove this take permanently</small></span></button>' : ''}<button type="button" data-share-post>↗ <span><strong>Share embed</strong><small>Copy a visual Callout card for any website</small></span></button>${isAuthor ? '' : '<button type="button" data-report-post>⚑ <span><strong>Report</strong><small>Send this take for review</small></span></button>'}</div>`));
   document.querySelector('[data-edit-post]')?.addEventListener('click', () => openEditPost(post));
   document.querySelector('[data-delete-post]')?.addEventListener('click', () => openDeletePost(post));
   document.querySelector('[data-share-post]')?.addEventListener('click', () => sharePost(post));
@@ -1454,10 +1488,17 @@ function openDeletePost(post) {
 }
 
 async function sharePost(post) {
-  const url = `${location.origin}${location.pathname}#take/${post.id}`;
-  try { await navigator.clipboard.writeText(url); }
-  catch { const input = document.createElement('textarea'); input.value = url; document.body.appendChild(input); input.select(); document.execCommand('copy'); input.remove(); }
-  closeActionDialog(); showToast('Link copied!');
+  const embedUrl = `${location.origin}/embed/post/${post.id}`;
+  const directUrl = `${location.origin}${location.pathname}#take/${post.id}`;
+  const code = `<iframe src="${embedUrl}" title="Callout take" width="100%" height="430" style="border:0;max-width:720px" loading="lazy" allowtransparency="true"></iframe>`;
+  showActionDialog(actionDialogShell('SHARE TAKE', 'Embed this Callout', `<p class="dialog-copy">A live, responsive card that keeps the current Based and Cringe totals visible.</p><div class="embed-preview"><iframe src="${escapeHtml(embedUrl)}" title="Callout embed preview"></iframe></div><label class="embed-code-label">HTML embed code<textarea id="embedCode" readonly>${escapeHtml(code)}</textarea></label><div class="embed-share-actions"><button type="button" data-copy-direct>Copy link</button><button class="primary-action" type="button" data-copy-embed>Copy HTML embed</button></div>`));
+  document.querySelector('[data-copy-embed]').addEventListener('click', async () => { await copyShareText(code); showToast('Embed HTML copied!'); });
+  document.querySelector('[data-copy-direct]').addEventListener('click', async () => { await copyShareText(directUrl); showToast('Direct link copied!'); });
+}
+
+async function copyShareText(value) {
+  try { await navigator.clipboard.writeText(value); }
+  catch { const input = document.createElement('textarea'); input.value = value; document.body.appendChild(input); input.select(); document.execCommand('copy'); input.remove(); }
 }
 
 function openReportPost(post) {

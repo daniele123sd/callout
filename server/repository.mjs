@@ -13,6 +13,7 @@ import { GuildRole } from './models/GuildRole.mjs';
 import { GuildMembership } from './models/GuildMembership.mjs';
 import { GuildAudit } from './models/GuildAudit.mjs';
 import { NotificationMute } from './models/NotificationMute.mjs';
+import { FeatureIdea } from './models/FeatureIdea.mjs';
 
 let connected = false;
 const memoryUsers = new Map();
@@ -28,6 +29,7 @@ const memoryGuildRoles = new Map();
 const memoryGuildMemberships = new Map();
 const memoryGuildAudits = [];
 const memoryNotificationMutes = [];
+const memoryFeatureIdeas = [];
 
 const DEFAULT_GUILD_ROLES = [
   { key: 'owner', name: 'Owner', color: '#ff4713', rank: 100, builtIn: true, permissions: { manageGuild: true, manageRoles: true, manageMembers: true, managePosts: true, createPosts: true, chat: true, viewAudit: true } },
@@ -56,6 +58,23 @@ export async function connectDatabase() {
 
 export function databaseMode() {
   return connected ? 'mongodb' : 'memory';
+}
+
+export async function createFeatureIdea(values) {
+  const idea = { ...values, code: crypto.randomBytes(3).toString('hex').toUpperCase(), status: 'published', createdAt: new Date() };
+  if (connected) {
+    const created = await FeatureIdea.create(idea);
+    return { ...created.toObject(), id: String(created._id), _id: undefined };
+  }
+  idea.id = crypto.randomUUID(); memoryFeatureIdeas.unshift(idea); return { ...idea };
+}
+
+export async function listFeatureIdeas(mood = '') {
+  if (connected) {
+    const query = { status: 'published', ...(mood ? { mood } : {}) };
+    return (await FeatureIdea.find(query).sort({ createdAt: -1 }).limit(120).lean()).map(item => ({ ...item, id: String(item._id), _id: undefined }));
+  }
+  return memoryFeatureIdeas.filter(item => item.status === 'published' && (!mood || item.mood === mood)).slice(0, 120).map(item => ({ ...item }));
 }
 
 const normalize = document => {
@@ -184,14 +203,37 @@ const serializePost = (post, userId = '') => {
   const votes = value.votes || [];
   const userVote = votes.find(vote => String(vote.user?._id || vote.user) === String(userId))?.value || null;
   const poll = value.poll?.options?.length ? { ...value.poll, options: value.poll.options.map(option => ({ id: String(option._id || option.id), text: option.text, votes: option.voters?.length || 0, voted: (option.voters || []).some(voter => String(voter) === String(userId)), voters: undefined })) } : null;
+  const reactionKeys = ['fire', 'dead', 'laugh', 'sideeye', 'mindblown'];
+  const emojiReactions = Object.fromEntries(reactionKeys.map(key => { const reaction = (value.emojiReactions || []).find(item => item.key === key); return [key, { count: reaction?.users?.length || 0, reacted: (reaction?.users || []).some(user => String(user?._id || user) === String(userId)) }]; }));
   const adminMetrics = value.adminMetrics || {};
   const effective = {
     alrightVotes: Math.max(0, Number(value.alrightVotes || 0) + Number(adminMetrics.basedAdjustment || 0)),
     cringeVotes: Math.max(0, Number(value.cringeVotes || 0) + Number(adminMetrics.cringeAdjustment || 0)),
     impressions: Math.max(0, Number(value.impressions || 0) + Number(adminMetrics.impressionsAdjustment || 0))
   };
-  return { ...value, ...effective, id: String(value._id || value.id), _id: undefined, votes: undefined, adminMetrics: undefined, userVote, poll };
+  return { ...value, ...effective, id: String(value._id || value.id), _id: undefined, votes: undefined, adminMetrics: undefined, emojiReactions, userVote, poll };
 };
+
+export async function reactToPost(postId, userId, key) {
+  if (connected) {
+    const post = await Post.findById(postId);
+    if (!post) return null;
+    let reaction = post.emojiReactions.find(item => item.key === key);
+    if (!reaction) { post.emojiReactions.push({ key, users: [] }); reaction = post.emojiReactions[post.emojiReactions.length - 1]; }
+    const index = reaction.users.findIndex(user => String(user) === String(userId));
+    if (index >= 0) reaction.users.splice(index, 1); else reaction.users.push(userId);
+    await post.save();
+    return serializePost(post, userId);
+  }
+  const post = memoryPosts.get(String(postId));
+  if (!post) return null;
+  post.emojiReactions ||= [];
+  let reaction = post.emojiReactions.find(item => item.key === key);
+  if (!reaction) { reaction = { key, users: [] }; post.emojiReactions.push(reaction); }
+  const index = reaction.users.indexOf(String(userId));
+  if (index >= 0) reaction.users.splice(index, 1); else reaction.users.push(String(userId));
+  return serializePost(post, userId);
+}
 
 export async function adminUpdatePost(postId, adminId, values) {
   if (connected) {
@@ -238,6 +280,16 @@ export async function listPosts(userId = '', { trending = false } = {}) {
     ...serializePost(post, userId), commentCount: [...memoryComments.values()].filter(comment => comment.post === post.id).length,
     author: publicIdentity(memoryUsers.get(String(post.author)))
   }));
+}
+
+export async function getPublicPost(postId) {
+  if (connected) {
+    const post = await Post.findOne({ _id: postId, guild: null, draft: { $ne: true }, visibility: { $in: ['public', null] } }).populate('author', 'displayName handle avatarUrl').lean();
+    return post ? { ...serializePost(post), author: post.author ? publicIdentity(post.author) : null } : null;
+  }
+  const post = memoryPosts.get(String(postId));
+  if (!post || post.guild || post.draft || (post.visibility || 'public') !== 'public') return null;
+  return { ...serializePost(post), author: publicIdentity(memoryUsers.get(String(post.author))) };
 }
 
 export async function listDrafts(userId) {
