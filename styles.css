@@ -722,6 +722,25 @@ html[data-resolved-theme="dark"] .settings-subnav a.active { color:#1a1d22;backg
 html[data-resolved-theme="dark"] .personal-cringe-widget { box-shadow:none; }html[data-resolved-theme="dark"] .ranking-view-tabs button.active { color:#1a1d22;background:#aeb2bb; }
 @media(max-width:700px){.cringe-level-grid{grid-template-columns:1fr 1fr}.personal-cringe-page{padding:18px}.personal-cringe-page>header{align-items:flex-start}.personal-cringe-emblem{width:64px;height:64px;border-radius:18px}.profile-cringe-summary{width:100%;margin:10px 0 0}}
 
+/* Final right-rail alignment contract: leaderboard, Cringe and Guilds are one family. */
+.right-rail { gap:18px;align-items:stretch; }
+.right-rail > .rail-leaderboard,
+.right-rail > .personal-cringe-widget,
+.right-rail > .rail-guild-card { width:100%;min-width:0;margin:0;padding:18px;border:2px solid #101114;border-radius:16px;background:var(--paper);box-shadow:4px 5px 0 #101114; }
+.right-rail > .rail-leaderboard { padding:0; }
+.right-rail > .personal-cringe-widget { display:grid;gap:10px; }
+.personal-cringe-widget header { gap:7px; }.personal-cringe-widget header .section-kicker,.rail-guild-card .eyebrow { margin:0;line-height:1.2; }
+.personal-cringe-widget p,.personal-cringe-widget > small { margin:0;line-height:1.45; }
+.personal-cringe-track { height:10px;margin:1px 0 0;border:1px solid color-mix(in srgb,#101114 14%,var(--line)); }
+.personal-cringe-widget > button,.rail-guild-card button { min-height:44px;padding:0 12px;border:0;border-radius:9px;color:#e0e2e6;background:#101114;font-size:12px;font-weight:900; }
+.rail-guild-card > strong { display:block;margin:0 0 8px;line-height:1.2; }.rail-guild-card > p:not(.eyebrow) { margin:0 0 16px;line-height:1.45; }.rail-guild-card #railGuildActions { align-items:stretch; }
+html[data-resolved-theme="dark"] .right-rail > .rail-leaderboard,
+html[data-resolved-theme="dark"] .right-rail > .personal-cringe-widget,
+html[data-resolved-theme="dark"] .right-rail > .rail-guild-card { border-color:#0d0f12;background:var(--paper);box-shadow:4px 5px 0 #0d0f12; }
+html[data-resolved-theme="dark"] .personal-cringe-widget > button,
+html[data-resolved-theme="dark"] .rail-guild-card button { color:#d7dae0;background:#15181d; }
+@media(max-width:1150px){.right-rail{gap:16px}.right-rail>.rail-leaderboard,.right-rail>.personal-cringe-widget,.right-rail>.rail-guild-card{border-radius:15px}}
+
 /* Keep customization focused on identity essentials. Advanced legacy values remain stored. */
 .customization-studio .customization-grid label:nth-child(n+5),
 .customization-studio .layout-picker,
