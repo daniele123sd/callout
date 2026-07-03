@@ -122,6 +122,14 @@ export const schemas = {
     return value;
   }, 'composer requirements'),
   vote: Joi.object({ value: Joi.string().valid('alright', 'cringe').required() }),
+  adminPost: Joi.object({
+    content: postText.allow('').required(),
+    category: Joi.string().valid('Movies', 'Music', 'Entertainment', 'Games', 'Life').required(),
+    visibility: Joi.string().valid('public', 'friends').required(),
+    impressions: Joi.number().integer().min(0).max(1_000_000_000).required(),
+    basedVotes: Joi.number().integer().min(0).max(1_000_000_000).required(),
+    cringeVotes: Joi.number().integer().min(0).max(1_000_000_000).required()
+  }),
   pollVote: Joi.object({ optionId: recordId.required() }),
   comment: Joi.object({ postId: recordId.required(), parent: recordId.allow(null, ''), text: plain(500).required(), gifUrl: Joi.string().allow('').max(2_800_000).pattern(/^(https:\/\/|data:image\/gif;base64,)/i) }),
   guild: Joi.object({ name: plain(60).required(), description: plain(240).allow(''), privacy: Joi.string().valid('public', 'private').default('public') }),

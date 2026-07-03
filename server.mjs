@@ -22,7 +22,7 @@ import {
   acceptFriendRequest, canAccessPost, connectDatabase, createComment, createFriendRequest, createGuild, createGuildMessage, createGuildPost, createMessage, createPost, createReport, createUser, databaseMode, deletePost,
   findUserByEmail, findUserByGoogleId, findUserById, getGuild, getPublicProfile, joinGuildByInvite, listComments, listFriends, listGuildAudit, listGuildMembers, listGuildMessages, listGuildPosts, listGuilds, listLeaderboard, listMessages,
   deleteNotificationMute, listDrafts, listNotificationMutes, listNotifications, listPosts, listSavedPostIds, listSavedPosts, markNotificationsRead, publicUser, recordPostView, searchCallout, setNotificationMute,
-  toggleGuildMembership, toggleSavedPost, updateGuild, updateGuildIdentity, updateGuildMember, updateGuildRole, updatePost, updateUser, voteOnComment, voteOnPoll, voteOnPost
+  toggleGuildMembership, toggleSavedPost, updateGuild, updateGuildIdentity, updateGuildMember, updateGuildRole, updatePost, adminUpdatePost, updateUser, voteOnComment, voteOnPoll, voteOnPost
 } from './server/repository.mjs';
 
 dotenv.config();
@@ -139,6 +139,13 @@ app.patch('/api/admin/bots/:id', requireAuth, requireAdmin, async (req, res, nex
     const bot = await setBotEnabled(req.params.id, req.body.enabled);
     if (!bot) return res.status(404).json({ error: 'Automated account not found.' });
     res.json({ bot: publicUser(bot) });
+  } catch (error) { next(error); }
+});
+app.patch('/api/admin/posts/:id', requireAuth, requireAdmin, validate(schemas.adminPost), async (req, res, next) => {
+  try {
+    const post = await adminUpdatePost(req.params.id, req.userId, req.body);
+    if (!post) return res.status(404).json({ error: 'Post not found.' });
+    res.json({ post });
   } catch (error) { next(error); }
 });
 

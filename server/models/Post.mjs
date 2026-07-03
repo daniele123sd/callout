@@ -34,6 +34,13 @@ const postSchema = new mongoose.Schema({
   alrightVotes: { type: Number, default: 0, min: 0 },
   cringeVotes: { type: Number, default: 0, min: 0 },
   impressions: { type: Number, default: 0, min: 0, index: true },
+  adminMetrics: {
+    basedAdjustment: { type: Number, default: 0 },
+    cringeAdjustment: { type: Number, default: 0 },
+    impressionsAdjustment: { type: Number, default: 0 },
+    editedAt: { type: Date, default: null },
+    editedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null }
+  },
   media: { type: [mediaSchema], default: [] },
   votes: [{
     _id: false,

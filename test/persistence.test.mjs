@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  acceptFriendRequest, canAccessPost, createComment, createFriendRequest, createGuild, createGuildMessage, createGuildPost, createMessage, createPost, createUser, findUserById, getGuild, getPublicProfile,
+  acceptFriendRequest, adminUpdatePost, canAccessPost, createComment, createFriendRequest, createGuild, createGuildMessage, createGuildPost, createMessage, createPost, createUser, findUserById, getGuild, getPublicProfile,
   listComments, listFriends, listGuildMessages, listGuildPosts, listGuilds, listLeaderboard, listMessages, listNotifications,
   listPosts, listSavedPostIds, listSavedPosts, searchCallout, toggleGuildMembership,
   toggleSavedPost, updateGuild, updateGuildMember, voteOnPost
@@ -35,6 +35,18 @@ test('votes, comments, saves and notifications persist per account', async () =>
   assert.equal((await listSavedPosts(reader.id))[0].content, 'Persistence test');
   assert.ok((await listNotifications(author.id)).length >= 2);
   assert.equal((await findUserById(reader.id)).vibeScore, 5);
+});
+
+test('admin post corrections preserve genuine votes as metric adjustments', async () => {
+  const { author, reader } = await accounts();
+  const post = await createPost(author.id, { content: 'Original admin test', category: 'Life', visibility: 'public' });
+  await voteOnPost(post.id, reader.id, 'alright');
+  await adminUpdatePost(post.id, author.id, { content: 'Corrected admin test', category: 'Games', visibility: 'public', impressions: 120, basedVotes: 40, cringeVotes: 7 });
+  const corrected = (await listPosts(reader.id)).find(item => item.id === post.id);
+  assert.equal(corrected.content, 'Corrected admin test');
+  assert.equal(corrected.impressions, 120);
+  assert.equal(corrected.alrightVotes, 40);
+  assert.equal(corrected.cringeVotes, 7);
 });
 
 test('guild membership, Cringe ranking, search and messages use shared records', async () => {

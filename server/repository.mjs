@@ -184,8 +184,43 @@ const serializePost = (post, userId = '') => {
   const votes = value.votes || [];
   const userVote = votes.find(vote => String(vote.user?._id || vote.user) === String(userId))?.value || null;
   const poll = value.poll?.options?.length ? { ...value.poll, options: value.poll.options.map(option => ({ id: String(option._id || option.id), text: option.text, votes: option.voters?.length || 0, voted: (option.voters || []).some(voter => String(voter) === String(userId)), voters: undefined })) } : null;
-  return { ...value, id: String(value._id || value.id), _id: undefined, votes: undefined, userVote, poll };
+  const adminMetrics = value.adminMetrics || {};
+  const effective = {
+    alrightVotes: Math.max(0, Number(value.alrightVotes || 0) + Number(adminMetrics.basedAdjustment || 0)),
+    cringeVotes: Math.max(0, Number(value.cringeVotes || 0) + Number(adminMetrics.cringeAdjustment || 0)),
+    impressions: Math.max(0, Number(value.impressions || 0) + Number(adminMetrics.impressionsAdjustment || 0))
+  };
+  return { ...value, ...effective, id: String(value._id || value.id), _id: undefined, votes: undefined, adminMetrics: undefined, userVote, poll };
 };
+
+export async function adminUpdatePost(postId, adminId, values) {
+  if (connected) {
+    const post = await Post.findById(postId);
+    if (!post) return null;
+    if (values.content !== undefined) post.content = values.content;
+    if (values.category !== undefined) post.category = values.category;
+    if (values.visibility !== undefined) post.visibility = values.visibility;
+    post.adminMetrics = {
+      basedAdjustment: Number(values.basedVotes) - Number(post.alrightVotes || 0),
+      cringeAdjustment: Number(values.cringeVotes) - Number(post.cringeVotes || 0),
+      impressionsAdjustment: Number(values.impressions) - Number(post.impressions || 0),
+      editedAt: new Date(), editedBy: adminId
+    };
+    await post.save();
+    await post.populate('author', 'displayName handle avatarUrl isAutomated automationPersona');
+    return { ...serializePost(post), author: post.author ? publicIdentity(post.author) : null, adminEditedAt: post.adminMetrics.editedAt };
+  }
+  const post = memoryPosts.get(String(postId));
+  if (!post) return null;
+  Object.assign(post, { content: values.content, category: values.category, visibility: values.visibility, updatedAt: new Date() });
+  post.adminMetrics = {
+    basedAdjustment: Number(values.basedVotes) - Number(post.alrightVotes || 0),
+    cringeAdjustment: Number(values.cringeVotes) - Number(post.cringeVotes || 0),
+    impressionsAdjustment: Number(values.impressions) - Number(post.impressions || 0),
+    editedAt: new Date(), editedBy: String(adminId)
+  };
+  return { ...serializePost(post), author: publicIdentity(memoryUsers.get(String(post.author))), adminEditedAt: post.adminMetrics.editedAt };
+}
 
 export async function listPosts(userId = '', { trending = false } = {}) {
   if (connected) {

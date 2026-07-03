@@ -1007,10 +1007,11 @@ function analyticsView() {
     : `<section class="adsense-analytics adsense-connect"><header><div><span class="section-kicker">MONETISATION</span><h2>AdSense earnings</h2></div><span class="adsense-status pending">${escapeHtml(siteStatus)}</span></header><div><strong>${adsense.error ? 'AdSense needs to be reconnected' : 'Google is reviewing Callout'}</strong><p>${adsense.error ? escapeHtml(adsense.error) : 'Paid ads cannot appear until Google changes the site from Getting ready to Ready. Connect the read-only reporting API now so earnings will appear here automatically after approval.'}</p><a class="primary-action" href="/api/admin/reporting/connect">Connect AdSense reporting</a></div></section>`;
   const automation = state.botAutomation || { bots: [], intervalMinutes: 360 };
   const botsSection = `<section class="bot-admin"><header><div><span class="section-kicker">COMMUNITY AUTOMATION</span><h2>Automated hosts</h2><p>Clearly labelled accounts using original curated opinions. One action at most every ${Number(automation.intervalMinutes)} minutes.</p></div><button class="primary-action" type="button" data-run-bots>Run one action</button></header><div>${automation.bots.map(bot => `<article><span class="avatar">${escapeHtml((bot.displayName || 'B').charAt(0))}</span><div><strong>${escapeHtml(bot.displayName)}</strong><small>${escapeHtml(bot.handle)} · ${escapeHtml(bot.persona || '')}</small><span>${bot.lastRunAt ? `Last active ${timeLabel(new Date(bot.lastRunAt).getTime())}` : 'Ready for first activity'} · ${Number(bot.postCount || 0)} posts</span></div><label class="bot-toggle"><input type="checkbox" data-toggle-bot="${bot.id}" ${bot.enabled ? 'checked' : ''} /><i></i><span>${bot.enabled ? 'Active' : 'Paused'}</span></label></article>`).join('') || '<p>Automated accounts are being initialized.</p>'}</div></section>`;
+  const postConsole = `<section class="admin-post-console"><header><div><span class="section-kicker">ADMIN CORRECTIONS</span><h2>Post control console</h2><p>Edit published post copy and public counters. Changes are protected by server-side administrator checks and retain real user vote records.</p></div><span class="admin-lock">ADMIN ONLY</span></header><div>${state.posts.map(post => `<details><summary><span>${postAvatarMarkup(post)}</span><span><strong>${escapeHtml(post.text.slice(0, 85) || 'Media post')}</strong><small>${escapeHtml(post.authorHandle)} · ${Number(post.impressions).toLocaleString()} views · ${Number(post.alrightVotes).toLocaleString()} Based · ${Number(post.cringeVotes).toLocaleString()} Cringe</small></span><b>EDIT</b></summary><form data-admin-post-form="${post.id}"><label>Post content<textarea name="content" maxlength="2000" required>${escapeHtml(post.text)}</textarea></label><div class="admin-post-fields"><label>Category<select name="category">${['Movies','Music','Entertainment','Games','Life'].map(value => `<option ${post.category === value ? 'selected' : ''}>${value}</option>`).join('')}</select></label><label>Visibility<select name="visibility"><option value="public" ${post.visibility === 'public' ? 'selected' : ''}>Public</option><option value="friends" ${post.visibility === 'friends' ? 'selected' : ''}>Friends</option></select></label><label>Views<input name="impressions" type="number" min="0" max="1000000000" value="${Number(post.impressions || 0)}" required /></label><label>Based votes<input name="basedVotes" type="number" min="0" max="1000000000" value="${Number(post.alrightVotes || 0)}" required /></label><label>Cringe votes<input name="cringeVotes" type="number" min="0" max="1000000000" value="${Number(post.cringeVotes || 0)}" required /></label></div><div class="admin-post-actions"><button type="button" data-open-admin-post="${post.id}">Open post</button><button class="primary-action" type="submit">Save corrections</button></div></form></details>`).join('') || '<p class="admin-console-empty">No published posts are available.</p>'}</div></section>`;
   return `${pageHeader('PRIVATE DASHBOARD', 'Analytics', 'Traffic, acquisition, and performance data from Google Analytics and AdSense.', `<button class="quiet-action" type="button" data-refresh-analytics>Refresh</button>`)}
     <div class="analytics-toolbar"><div class="analytics-ranges">${[7,28,90].map(days => `<button type="button" data-analytics-days="${days}" class="${state.analyticsDays === days ? 'active' : ''}">${days} days</button>`).join('')}</div><span><i></i><strong>${Number(analytics.realtime?.activeUsers || 0)}</strong> active now</span></div>
     <section class="analytics-cards">${cards.map(([label,value,note]) => `<article><small>${label}</small><strong>${typeof value === 'number' ? value.toLocaleString() : value}</strong><span>${note}</span></article>`).join('')}</section>
-    ${adsenseSection}${botsSection}
+    ${adsenseSection}${postConsole}${botsSection}
     <section class="analytics-chart"><header><div><span class="section-kicker">TRAFFIC TREND</span><h2>Daily page views</h2></div><small>Updated ${new Date(analytics.generatedAt).toLocaleString()}</small></header><div class="analytics-bars">${(analytics.daily || []).map(item => `<div title="${item.date}: ${item.screenPageViews} views"><span style="height:${Math.max(4, item.screenPageViews / maxViews * 100)}%"></span><small>${item.date.slice(5)}</small></div>`).join('') || '<p>No daily traffic yet.</p>'}</div></section>
     <section class="analytics-tables"><article><header><span class="section-kicker">CONTENT</span><h2>Top pages</h2></header><div class="analytics-table-scroll"><table><thead><tr><th>#</th><th>Path</th><th>Views</th><th>Users</th></tr></thead><tbody>${table(analytics.pages || [], 'pages')}</tbody></table></div></article><article><header><span class="section-kicker">ACQUISITION</span><h2>Traffic channels</h2></header><div class="analytics-table-scroll"><table><thead><tr><th>#</th><th>Channel</th><th>Sessions</th><th>Users</th></tr></thead><tbody>${table(analytics.channels || [], 'channels')}</tbody></table></div></article></section>`;
 }
@@ -1124,6 +1125,8 @@ function bindViewInteractions(route) {
     try { await apiFetch(`/api/admin/bots/${input.dataset.toggleBot}`, { method: 'PATCH', body: JSON.stringify({ enabled: input.checked }) }); state.botAutomation = await apiFetch('/api/admin/bots'); renderRoute(); showToast(input.checked ? 'Automated account activated.' : 'Automated account paused.'); }
     catch (error) { input.checked = !input.checked; showToast(error.message); }
   }));
+  document.querySelectorAll('[data-admin-post-form]').forEach(form => form.addEventListener('submit', saveAdminPost));
+  document.querySelectorAll('[data-open-admin-post]').forEach(button => button.addEventListener('click', () => navigate(`take/${button.dataset.openAdminPost}`)));
   document.querySelectorAll('[data-layout-move]').forEach(button => button.addEventListener('click', () => {
     const order = [...document.querySelectorAll('[data-layout-item]')].map(item => item.dataset.layoutItem);
     const index = Number(button.dataset.layoutMove); const next = index + Number(button.dataset.direction);
@@ -1625,6 +1628,28 @@ function applyDisplaySettings() {
   document.documentElement.dataset.feedDensity = state.settings.feedDensity || 'comfortable';
   document.documentElement.dataset.reducedMotion = state.settings.reducedMotion ? 'true' : 'false';
   document.querySelector('meta[name="theme-color"]')?.setAttribute('content', document.documentElement.dataset.resolvedTheme === 'dark' ? '#151513' : '#ff4713');
+}
+
+async function saveAdminPost(event) {
+  event.preventDefault();
+  if (!sessionUser?.isAdmin) return showToast('Administrator access required.');
+  const form = event.currentTarget;
+  const submit = form.querySelector('button[type="submit"]');
+  const values = Object.fromEntries(new FormData(form));
+  submit.disabled = true; submit.textContent = 'Saving…';
+  try {
+    const payload = await apiFetch(`/api/admin/posts/${form.dataset.adminPostForm}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ content: sanitizeInput(values.content), category: values.category, visibility: values.visibility, impressions: Number(values.impressions), basedVotes: Number(values.basedVotes), cringeVotes: Number(values.cringeVotes) })
+    });
+    const updated = mapPost(payload.post);
+    const index = state.posts.findIndex(post => post.id === updated.id);
+    if (index >= 0) state.posts[index] = updated;
+    await Promise.all([hydratePosts(), hydrateTrending(), hydrateLeaderboard()]);
+    renderRoute(); showToast('Post corrections saved.');
+  } catch (error) {
+    submit.disabled = false; submit.textContent = 'Save corrections'; showToast(error.message);
+  }
 }
 
 function previewDisplaySettings() {
