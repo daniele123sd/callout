@@ -469,16 +469,16 @@ html[data-resolved-theme="light"] body { background: linear-gradient(135deg,#fff
 html[data-resolved-theme="light"] .page-shell { background: rgba(255,255,255,.94); }
 html[data-resolved-theme="light"] .topbar, html[data-resolved-theme="light"] .sidebar { background: rgba(255,255,255,.96); }
 
-html[data-resolved-theme="dark"] { color-scheme: dark; --ink: #f5f6f8; --muted: #b4b8c0; --line: #505663; --soft: #3a3f49; --paper: #303540; background: #242831; }
-html[data-resolved-theme="dark"] body { background: #242831; }
-html[data-resolved-theme="dark"] .page-shell { border-color: #505663; background: #292e37; box-shadow: 0 14px 36px rgba(9,11,15,.24); }
-html[data-resolved-theme="dark"] .topbar, html[data-resolved-theme="dark"] .sidebar, html[data-resolved-theme="dark"] .site-footer { background: rgba(47,52,62,.98); }
-html[data-resolved-theme="dark"] .main-content, html[data-resolved-theme="dark"] .right-rail { background: #292e37; }
+html[data-resolved-theme="dark"] { color-scheme: dark; --ink: #d7dae0; --muted: #a3a8b1; --line: #484e59; --soft: #353a44; --paper: #292e37; background: #17191e; }
+html[data-resolved-theme="dark"] body { background: #17191e; }
+html[data-resolved-theme="dark"] .page-shell { border-color: #484e59; background: #20242b; box-shadow: 0 14px 36px rgba(0,0,0,.28); }
+html[data-resolved-theme="dark"] .topbar, html[data-resolved-theme="dark"] .sidebar, html[data-resolved-theme="dark"] .site-footer { background: rgba(38,42,50,.99); }
+html[data-resolved-theme="dark"] .main-content, html[data-resolved-theme="dark"] .right-rail { background: #20242b; }
 html[data-resolved-theme="dark"] .top-search { border-color: #59606d; background: #363b45; box-shadow: none; }
 html[data-resolved-theme="dark"] .top-search kbd { border-color: #59606d; background: #414752; }
 html[data-resolved-theme="dark"] .take-card, html[data-resolved-theme="dark"] .status-card, html[data-resolved-theme="dark"] .badge-card, html[data-resolved-theme="dark"] .rail-guild-card, html[data-resolved-theme="dark"] .ranking-card, html[data-resolved-theme="dark"] .messages-layout, html[data-resolved-theme="dark"] .profile-hero, html[data-resolved-theme="dark"] .profile-summary > div, html[data-resolved-theme="dark"] .settings-section, html[data-resolved-theme="dark"] .auth-card, html[data-resolved-theme="dark"] .auth-session-card, html[data-resolved-theme="dark"] .reset-panel, html[data-resolved-theme="dark"] .reddit-thread, html[data-resolved-theme="dark"] .badges-card { border-color: #303238; background: var(--paper); box-shadow: none; }
 html[data-resolved-theme="dark"] .empty-panel { border-color: #4c525e; background: #303540; }
-html[data-resolved-theme="dark"] input, html[data-resolved-theme="dark"] textarea, html[data-resolved-theme="dark"] select { border-color: #59606d; background: #383d47; color: #f5f6f8; }
+html[data-resolved-theme="dark"] input, html[data-resolved-theme="dark"] textarea, html[data-resolved-theme="dark"] select { border-color: #505762; background: #30353e; color: #d7dae0; }
 html[data-resolved-theme="dark"] .vote-row { border-color:#4c525e;background:#343943; }
 html[data-resolved-theme="dark"] .vote-button { border-color: #08090a; }
 html[data-resolved-theme="dark"] .vote-progress { border-color: #08090a; }
@@ -486,8 +486,10 @@ html[data-resolved-theme="dark"] .ad-slot { border-color: #555c68; color: #b4b8c
 html[data-resolved-theme="dark"] .theme-options input:checked + span { border-color: var(--orange); background: #3b414b; box-shadow: 0 0 0 2px color-mix(in srgb,var(--orange) 35%,transparent); }
 html[data-resolved-theme="dark"] .settings-icon, html[data-resolved-theme="dark"] .nav-item.active, html[data-resolved-theme="dark"] .empty-icon { color: #111; }
 html[data-resolved-theme="dark"] .badge-card { background: #303540; }
-html[data-resolved-theme="dark"] .comment-composer > button, html[data-resolved-theme="dark"] .reply-composer button[type="submit"], html[data-resolved-theme="dark"] .rail-guild-card button, html[data-resolved-theme="dark"] .segmented-control button.active, html[data-resolved-theme="dark"] .text-size-options input:checked + span, html[data-resolved-theme="dark"] .created-guild button { color: #111; background: #f1f0eb; }
+html[data-resolved-theme="dark"] .comment-composer > button, html[data-resolved-theme="dark"] .reply-composer button[type="submit"], html[data-resolved-theme="dark"] .rail-guild-card button, html[data-resolved-theme="dark"] .segmented-control button.active, html[data-resolved-theme="dark"] .text-size-options input:checked + span, html[data-resolved-theme="dark"] .created-guild button { color: #d7dae0; background: #3b414c; }
 html[data-resolved-theme="dark"] .primary-action, html[data-resolved-theme="dark"] .publish-button { color: #fff; background: var(--orange); }
+html[data-resolved-theme="dark"] .primary-action, html[data-resolved-theme="dark"] .publish-button, html[data-resolved-theme="dark"] .post-button, html[data-resolved-theme="dark"] .global-rank-button, html[data-resolved-theme="dark"] .vote-button.cringe, html[data-resolved-theme="dark"] .rail-leaderboard > header, html[data-resolved-theme="dark"] .mini-leaderboard header { color:#d7dae0; }
+html[data-resolved-theme="dark"] .status-card, html[data-resolved-theme="dark"] .badge-card, html[data-resolved-theme="dark"] .rail-guild-card, html[data-resolved-theme="dark"] .profile-live-preview, html[data-resolved-theme="dark"] .composer-live-preview, html[data-resolved-theme="dark"] .created-guild, html[data-resolved-theme="dark"] .activity-item, html[data-resolved-theme="dark"] .info-callout { background:var(--paper);border-color:var(--line); }
 html[data-resolved-theme="dark"] .profile-button:hover, html[data-resolved-theme="dark"] .nav-item:hover, html[data-resolved-theme="dark"] .icon-button:hover, html[data-resolved-theme="dark"] .message-item:hover { background:#3b414c; }
 html[data-resolved-theme="dark"] .composer, html[data-resolved-theme="dark"] .simple-dialog, html[data-resolved-theme="dark"] .action-dialog, html[data-resolved-theme="dark"] .image-editor { border-color:#555c68;background:#303540;color:var(--ink);box-shadow:0 18px 45px rgba(9,11,15,.3); }
 html[data-resolved-theme="dark"] .guild-public-grid article, html[data-resolved-theme="dark"] .guild-settings-form, html[data-resolved-theme="dark"] .guild-post-composer, html[data-resolved-theme="dark"] .sidebar-widget, html[data-resolved-theme="dark"] .analytics-cards article, html[data-resolved-theme="dark"] .analytics-chart, html[data-resolved-theme="dark"] .analytics-tables article { border-color:#4c525e;background:#303540;box-shadow:none; }
@@ -641,7 +643,29 @@ html[data-palette="mint"] { --orange:#16a87b; --alright:#52dc93; --cringe:#ff5a4
 html[data-palette="violet"] { --orange:#7444e8; --alright:#65df9b; --cringe:#ff4e76; --soft:#f1edff; }
 html[data-palette="sunset"] { --orange:#ff6b35; --alright:#69d889; --cringe:#ef3155; --soft:#fff0dc; }
 html[data-palette="midnight"] { --orange:#9a73ff; --alright:#4ee0a3; --cringe:#ff5678; --soft:#181827; }
-html[data-resolved-theme="dark"][data-palette] { --soft:#3a3f49; --paper:#303540; --line:#505663; --muted:#b4b8c0; }
+html[data-resolved-theme="dark"][data-palette] { --soft:#353a44; --paper:#292e37; --line:#484e59; --muted:#a3a8b1; }
+
+/* Focused composer: text, category, media, emoji, preview, publish. */
+.composer .rich-toolbar,
+.composer .composer-options,
+.composer .poll-builder,
+.composer .embed-field,
+.composer .media-rules,
+.composer #gifUrlInput,
+.composer #addGifUrl,
+.composer #saveDraft { display:none !important; }
+.composer { width:min(680px,calc(100% - 28px)); }
+.composer form { padding:28px; }
+.composer textarea { min-height:180px;border-radius:14px; }
+.composer-drop-zone { padding:16px; }
+.composer-actions { margin-top:16px; }
+.composer-actions .publish-button { min-height:52px;border-radius:12px; }
+
+.export-size-grid { display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-top:18px; }
+.export-size-grid button { min-height:120px;display:grid;place-items:center;gap:5px;padding:14px;border:1px solid var(--line);border-radius:13px;background:var(--soft);color:var(--ink); }
+.export-size-grid button:hover { border-color:var(--orange);transform:translateY(-1px); }
+.export-size-grid button > span { font-size:32px;line-height:1; }.export-size-grid button strong { font-size:12px; }.export-size-grid button small { color:var(--muted);font-size:9px; }
+@media(max-width:560px){.export-size-grid{grid-template-columns:1fr}.export-size-grid button{min-height:76px;grid-template-columns:40px 1fr;place-items:center start;text-align:left}.export-size-grid button small{grid-column:2}}
 
 /* Keep customization focused on identity essentials. Advanced legacy values remain stored. */
 .customization-studio .customization-grid label:nth-child(n+5),

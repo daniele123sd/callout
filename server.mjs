@@ -21,7 +21,7 @@ import {
 import {
   acceptFriendRequest, canAccessPost, connectDatabase, createComment, createFriendRequest, createGuild, createGuildMessage, createGuildPost, createMessage, createPost, createReport, createUser, databaseMode, deletePost,
   findUserByEmail, findUserByGoogleId, findUserById, getGuild, getPublicProfile, joinGuildByInvite, listComments, listFriends, listGuildAudit, listGuildMembers, listGuildMessages, listGuildPosts, listGuilds, listLeaderboard, listMessages,
-  deleteNotificationMute, listDrafts, listNotificationMutes, listNotifications, listPosts, listSavedPostIds, markNotificationsRead, publicUser, recordPostView, searchCallout, setNotificationMute,
+  deleteNotificationMute, listDrafts, listNotificationMutes, listNotifications, listPosts, listSavedPostIds, listSavedPosts, markNotificationsRead, publicUser, recordPostView, searchCallout, setNotificationMute,
   toggleGuildMembership, toggleSavedPost, updateGuild, updateGuildIdentity, updateGuildMember, updateGuildRole, updatePost, updateUser, voteOnComment, voteOnPoll, voteOnPost
 } from './server/repository.mjs';
 
@@ -321,7 +321,7 @@ app.post('/api/comments/:id/vote', requireAuth, async (req, res, next) => {
 });
 
 app.get('/api/saved', requireAuth, async (req, res, next) => {
-  try { res.json({ savedPostIds: await listSavedPostIds(req.userId) }); } catch (error) { next(error); }
+  try { res.json({ savedPostIds: await listSavedPostIds(req.userId), posts: await listSavedPosts(req.userId) }); } catch (error) { next(error); }
 });
 app.post('/api/posts/:id/save', requireAuth, async (req, res, next) => {
   try {

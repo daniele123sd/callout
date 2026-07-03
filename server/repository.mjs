@@ -399,6 +399,18 @@ export async function listSavedPostIds(userId) {
   return memoryUsers.get(String(userId))?.savedPosts || [];
 }
 
+export async function listSavedPosts(userId) {
+  const savedIds = await listSavedPostIds(userId);
+  if (!savedIds.length) return [];
+  if (connected) {
+    const posts = await Post.find({ _id: { $in: savedIds }, draft: { $ne: true } })
+      .populate('author', 'displayName handle avatarUrl isAutomated automationPersona').lean().exec();
+    const byId = new Map(posts.map(post => [String(post._id), { ...serializePost(post, userId), author: post.author ? publicIdentity(post.author) : null }]));
+    return savedIds.map(id => byId.get(String(id))).filter(Boolean);
+  }
+  return savedIds.map(id => memoryPosts.get(String(id))).filter(Boolean).map(post => ({ ...serializePost(post, userId), author: publicIdentity(memoryUsers.get(String(post.author))) }));
+}
+
 const serializeGuild = (guild, userId = '') => {
   const value = normalize(guild);
   const members = value.members || [];

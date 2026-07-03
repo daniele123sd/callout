@@ -73,6 +73,7 @@ const state = {
   posts: Array.isArray(storedState?.posts) ? storedState.posts.map(post => ({ ...post, id: String(post.id), authorId: String(post.authorId || 'local-user'), comments: Array.isArray(post.comments) ? post.comments : [] })) : [],
   guilds: Array.isArray(storedState?.guilds) ? storedState.guilds : [],
   savedPostIds: Array.isArray(storedState?.savedPostIds) ? storedState.savedPostIds.map(String) : [],
+  savedPosts: [],
   trendingPosts: [],
   leaderboard: [],
   userStanding: null,
@@ -464,9 +465,9 @@ async function hydrateAnalytics() {
   } catch (error) { state.analytics = null; state.analyticsError = error.message; }
 }
 async function hydrateAccountData() {
-  if (!sessionUser) { state.savedPostIds = []; state.notifications = []; state.messages = []; state.friendships = []; return; }
+  if (!sessionUser) { state.savedPostIds = []; state.savedPosts = []; state.notifications = []; state.messages = []; state.friendships = []; return; }
   const [saved, notifications, messages, friends] = await Promise.allSettled([apiFetch('/api/saved'), apiFetch('/api/notifications'), apiFetch('/api/messages'), apiFetch('/api/friends')]);
-  if (saved.status === 'fulfilled') state.savedPostIds = (saved.value.savedPostIds || []).map(String);
+  if (saved.status === 'fulfilled') { state.savedPostIds = (saved.value.savedPostIds || []).map(String); state.savedPosts = (saved.value.posts || []).map(mapPost); }
   if (notifications.status === 'fulfilled') state.notifications = notifications.value.notifications || [];
   if (messages.status === 'fulfilled') state.messages = messages.value.messages || [];
   if (friends.status === 'fulfilled') state.friendships = friends.value.friendships || [];
@@ -480,7 +481,7 @@ async function hydrateSavedPosts() {
   if (!sessionUser) { state.savedPostIds = []; return; }
   try {
     const saved = await apiFetch('/api/saved');
-    state.savedPostIds = (saved.savedPostIds || []).map(String); persist();
+    state.savedPostIds = (saved.savedPostIds || []).map(String); state.savedPosts = (saved.posts || []).map(mapPost); persist();
   } catch (error) { console.error('Unable to load saved posts:', error); }
 }
 
@@ -784,7 +785,7 @@ function messagesView() {
 }
 
 function savedView() {
-  const saved = state.posts.filter(post => state.savedPostIds.includes(post.id));
+  const saved = state.savedPosts;
   return `${pageHeader('YOUR LIBRARY', 'Saved', 'Takes you want to revisit, kept private to your account.')}
     ${saved.length ? `<section class="take-list">${saved.map(postTemplate).join('')}</section>` : emptyState('◇', 'Nothing saved yet', 'Use the bookmark on a real take and it will be collected here.')}`;
 }
@@ -977,7 +978,7 @@ function bindPostInteractions() {
   document.querySelectorAll('[data-save-post]').forEach(button => button.addEventListener('click', async () => {
     const id = button.dataset.savePost;
     if (!sessionUser) { navigate('auth'); return showToast('Sign in to save posts.'); }
-    try { const payload = await apiFetch(`/api/posts/${id}/save`, { method: 'POST' }); state.savedPostIds = payload.savedPostIds.map(String); persist(); renderRoute(); showToast(payload.saved ? 'Saved for later.' : 'Removed from saved.'); }
+    try { const payload = await apiFetch(`/api/posts/${id}/save`, { method: 'POST' }); state.savedPostIds = payload.savedPostIds.map(String); await hydrateSavedPosts(); persist(); renderRoute(); showToast(payload.saved ? 'Saved for later.' : 'Removed from saved.'); }
     catch (error) { showToast(error.message); }
   }));
   document.querySelectorAll('[data-open-take]').forEach(element => {
@@ -1228,6 +1229,63 @@ function openPostMenu(id) {
   document.querySelector('[data-delete-post]')?.addEventListener('click', () => openDeletePost(post));
   document.querySelector('[data-share-post]')?.addEventListener('click', () => sharePost(post));
   document.querySelector('[data-report-post]')?.addEventListener('click', () => openReportPost(post));
+  const menu = document.querySelector('.post-menu-list');
+  const download = document.createElement('button');
+  download.type = 'button'; download.dataset.downloadPost = ''; download.innerHTML = '<span>↓</span><span><strong>Download</strong><small>Export this live take as an image</small></span>';
+  menu.insertBefore(download, menu.querySelector('[data-share-post]'));
+  download.addEventListener('click', () => openPostDownload(post));
+}
+
+function openPostDownload(post) {
+  const presets = [
+    ['desktop', 'Desktop', '1600 × 900'], ['mobile', 'Mobile post', '1080 × 1350'], ['story', 'Story', '1080 × 1920']
+  ];
+  showActionDialog(actionDialogShell('EXPORT TAKE', 'Choose an image size', `<p class="dialog-copy">Exports include the current live vote totals and generation time.</p><div class="export-size-grid">${presets.map(([key, name, size]) => `<button type="button" data-export-size="${key}"><span>${key === 'desktop' ? '▭' : key === 'mobile' ? '▯' : '▯'}</span><strong>${name}</strong><small>${size} PNG</small></button>`).join('')}</div>`));
+  document.querySelectorAll('[data-export-size]').forEach(button => button.addEventListener('click', async () => {
+    button.disabled = true; button.querySelector('small').textContent = 'Creating image...';
+    try { await downloadPostImage(post, button.dataset.exportSize); closeActionDialog(); showToast('Post image downloaded.'); }
+    catch (error) { button.disabled = false; button.querySelector('small').textContent = 'Try again'; showToast(error.message); }
+  }));
+}
+
+function canvasWrappedLines(context, text, maxWidth) {
+  const lines = [];
+  for (const paragraph of String(text || '').split(/\n/)) {
+    let line = '';
+    for (const word of paragraph.split(/\s+/).filter(Boolean)) {
+      const candidate = line ? `${line} ${word}` : word;
+      if (context.measureText(candidate).width > maxWidth && line) { lines.push(line); line = word; } else line = candidate;
+    }
+    if (line) lines.push(line);
+  }
+  return lines;
+}
+
+async function downloadPostImage(post, preset) {
+  const dimensions = { desktop: [1600, 900], mobile: [1080, 1350], story: [1080, 1920] };
+  const [width, height] = dimensions[preset] || dimensions.mobile;
+  const canvas = document.createElement('canvas'); canvas.width = width; canvas.height = height;
+  const context = canvas.getContext('2d'); const unit = width / 1080;
+  context.fillStyle = '#1d2026'; context.fillRect(0, 0, width, height);
+  const gradient = context.createLinearGradient(0, 0, width, height); gradient.addColorStop(0, '#ff4b20'); gradient.addColorStop(1, '#7d2516');
+  context.fillStyle = gradient; context.fillRect(0, 0, width, Math.round(18 * unit));
+  const pad = Math.round(72 * unit); const cardTop = Math.round((preset === 'story' ? 300 : 100) * unit);
+  context.fillStyle = '#303540'; context.beginPath(); context.roundRect(pad, cardTop, width - pad * 2, Math.min(height - cardTop - pad, Math.round(930 * unit)), Math.round(28 * unit)); context.fill();
+  context.fillStyle = '#d9dbe0'; context.font = `900 ${Math.round(38 * unit)}px Arial`; context.fillText('CALLOUT', pad + Math.round(38 * unit), cardTop + Math.round(70 * unit));
+  context.fillStyle = '#aeb2bb'; context.font = `700 ${Math.round(22 * unit)}px Arial`; context.fillText(`${post.authorHandle || '@member'}  ·  ${post.category || 'Take'}`, pad + Math.round(38 * unit), cardTop + Math.round(112 * unit));
+  context.fillStyle = '#d9dbe0'; context.font = `900 ${Math.round((preset === 'desktop' ? 48 : 52) * unit)}px Arial`;
+  const lines = canvasWrappedLines(context, post.text, width - pad * 2 - Math.round(76 * unit)).slice(0, preset === 'story' ? 10 : 7);
+  let y = cardTop + Math.round(205 * unit); const lineHeight = Math.round(64 * unit); lines.forEach(line => { context.fillText(line, pad + Math.round(38 * unit), y); y += lineHeight; });
+  const total = Number(post.alrightVotes || 0) + Number(post.cringeVotes || 0); const alright = total ? Math.round(Number(post.alrightVotes || 0) / total * 100) : 50; const cringe = 100 - alright;
+  const barX = pad + Math.round(38 * unit); const barWidth = width - pad * 2 - Math.round(76 * unit); const barY = Math.max(y + Math.round(60 * unit), cardTop + Math.round(520 * unit)); const barHeight = Math.round(30 * unit);
+  context.fillStyle = '#55df50'; context.fillRect(barX, barY, barWidth * alright / 100, barHeight); context.fillStyle = '#ff4b20'; context.fillRect(barX + barWidth * alright / 100, barY, barWidth * cringe / 100, barHeight);
+  context.fillStyle = '#65e461'; context.font = `900 ${Math.round(30 * unit)}px Arial`; context.fillText(`${alright}% ALRIGHT`, barX, barY + Math.round(82 * unit));
+  context.fillStyle = '#ff6542'; context.textAlign = 'right'; context.fillText(`${cringe}% CRINGE`, barX + barWidth, barY + Math.round(82 * unit)); context.textAlign = 'left';
+  context.fillStyle = '#aeb2bb'; context.font = `600 ${Math.round(20 * unit)}px Arial`; context.fillText(`${total.toLocaleString()} live votes  ·  ${Number(post.commentCount || 0).toLocaleString()} Takes`, barX, barY + Math.round(128 * unit));
+  context.fillText(`Posted ${new Date(post.createdAt).toLocaleString()}  ·  Exported ${new Date().toLocaleString()}`, barX, height - Math.round(48 * unit));
+  const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+  if (!blob) throw new Error('The image could not be generated.');
+  const url = URL.createObjectURL(blob); const link = document.createElement('a'); link.href = url; link.download = `callout-${post.id}-${preset}.png`; link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 function openEditPost(post) {

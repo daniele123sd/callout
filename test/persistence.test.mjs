@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {
   acceptFriendRequest, canAccessPost, createComment, createFriendRequest, createGuild, createGuildMessage, createGuildPost, createMessage, createPost, createUser, findUserById, getGuild, getPublicProfile,
   listComments, listFriends, listGuildMessages, listGuildPosts, listGuilds, listLeaderboard, listMessages, listNotifications,
-  listPosts, listSavedPostIds, searchCallout, toggleGuildMembership,
+  listPosts, listSavedPostIds, listSavedPosts, searchCallout, toggleGuildMembership,
   toggleSavedPost, updateGuild, updateGuildMember, voteOnPost
 } from '../server/repository.mjs';
 
@@ -29,6 +29,7 @@ test('votes, comments, saves and notifications persist per account', async () =>
 
   await toggleSavedPost(reader.id, post.id);
   assert.deepEqual(await listSavedPostIds(reader.id), [post.id]);
+  assert.equal((await listSavedPosts(reader.id))[0].content, 'Persistence test');
   assert.ok((await listNotifications(author.id)).length >= 2);
   assert.equal((await findUserById(reader.id)).vibeScore, 5);
 });
