@@ -469,28 +469,28 @@ html[data-resolved-theme="light"] body { background: linear-gradient(135deg,#fff
 html[data-resolved-theme="light"] .page-shell { background: rgba(255,255,255,.94); }
 html[data-resolved-theme="light"] .topbar, html[data-resolved-theme="light"] .sidebar { background: rgba(255,255,255,.96); }
 
-html[data-resolved-theme="dark"] { color-scheme: dark; --ink: #f2f2ef; --muted: #9b9da3; --line: #32343a; --soft: #222428; --paper: #191b1e; background: #0f1012; }
-html[data-resolved-theme="dark"] body { background: #0f1012; }
-html[data-resolved-theme="dark"] .page-shell { border-color: #2c2e33; background: #121417; box-shadow: 0 16px 45px rgba(0,0,0,.32); }
-html[data-resolved-theme="dark"] .topbar, html[data-resolved-theme="dark"] .sidebar, html[data-resolved-theme="dark"] .site-footer { background: rgba(20,22,25,.98); }
-html[data-resolved-theme="dark"] .main-content, html[data-resolved-theme="dark"] .right-rail { background: #121417; }
-html[data-resolved-theme="dark"] .top-search { border-color: #3b3e44; background: #1b1d20; box-shadow: none; }
-html[data-resolved-theme="dark"] .top-search kbd { border-color: #44423d; background: #292925; }
+html[data-resolved-theme="dark"] { color-scheme: dark; --ink: #f5f6f8; --muted: #b4b8c0; --line: #505663; --soft: #3a3f49; --paper: #303540; background: #242831; }
+html[data-resolved-theme="dark"] body { background: #242831; }
+html[data-resolved-theme="dark"] .page-shell { border-color: #505663; background: #292e37; box-shadow: 0 14px 36px rgba(9,11,15,.24); }
+html[data-resolved-theme="dark"] .topbar, html[data-resolved-theme="dark"] .sidebar, html[data-resolved-theme="dark"] .site-footer { background: rgba(47,52,62,.98); }
+html[data-resolved-theme="dark"] .main-content, html[data-resolved-theme="dark"] .right-rail { background: #292e37; }
+html[data-resolved-theme="dark"] .top-search { border-color: #59606d; background: #363b45; box-shadow: none; }
+html[data-resolved-theme="dark"] .top-search kbd { border-color: #59606d; background: #414752; }
 html[data-resolved-theme="dark"] .take-card, html[data-resolved-theme="dark"] .status-card, html[data-resolved-theme="dark"] .badge-card, html[data-resolved-theme="dark"] .rail-guild-card, html[data-resolved-theme="dark"] .ranking-card, html[data-resolved-theme="dark"] .messages-layout, html[data-resolved-theme="dark"] .profile-hero, html[data-resolved-theme="dark"] .profile-summary > div, html[data-resolved-theme="dark"] .settings-section, html[data-resolved-theme="dark"] .auth-card, html[data-resolved-theme="dark"] .auth-session-card, html[data-resolved-theme="dark"] .reset-panel, html[data-resolved-theme="dark"] .reddit-thread, html[data-resolved-theme="dark"] .badges-card { border-color: #303238; background: var(--paper); box-shadow: none; }
-html[data-resolved-theme="dark"] .empty-panel { border-color: #3d3b36; background: radial-gradient(circle at 50% 25%,#20201d,#181816); }
-html[data-resolved-theme="dark"] input, html[data-resolved-theme="dark"] textarea, html[data-resolved-theme="dark"] select { border-color: #3a3d43; background: #1d1f23; color: #f2f2ef; }
-html[data-resolved-theme="dark"] .vote-row { border-color:#303238;background:#17191c; }
+html[data-resolved-theme="dark"] .empty-panel { border-color: #4c525e; background: #303540; }
+html[data-resolved-theme="dark"] input, html[data-resolved-theme="dark"] textarea, html[data-resolved-theme="dark"] select { border-color: #59606d; background: #383d47; color: #f5f6f8; }
+html[data-resolved-theme="dark"] .vote-row { border-color:#4c525e;background:#343943; }
 html[data-resolved-theme="dark"] .vote-button { border-color: #08090a; }
 html[data-resolved-theme="dark"] .vote-progress { border-color: #08090a; }
-html[data-resolved-theme="dark"] .ad-slot { border-color: #4a4842; color: #8f8c84; background: repeating-linear-gradient(135deg,#20201e,#20201e 10px,#262623 10px,#262623 20px); }
-html[data-resolved-theme="dark"] .theme-options input:checked + span { border-color: var(--orange); background: #3a211b; box-shadow: 0 0 0 3px #592b20; }
+html[data-resolved-theme="dark"] .ad-slot { border-color: #555c68; color: #b4b8c0; background: repeating-linear-gradient(135deg,#303540,#303540 10px,#383d47 10px,#383d47 20px); }
+html[data-resolved-theme="dark"] .theme-options input:checked + span { border-color: var(--orange); background: #3b414b; box-shadow: 0 0 0 2px color-mix(in srgb,var(--orange) 35%,transparent); }
 html[data-resolved-theme="dark"] .settings-icon, html[data-resolved-theme="dark"] .nav-item.active, html[data-resolved-theme="dark"] .empty-icon { color: #111; }
-html[data-resolved-theme="dark"] .badge-card { background: radial-gradient(circle at 80% 20%,#21351d,#1b1b19); }
+html[data-resolved-theme="dark"] .badge-card { background: #303540; }
 html[data-resolved-theme="dark"] .comment-composer > button, html[data-resolved-theme="dark"] .reply-composer button[type="submit"], html[data-resolved-theme="dark"] .rail-guild-card button, html[data-resolved-theme="dark"] .segmented-control button.active, html[data-resolved-theme="dark"] .text-size-options input:checked + span, html[data-resolved-theme="dark"] .created-guild button { color: #111; background: #f1f0eb; }
 html[data-resolved-theme="dark"] .primary-action, html[data-resolved-theme="dark"] .publish-button { color: #fff; background: var(--orange); }
-html[data-resolved-theme="dark"] .profile-button:hover, html[data-resolved-theme="dark"] .nav-item:hover, html[data-resolved-theme="dark"] .icon-button:hover, html[data-resolved-theme="dark"] .message-item:hover { background:#202226; }
-html[data-resolved-theme="dark"] .composer, html[data-resolved-theme="dark"] .simple-dialog, html[data-resolved-theme="dark"] .action-dialog, html[data-resolved-theme="dark"] .image-editor { border-color:#34373d;background:#191b1e;color:var(--ink);box-shadow:0 18px 50px rgba(0,0,0,.45); }
-html[data-resolved-theme="dark"] .guild-public-grid article, html[data-resolved-theme="dark"] .guild-settings-form, html[data-resolved-theme="dark"] .guild-post-composer, html[data-resolved-theme="dark"] .sidebar-widget, html[data-resolved-theme="dark"] .analytics-cards article, html[data-resolved-theme="dark"] .analytics-chart, html[data-resolved-theme="dark"] .analytics-tables article { border-color:#303238;background:#191b1e;box-shadow:none; }
+html[data-resolved-theme="dark"] .profile-button:hover, html[data-resolved-theme="dark"] .nav-item:hover, html[data-resolved-theme="dark"] .icon-button:hover, html[data-resolved-theme="dark"] .message-item:hover { background:#3b414c; }
+html[data-resolved-theme="dark"] .composer, html[data-resolved-theme="dark"] .simple-dialog, html[data-resolved-theme="dark"] .action-dialog, html[data-resolved-theme="dark"] .image-editor { border-color:#555c68;background:#303540;color:var(--ink);box-shadow:0 18px 45px rgba(9,11,15,.3); }
+html[data-resolved-theme="dark"] .guild-public-grid article, html[data-resolved-theme="dark"] .guild-settings-form, html[data-resolved-theme="dark"] .guild-post-composer, html[data-resolved-theme="dark"] .sidebar-widget, html[data-resolved-theme="dark"] .analytics-cards article, html[data-resolved-theme="dark"] .analytics-chart, html[data-resolved-theme="dark"] .analytics-tables article { border-color:#4c525e;background:#303540;box-shadow:none; }
 
 @keyframes shimmer { to { background-position: -200% 0; } }
 @keyframes breathe { 50% { transform: scale(1.25); opacity: .8; } }
@@ -641,7 +641,41 @@ html[data-palette="mint"] { --orange:#16a87b; --alright:#52dc93; --cringe:#ff5a4
 html[data-palette="violet"] { --orange:#7444e8; --alright:#65df9b; --cringe:#ff4e76; --soft:#f1edff; }
 html[data-palette="sunset"] { --orange:#ff6b35; --alright:#69d889; --cringe:#ef3155; --soft:#fff0dc; }
 html[data-palette="midnight"] { --orange:#9a73ff; --alright:#4ee0a3; --cringe:#ff5678; --soft:#181827; }
-html[data-resolved-theme="dark"][data-palette] { --soft:#222428; --paper:#191b1e; --line:#32343a; --muted:#9b9da3; }
+html[data-resolved-theme="dark"][data-palette] { --soft:#3a3f49; --paper:#303540; --line:#505663; --muted:#b4b8c0; }
+
+/* Keep customization focused on identity essentials. Advanced legacy values remain stored. */
+.customization-studio .customization-grid label:nth-child(n+5),
+.customization-studio .layout-picker,
+.customization-studio .cosmetic-collection,
+.customization-studio .featured-badge-picker,
+#profilePreview ~ .form-grid label:has([name="avatarFrame"]),
+.guild-style-studio .guild-template-actions,
+.guild-style-studio label:has([name="tagline"]),
+.guild-style-studio label:has([name="welcomeMessage"]),
+.guild-style-studio label:has([name="accentColor"]),
+.guild-style-studio label:has([name="backgroundPattern"]),
+.guild-style-studio label:has([name="cardStyle"]),
+.guild-style-studio label:has([name="iconShape"]),
+.guild-style-studio label:has([name="seasonalEffect"]),
+.guild-style-studio label:has([name="reactionSet"]),
+.guild-style-studio label:has([name="customEmojis"]),
+.guild-style-studio label:has([name="onboardingQuestions"]),
+.guild-style-studio .layout-picker,
+.guild-style-studio .guild-settings-toggles label:nth-child(n+3),
+.guild-identity-form label:has([name="themeColor"]),
+.guild-identity-form label:has([name="avatarFrame"]),
+.guild-identity-form label:has([name="avatarFile"]),
+.guild-identity-form label:has([name="bannerFile"]),
+[data-guild-tab="identity"] { display:none; }
+
+.profile-effect-glow,.profile-effect-bubbles,.profile-effect-spotlight,.profile-effect-confetti,
+.profile-bg-grid,.profile-bg-waves,.profile-bg-stars,.profile-bg-noise { animation:none !important; background:var(--paper) !important; }
+.profile-effect-glow::before,.profile-effect-bubbles::before,.profile-effect-spotlight::before,.profile-effect-confetti::before,
+.guild-effect-sparkles::after,.guild-effect-confetti::after,.guild-effect-snow::after,.guild-effect-embers::after { display:none !important; }
+.avatar[class*="avatar-frame-"] { box-shadow:none !important; outline:0 !important; }
+.guild-hero[class*="guild-bg-"] .guild-cover { background-image:linear-gradient(135deg,var(--guild-theme),color-mix(in srgb,var(--guild-theme) 70%,#111)) !important; }
+.guild-hero[class*="guild-cards-"] .guild-hero-body { background:var(--paper) !important; backdrop-filter:none !important; }
+.guild-profile-icon[class*="guild-icon-"] { border-radius:22px; clip-path:none; }
 html[data-reduced-motion="true"] *,html[data-reduced-motion="true"] *::before,html[data-reduced-motion="true"] *::after{animation:none!important;transition:none!important}
 html[data-feed-density="compact"] .take-card{margin-bottom:10px}html[data-feed-density="compact"] .take-content{min-height:92px;padding-block:12px}html[data-feed-density="compact"] .take-card h2{font-size:22px}
 html[data-feed-density="spacious"] .take-card{margin-bottom:28px}html[data-feed-density="spacious"] .take-content{min-height:190px;padding-block:30px}
