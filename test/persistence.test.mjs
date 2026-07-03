@@ -55,6 +55,9 @@ test('custom post reactions persist per user and anonymous ideas store no identi
   let reacted = await reactToPost(post.id, reader.id, 'sideeye');
   assert.equal(reacted.emojiReactions.sideeye.count, 1);
   assert.equal(reacted.emojiReactions.sideeye.reacted, true);
+  assert.equal(reacted.author.displayName, author.displayName);
+  assert.equal(reacted.author.handle, author.handle);
+  assert.equal(reacted.commentCount, 0);
   reacted = await reactToPost(post.id, reader.id, 'sideeye');
   assert.equal(reacted.emojiReactions.sideeye.count, 0);
   const idea = await createFeatureIdea({ text: 'Let guilds host anonymous debate nights.', mood: 'wild' });

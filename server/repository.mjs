@@ -223,7 +223,13 @@ export async function reactToPost(postId, userId, key) {
     const index = reaction.users.findIndex(user => String(user) === String(userId));
     if (index >= 0) reaction.users.splice(index, 1); else reaction.users.push(userId);
     await post.save();
-    return serializePost(post, userId);
+    await post.populate('author', 'displayName handle avatarUrl isAutomated automationPersona');
+    const commentCount = await Comment.countDocuments({ post: post._id });
+    return {
+      ...serializePost(post, userId),
+      author: post.author ? publicIdentity(post.author) : null,
+      commentCount
+    };
   }
   const post = memoryPosts.get(String(postId));
   if (!post) return null;
@@ -232,7 +238,11 @@ export async function reactToPost(postId, userId, key) {
   if (!reaction) { reaction = { key, users: [] }; post.emojiReactions.push(reaction); }
   const index = reaction.users.indexOf(String(userId));
   if (index >= 0) reaction.users.splice(index, 1); else reaction.users.push(String(userId));
-  return serializePost(post, userId);
+  return {
+    ...serializePost(post, userId),
+    author: publicIdentity(memoryUsers.get(String(post.author))),
+    commentCount: [...memoryComments.values()].filter(comment => comment.post === post.id).length
+  };
 }
 
 export async function adminUpdatePost(postId, adminId, values) {
