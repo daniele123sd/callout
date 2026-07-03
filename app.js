@@ -217,6 +217,12 @@ function playNotificationSound() {
 }
 
 function runVoteEffect(button, value) {
+  if (state.settings.voteEffect === 'none' || state.settings.reducedMotion) return;
+  button.classList.remove('vote-confirmed');
+  void button.offsetWidth;
+  button.classList.add('vote-confirmed');
+  setTimeout(() => button.classList.remove('vote-confirmed'), 320);
+  return;
   const effect = state.settings.voteEffect || 'pop'; if (effect === 'none' || state.settings.reducedMotion) return;
   const burst = document.createElement('span'); burst.className = `vote-feedback vote-feedback-${effect} ${value}`; burst.textContent = value === 'alright' ? '✓' : '🔥';
   button.appendChild(burst); setTimeout(() => burst.remove(), 850);
@@ -557,7 +563,7 @@ function postTemplate(post, detail = false) {
       <button class="vote-button alright ${post.userVote === 'alright' ? 'selected' : ''}" type="button" data-vote="alright"><span class="vote-face">☺</span><strong>ALRIGHT</strong></button>
       <b class="percent alright-percent">${alrightPercent}%</b>
       <div class="vote-progress" style="--alright:${alrightPercent}%" role="progressbar" aria-label="${alrightPercent}% Alright, ${cringePercent}% Cringe" aria-valuenow="${alrightPercent}" aria-valuemin="0" aria-valuemax="100">
-        <div class="progress-glow"></div><div class="progress-divider"></div><span class="progress-pulse"></span>
+        <div class="progress-divider"></div>
       </div>
       <b class="percent cringe-percent">${cringePercent}%</b>
       <button class="vote-button cringe ${post.userVote === 'cringe' ? 'selected' : ''}" type="button" data-vote="cringe"><span class="vote-face">☹</span><strong>CRINGE</strong></button>
