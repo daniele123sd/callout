@@ -1262,6 +1262,7 @@ function canvasWrappedLines(context, text, maxWidth) {
 }
 
 async function downloadPostImage(post, preset) {
+  if (window.html2canvas) return downloadPostDomImage(post, preset);
   const dimensions = { desktop: [1600, 900], mobile: [1080, 1350], story: [1080, 1920] };
   const [width, height] = dimensions[preset] || dimensions.mobile;
   const canvas = document.createElement('canvas'); canvas.width = width; canvas.height = height;
@@ -1286,6 +1287,37 @@ async function downloadPostImage(post, preset) {
   const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
   if (!blob) throw new Error('The image could not be generated.');
   const url = URL.createObjectURL(blob); const link = document.createElement('a'); link.href = url; link.download = `callout-${post.id}-${preset}.png`; link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+async function downloadPostDomImage(post, preset) {
+  const dimensions = { desktop: [1600, 900], mobile: [1080, 1350], story: [1080, 1920] };
+  const responsiveWidths = { desktop: 1200, mobile: 680, story: 620 };
+  const [width, height] = dimensions[preset] || dimensions.mobile;
+  const stage = document.createElement('section');
+  stage.className = `post-export-stage post-export-${preset}`;
+  stage.style.width = `${responsiveWidths[preset] || responsiveWidths.mobile}px`;
+  stage.innerHTML = postTemplate(post);
+  document.body.appendChild(stage);
+  try {
+    await document.fonts?.ready;
+    const source = await window.html2canvas(stage, {
+      backgroundColor: null, useCORS: true, allowTaint: false, logging: false,
+      scale: 2, width: stage.scrollWidth, height: stage.scrollHeight,
+      windowWidth: responsiveWidths[preset] || responsiveWidths.mobile
+    });
+    const output = document.createElement('canvas'); output.width = width; output.height = height;
+    const context = output.getContext('2d');
+    const dark = document.documentElement.dataset.resolvedTheme === 'dark';
+    context.fillStyle = dark ? '#20242b' : '#f7f4ec'; context.fillRect(0, 0, width, height);
+    const margin = preset === 'desktop' ? 70 : 58;
+    const scale = Math.min((width - margin * 2) / source.width, (height - margin * 2) / source.height);
+    const drawWidth = Math.round(source.width * scale); const drawHeight = Math.round(source.height * scale);
+    const x = Math.round((width - drawWidth) / 2); const y = Math.round((height - drawHeight) / 2);
+    context.drawImage(source, x, y, drawWidth, drawHeight);
+    const blob = await new Promise(resolve => output.toBlob(resolve, 'image/png'));
+    if (!blob) throw new Error('The post image could not be generated.');
+    const url = URL.createObjectURL(blob); const link = document.createElement('a'); link.href = url; link.download = `callout-${post.id}-${preset}.png`; link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
+  } finally { stage.remove(); }
 }
 
 function openEditPost(post) {

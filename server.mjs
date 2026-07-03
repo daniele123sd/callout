@@ -473,6 +473,7 @@ app.post('/api/messages', requireAuth, validate(schemas.message), async (req, re
 });
 
 app.get('/vendor/dompurify.min.js', (_req, res) => res.sendFile(path.join(root, 'node_modules', 'dompurify', 'dist', 'purify.min.js')));
+app.get('/vendor/html2canvas.min.js', (_req, res) => res.sendFile(path.join(root, 'node_modules', 'html2canvas', 'dist', 'html2canvas.min.js')));
 app.get('/privacy', (_req, res) => res.sendFile(path.join(root, 'privacy.html')));
 app.get('/terms', (_req, res) => res.sendFile(path.join(root, 'terms.html')));
 async function renderIndex(_req, res, next) {
