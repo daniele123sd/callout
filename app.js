@@ -100,7 +100,7 @@ if (storedState?.settings?.appearanceVersion !== 2) {
   state.settings.theme = 'light';
 }
 
-const routes = new Set(['home', 'trending', 'guilds', 'guild', 'leaderboards', 'vibe-progress', 'notifications', 'messages', 'saved', 'profile', 'user', 'settings', 'analytics', 'take', 'auth']);
+const routes = new Set(['home', 'trending', 'guilds', 'guild', 'leaderboards', 'vibe-progress', 'notifications', 'messages', 'saved', 'profile', 'user', 'settings', 'customize', 'accessibility', 'analytics', 'take', 'auth']);
 const mainContent = document.querySelector('#mainContent');
 const composer = document.querySelector('#composer');
 const guildComposer = document.querySelector('#guildComposer');
@@ -191,7 +191,14 @@ function trackEvent(name, parameters = {}) {
 }
 
 function persist() {
-  localStorage.setItem(storageKey, JSON.stringify(state));
+  const lightweightProfile = { ...state.profile, avatarUrl: '', bannerUrl: '' };
+  const cache = { profile: lightweightProfile, settings: state.settings, savedPostIds: state.savedPostIds };
+  try { localStorage.setItem(storageKey, JSON.stringify(cache)); }
+  catch (error) {
+    localStorage.removeItem(storageKey);
+    try { localStorage.setItem(storageKey, JSON.stringify({ settings: state.settings })); } catch { /* database remains authoritative */ }
+    console.warn('Callout browser cache was reset:', error.message);
+  }
 }
 
 function escapeHtml(value = '') {
@@ -848,9 +855,11 @@ function publicUserView() {
 
 function settingsView() {
   const settings = state.settings;
+  const mode = ['customize', 'accessibility'].includes(currentRoute()) ? currentRoute() : 'settings';
   const checked = value => value ? 'checked' : '';
-  return `${pageHeader('PREFERENCES', 'Settings', 'Manage appearance, notifications, privacy, and account details.')}
-    <form class="settings-form" id="settingsForm">
+  return `${pageHeader('PREFERENCES', mode === 'customize' ? 'Customize' : mode === 'accessibility' ? 'Accessibility' : 'Settings', mode === 'customize' ? 'Edit your profile identity and visual preferences.' : mode === 'accessibility' ? 'Adjust theme, motion, text, and content visibility.' : 'Manage notifications, privacy, and account controls.')}
+    <nav class="settings-subnav" aria-label="Settings sections"><a href="#settings" class="${mode === 'settings' ? 'active' : ''}">Settings</a><a href="#customize" class="${mode === 'customize' ? 'active' : ''}">Customize</a><a href="#accessibility" class="${mode === 'accessibility' ? 'active' : ''}">Accessibility</a></nav>
+    <form class="settings-form settings-mode-${mode}" id="settingsForm">
       <section class="settings-section customization-studio"><div class="settings-section-head"><div><span class="settings-icon">✦</span><div><h2>Callout Style Studio</h2><p>Personalize your profile, feed, motion, and signature interactions.</p></div></div></div>
         <div class="customization-grid"><label>Color palette<select name="palette">${['callout','midnight','mint','violet','sunset'].map(value => `<option value="${value}" ${settings.palette === value ? 'selected' : ''}>${value}</option>`).join('')}</select></label><label>Feed density<select name="feedDensity">${['compact','comfortable','spacious'].map(value => `<option value="${value}" ${settings.feedDensity === value ? 'selected' : ''}>${value}</option>`).join('')}</select></label><label>Vote animation<select name="voteEffect">${['pop','confetti','pulse','none'].map(value => `<option value="${value}" ${settings.voteEffect === value ? 'selected' : ''}>${value}</option>`).join('')}</select></label><label>Notification sound<select name="notificationSound">${['callout','spark','soft','none'].map(value => `<option value="${value}" ${settings.notificationSound === value ? 'selected' : ''}>${value}</option>`).join('')}</select></label><label>Profile effect<select name="profileEffect">${['none','glow','bubbles','spotlight','confetti'].map(value => `<option value="${value}" ${state.profile.profileEffect === value ? 'selected' : ''}>${value}</option>`).join('')}</select></label><label>Vibe aura<select name="vibeAura">${['auto','none','rookie','star','legend'].map(value => `<option value="${value}" ${state.profile.vibeAura === value ? 'selected' : ''}>${value}</option>`).join('')}</select></label><label>Profile background<select name="profileBackground">${['clean','grid','waves','stars','noise'].map(value => `<option value="${value}" ${state.profile.profileBackground === value ? 'selected' : ''}>${value}</option>`).join('')}</select></label><label>Take showcase<select name="showcaseMode">${['featured','popular','controversial','recent'].map(value => `<option value="${value}" ${state.profile.showcaseMode === value ? 'selected' : ''}>${value}</option>`).join('')}</select></label></div>
         <label class="setting-row"><span><strong>Reduced motion</strong><small>Disable profile effects and animated feedback.</small></span><input class="switch-input" type="checkbox" name="reducedMotion" ${checked(settings.reducedMotion)} /><i></i></label>
@@ -929,11 +938,11 @@ function authView() {
     <details class="reset-panel"><summary>Forgot your password?</summary><form id="resetRequestForm"><label>Email<input type="email" name="email" required /></label><button class="quiet-action" type="submit">Request reset</button></form><form id="resetConfirmForm" hidden><label>Email<input type="email" name="email" required /></label><label>Reset token<input name="token" required /></label><label>New password<input type="password" name="password" minlength="8" required /></label><button class="primary-action" type="submit">Update password</button></form></details>`;
 }
 
-const viewRenderers = { home: homeView, trending: trendingView, guilds: guildsView, guild: guildDetailView, leaderboards: leaderboardsView, 'vibe-progress': vibeProgressView, notifications: notificationsView, messages: messagesView, saved: savedView, profile: profileView, user: publicUserView, settings: settingsView, analytics: analyticsView, take: takeDetailView, auth: authView };
+const viewRenderers = { home: homeView, trending: trendingView, guilds: guildsView, guild: guildDetailView, leaderboards: leaderboardsView, 'vibe-progress': vibeProgressView, notifications: notificationsView, messages: messagesView, saved: savedView, profile: profileView, user: publicUserView, settings: settingsView, customize: settingsView, accessibility: settingsView, analytics: analyticsView, take: takeDetailView, auth: authView };
 
 function renderRoute() {
   const route = currentRoute();
-  document.querySelectorAll('.nav-item').forEach(item => item.classList.toggle('active', item.dataset.route === route || (route === 'take' && item.dataset.route === 'home') || (route === 'guild' && item.dataset.route === 'guilds') || (route === 'vibe-progress' && item.dataset.route === 'profile')));
+  document.querySelectorAll('.nav-item').forEach(item => item.classList.toggle('active', item.dataset.route === route || (['customize','accessibility'].includes(route) && item.dataset.route === 'settings') || (route === 'take' && item.dataset.route === 'home') || (route === 'guild' && item.dataset.route === 'guilds') || (route === 'vibe-progress' && item.dataset.route === 'profile')));
   document.querySelector('#sidebar').classList.remove('open');
   mainContent.innerHTML = viewRenderers[route]();
   mainContent.dataset.route = route;

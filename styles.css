@@ -676,6 +676,37 @@ html[data-resolved-theme="dark"][data-palette] { --soft:#353a44; --paper:#292e37
 .post-export-mobile .vote-progress,.post-export-story .vote-progress { grid-column:2;grid-row:1 / 3;width:22px;height:88px;justify-self:center;background:linear-gradient(0deg,#67e454 0 var(--alright),#ff6640 var(--alright) 100%); }
 .post-export-mobile .alright-percent,.post-export-story .alright-percent { grid-column:1;grid-row:2; }.post-export-mobile .cringe-percent,.post-export-story .cringe-percent { grid-column:3;grid-row:2; }
 
+/* Settings information architecture */
+.settings-subnav { display:flex;gap:6px;margin:22px 0;padding:5px;border:1px solid var(--line);border-radius:14px;background:var(--soft); }
+.settings-subnav a { flex:1;padding:11px 14px;border-radius:10px;color:var(--muted);text-align:center;font-size:12px;font-weight:900; }
+.settings-subnav a:hover { color:var(--ink); }.settings-subnav a.active { color:var(--paper);background:var(--ink); }
+.settings-mode-settings .customization-studio,
+.settings-mode-settings .settings-section:has(input[name="theme"]),
+.settings-mode-settings .settings-section:has(input[name="textSize"]),
+.settings-mode-settings .settings-section:has(#profilePreview) { display:none; }
+.settings-mode-customize .settings-section:not(.customization-studio):not(:has(#profilePreview)) { display:none; }
+.settings-mode-customize .customization-studio > .setting-row,
+.settings-mode-customize .customization-studio > label:has(input[name="hiddenTopics"]) { display:none; }
+.settings-mode-accessibility .settings-section:not(.customization-studio):not(:has(input[name="theme"])):not(:has(input[name="textSize"])) { display:none; }
+.settings-mode-accessibility .customization-studio .customization-grid { display:none; }
+.settings-mode-accessibility .customization-studio .settings-section-head h2 { font-size:0; }.settings-mode-accessibility .customization-studio .settings-section-head h2::after { content:'Motion & content';font-size:20px; }
+
+/* Consistent breathing room across product surfaces */
+.main-content { padding:0 36px 56px; }
+.page-heading { margin:30px 0 22px;gap:24px; }
+.take-list { display:grid;gap:20px; }
+.settings-form { display:grid;gap:18px; }
+.settings-section { margin:0;padding:24px; }
+.settings-section-head { margin-bottom:22px; }
+.form-grid { gap:16px; }
+.activity-list,.notification-groups,.guild-grid,.profile-tab-panel,.ranking-card,.messages-layout { margin-top:20px; }
+.guild-workspace,.profile-summary,.analytics-tables { padding-top:8px; }
+.sidebar-widget,.rail-guild-card,.status-card { margin-bottom:16px; }
+.composer-tools { margin:14px 0; }.composer-live-preview { margin:18px 0; }
+@media(max-width:700px){.main-content{padding:0 16px 40px}.page-heading{margin:22px 0 18px}.settings-section{padding:18px}.settings-subnav{position:sticky;top:76px;z-index:8}.settings-subnav a{padding:10px 6px;font-size:10px}}
+
+html[data-resolved-theme="dark"] .settings-subnav a.active { color:#1a1d22;background:#aeb2bb; }
+
 /* Keep customization focused on identity essentials. Advanced legacy values remain stored. */
 .customization-studio .customization-grid label:nth-child(n+5),
 .customization-studio .layout-picker,
