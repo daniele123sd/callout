@@ -23,6 +23,9 @@ test('votes, comments, saves and notifications persist per account', async () =>
   const stored = readerFeed.find(item => item.id === post.id);
   assert.equal(stored.userVote, 'alright');
   assert.equal(stored.alrightVotes, 1);
+  const basedRanking = await listLeaderboard('all', 'based');
+  assert.equal(basedRanking.find(user => user.id === author.id).basedScore, 1);
+  assert.ok(basedRanking.find(user => user.id === author.id).basedBadge.name);
 
   await createComment(post.id, reader.id, { text: 'Visible to everyone' });
   assert.equal((await listComments(post.id, author.id))[0].text, 'Visible to everyone');

@@ -741,6 +741,72 @@ html[data-resolved-theme="dark"] .personal-cringe-widget > button,
 html[data-resolved-theme="dark"] .rail-guild-card button { color:#d7dae0;background:#15181d; }
 @media(max-width:1150px){.right-rail{gap:16px}.right-rail>.rail-leaderboard,.right-rail>.personal-cringe-widget,.right-rail>.rail-guild-card{border-radius:15px}}
 
+/* Dual Based / Cringe reaction and ranking system */
+.vote-button.based { background:#c9f43d;color:#101114; }
+.vote-button.based:hover { background:#d8ff55;transform:translateY(-2px);box-shadow:3px 5px 0 #101114; }
+.vote-button.based.selected { outline:3px solid #f4c900;outline-offset:2px; }
+.vote-button.based .vote-face { background:#f5ffbd; }
+
+.rail-ranking-kinds { display:grid;grid-template-columns:1fr 1fr;gap:7px;padding:10px 12px 4px;background:var(--paper); }
+.rail-ranking-kinds button { min-height:34px;border:1.5px solid var(--line);border-radius:9px;background:var(--paper);color:var(--ink);font-weight:900;cursor:pointer; }
+.rail-ranking-kinds button.active[data-leaderboard-kind="based"] { background:#d4f541;color:#101114;border-color:#101114;box-shadow:2px 2px 0 #101114; }
+.rail-ranking-kinds button.active[data-leaderboard-kind="cringe"] { background:#ff5938;color:#101114;border-color:#101114;box-shadow:2px 2px 0 #101114; }
+.rail-leaderboard-rows[data-kind="based"] em { color:#6f7d00; }
+.leaderboard-switcher { display:grid;grid-template-columns:1fr 1fr 1fr;gap:9px;padding:7px;border:2px solid #101114;border-radius:15px;background:var(--paper);box-shadow:4px 5px 0 #101114; }
+.leaderboard-switcher button { min-height:48px;border:0;border-radius:10px;background:transparent;color:var(--ink);font-weight:900;cursor:pointer;transition:transform .18s ease,background .18s ease; }
+.leaderboard-switcher button:hover { transform:translateY(-2px);background:var(--soft); }
+.leaderboard-switcher button:nth-child(1).active { background:#d4f541;color:#101114; }
+.leaderboard-switcher button:nth-child(2).active { background:#ff5938;color:#101114; }
+.leaderboard-switcher button:nth-child(3).active { background:#2d333d;color:#f1f1ed; }
+
+.leaderboard-experience { --rank-accent:#d4f541;--rank-ink:#101114;margin-top:18px; }
+.leaderboard-cringe { --rank-accent:#ff5938;--rank-ink:#101114; }
+.leaderboard-hero { position:relative;isolation:isolate;display:flex;justify-content:space-between;align-items:flex-end;min-height:260px;overflow:hidden;padding:30px;border:3px solid #101114;border-radius:20px;background:#f5c400 url('/assets/leaderboard-based-neo.jpg') center/cover no-repeat;color:#101114;box-shadow:7px 8px 0 #101114; }
+.leaderboard-cringe .leaderboard-hero { background-color:#ff5938;background-image:url('/assets/leaderboard-cringe-neo.jpg'); }
+.leaderboard-hero::after { content:"";position:absolute;z-index:-1;inset:18px 22% 18px 18px;border:2px solid #101114;border-radius:16px;background:rgba(255,249,225,.9);box-shadow:5px 5px 0 #101114; }
+.leaderboard-hero > div:first-child { max-width:560px;padding:25px; }
+.leaderboard-hero h2 { margin:5px 0 8px;font:clamp(34px,5vw,64px)/.95 'Archivo Black',sans-serif;letter-spacing:-.04em;text-transform:uppercase; }
+.leaderboard-hero p { max-width:510px;margin:0;font-weight:800;line-height:1.45; }
+.leaderboard-live { display:flex;align-items:center;gap:7px;padding:9px 12px;border:2px solid #101114;border-radius:999px;background:#101114;color:#f5f4ef;font-size:11px;font-weight:900;white-space:nowrap; }
+.leaderboard-live i { width:8px;height:8px;border-radius:50%;background:var(--rank-accent);box-shadow:0 0 0 4px color-mix(in srgb,var(--rank-accent) 28%,transparent);animation:rankLive 1.8s ease-in-out infinite; }
+@keyframes rankLive { 50% { transform:scale(.72);opacity:.65; } }
+.leaderboard-stat-strip { display:grid;grid-template-columns:repeat(3,1fr);gap:0;margin:22px 0;border:2px solid #101114;border-radius:15px;background:var(--paper);box-shadow:4px 5px 0 #101114; }
+.leaderboard-stat-strip span { display:flex;align-items:center;justify-content:space-between;gap:12px;padding:17px 20px;border-right:1px solid var(--line); }
+.leaderboard-stat-strip span:last-child { border:0; }
+.leaderboard-stat-strip small { color:var(--muted);font-size:10px;font-weight:900;letter-spacing:.08em; }
+.leaderboard-stat-strip strong { font:20px 'Archivo Black',sans-serif; }
+
+.leader-podium { display:grid;grid-template-columns:1fr 1.14fr 1fr;align-items:end;gap:14px;margin:0 0 22px;padding:26px 22px 20px;border:2px solid #101114;border-radius:18px;background:color-mix(in srgb,var(--rank-accent) 12%,var(--paper));box-shadow:5px 6px 0 #101114; }
+.leader-podium-place { position:relative;display:flex;flex-direction:column;align-items:center;gap:6px;min-width:0;min-height:190px;padding:25px 12px 16px;border:2px solid #101114;border-radius:15px;background:var(--paper);color:var(--ink);box-shadow:3px 4px 0 #101114;cursor:pointer;transition:transform .18s ease,box-shadow .18s ease; }
+.leader-podium-place:hover { transform:translateY(-5px) rotate(-.5deg);box-shadow:5px 9px 0 #101114; }
+.leader-podium-place.place-1 { min-height:225px;border-width:3px;background:linear-gradient(150deg,color-mix(in srgb,var(--rank-accent) 34%,var(--paper)),var(--paper) 60%); }
+.leader-podium-place.place-2 { order:-1; }
+.leader-podium-place .avatar { width:64px;height:64px;border:3px solid #101114;box-shadow:3px 3px 0 var(--rank-accent);font-size:22px; }
+.leader-podium-place.place-1 .avatar { width:82px;height:82px; }
+.podium-rank { position:absolute;top:10px;left:11px;padding:4px 7px;border:1.5px solid #101114;border-radius:7px;background:var(--rank-accent);color:#101114;font-weight:900; }
+.leader-podium-place strong { max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:16px; }
+.leader-podium-place small { min-height:30px;color:var(--muted);font-size:10px;font-weight:800;text-align:center; }
+.leader-podium-place b { margin-top:auto;padding:7px 10px;border-radius:8px;background:#101114;color:#f5f4ef;font-size:11px; }
+.premium-ranking .ranking-head,.premium-ranking .ranking-row { grid-template-columns:62px minmax(190px,1.4fr) 90px 90px minmax(140px,.8fr); }
+.premium-row { min-height:78px; }
+.rank-trend { justify-self:start;padding:5px 7px;border:1px solid var(--line);border-radius:6px;color:var(--muted);font-size:9px;font-weight:900; }
+.leaderboard-rule { display:grid;grid-template-columns:220px 1fr;gap:22px;align-items:start;margin-top:20px;padding:20px 22px;border:2px solid #101114;border-radius:14px;background:var(--rank-accent);color:#101114;box-shadow:4px 5px 0 #101114; }
+.leaderboard-rule p { margin:0;font-size:12px;font-weight:700;line-height:1.5; }
+
+html[data-resolved-theme="dark"] .leaderboard-switcher,html[data-resolved-theme="dark"] .leaderboard-stat-strip,html[data-resolved-theme="dark"] .leader-podium,html[data-resolved-theme="dark"] .leader-podium-place,html[data-resolved-theme="dark"] .premium-ranking { border-color:#090a0c;box-shadow-color:#090a0c; }
+html[data-resolved-theme="dark"] .leaderboard-hero::after { background:rgba(24,25,28,.93);color:#deded8; }
+html[data-resolved-theme="dark"] .leaderboard-hero h2,html[data-resolved-theme="dark"] .leaderboard-hero p,html[data-resolved-theme="dark"] .leaderboard-hero .section-kicker { color:#deded8; }
+html[data-resolved-theme="dark"] .leader-podium-place b { color:#d9d9d3; }
+
+@media(max-width:760px){
+  .leaderboard-switcher{grid-template-columns:1fr 1fr}.leaderboard-switcher button:last-child{grid-column:1/-1}
+  .leaderboard-hero{min-height:310px;padding:15px;align-items:flex-end}.leaderboard-hero::after{inset:15px}.leaderboard-hero>div:first-child{padding:20px}.leaderboard-live{position:absolute;top:25px;right:25px}
+  .leaderboard-stat-strip{grid-template-columns:1fr}.leaderboard-stat-strip span{border-right:0;border-bottom:1px solid var(--line)}
+  .leader-podium{grid-template-columns:1fr;padding:18px}.leader-podium-place,.leader-podium-place.place-1{min-height:150px}.leader-podium-place.place-2{order:initial}
+  .premium-ranking .ranking-head{display:none}.premium-ranking .ranking-row{grid-template-columns:40px 1fr 70px;gap:8px}.premium-ranking .ranking-row .rank-trend,.premium-ranking .ranking-row>small{display:none}
+  .leaderboard-rule{grid-template-columns:1fr;gap:8px}
+}
+
 /* Keep customization focused on identity essentials. Advanced legacy values remain stored. */
 .customization-studio .customization-grid label:nth-child(n+5),
 .customization-studio .layout-picker,

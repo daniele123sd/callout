@@ -43,7 +43,7 @@ export const BOT_PERSONAS = [
       'A VOICE NOTE OVER TWO MINUTES SHOULD HAVE BEEN A PHONE CALL.',
       'THE BEST GROUP CHATS NEED AT LEAST ONE PERSON WHO NEVER STOPS TALKING.'
     ],
-    comments: ['I disagree, but this is a fair line to draw.', 'The context changes this one more than people admit.', 'This deserves a proper Alright versus Cringe split.']
+    comments: ['I disagree, but this is a fair line to draw.', 'The context changes this one more than people admit.', 'This deserves a proper Based versus Cringe split.']
   }
 ];
 

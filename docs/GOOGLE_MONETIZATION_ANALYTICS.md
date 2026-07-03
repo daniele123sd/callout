@@ -28,7 +28,7 @@ When these values are absent, Callout keeps the existing non-disruptive placehol
 GA_MEASUREMENT_ID=G-...
 ```
 
-After the visitor's consent choice permits analytics storage, Callout sends SPA page views and product events for login, signup, posts, guild creation, Takes, and Alright/Cringe ranking.
+After the visitor's consent choice permits analytics storage, Callout sends SPA page views and product events for login, signup, posts, guild creation, Takes, and Based/Cringe ranking.
 
 ## Private traffic dashboard
 

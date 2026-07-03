@@ -384,7 +384,11 @@ app.get('/api/guilds/:id/audit', requireFeature('creatorGuilds'), requireAuth, a
 });
 
 app.get('/api/leaderboard', async (req, res, next) => {
-  try { const period = ['weekly', 'monthly', 'all'].includes(req.query.period) ? req.query.period : 'all'; res.json({ users: await listLeaderboard(period) }); } catch (error) { next(error); }
+  try {
+    const period = ['weekly', 'monthly', 'all'].includes(req.query.period) ? req.query.period : 'all';
+    const reaction = req.query.reaction === 'based' ? 'based' : 'cringe';
+    res.json({ users: await listLeaderboard(period, reaction), reaction });
+  } catch (error) { next(error); }
 });
 app.get('/api/users/:id', optionalAuth, async (req, res, next) => {
   try { const user = await getPublicProfile(req.params.id, req.userId); if (!user) return res.status(404).json({ error: 'User not found.' }); res.json({ user }); } catch (error) { next(error); }

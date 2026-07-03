@@ -267,7 +267,7 @@ export async function voteOnPost(postId, userId, value) {
     await post.save();
     if (!previousValue) await incrementVibe(userId, 1);
     if (String(post.author) !== String(userId) && previousValue !== value) {
-      await Notification.create({ recipient: post.author, actor: userId, type: 'vote', post: post._id, text: `Someone voted ${value === 'alright' ? 'Alright' : 'Cringe'} on your take.` });
+      await Notification.create({ recipient: post.author, actor: userId, type: 'vote', post: post._id, text: `Someone voted ${value === 'alright' ? 'Based' : 'Cringe'} on your take.` });
     }
     return serializePost(post, userId);
   }
@@ -283,7 +283,7 @@ export async function voteOnPost(postId, userId, value) {
   post.cringeVotes = post.votes.filter(vote => vote.value === 'cringe').length;
   post.impressions += 1;
   if (!previousValue) await incrementVibe(userId, 1);
-  if (post.author !== String(userId) && previousValue !== value) memoryNotifications.push({ id: crypto.randomUUID(), recipient: post.author, actor: publicUser(memoryUsers.get(String(userId))), type: 'vote', post: post.id, text: `Someone voted ${value === 'alright' ? 'Alright' : 'Cringe'} on your take.`, read: false, createdAt: new Date() });
+  if (post.author !== String(userId) && previousValue !== value) memoryNotifications.push({ id: crypto.randomUUID(), recipient: post.author, actor: publicUser(memoryUsers.get(String(userId))), type: 'vote', post: post.id, text: `Someone voted ${value === 'alright' ? 'Based' : 'Cringe'} on your take.`, read: false, createdAt: new Date() });
   return serializePost(post, userId);
 }
 
@@ -717,26 +717,36 @@ export async function listGuildAudit(guildId, userId) {
   return memoryGuildAudits.filter(item => item.guild === String(guildId)).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)).map(item => ({ ...item, actor: publicIdentity(memoryUsers.get(item.actor)), targetUser: publicIdentity(memoryUsers.get(item.targetUser)) }));
 }
 
-export async function listLeaderboard(period = 'all') {
+export async function listLeaderboard(period = 'all', reaction = 'cringe') {
   const cutoff = period === 'weekly' ? new Date(Date.now() - 7 * 86400000) : period === 'monthly' ? new Date(Date.now() - 30 * 86400000) : null;
+  const voteValue = reaction === 'based' ? 'alright' : 'cringe';
+  const scoreKey = reaction === 'based' ? 'basedScore' : 'cringeScore';
   if (connected) {
     const [users, scores] = await Promise.all([
       User.find({ isAutomated: { $ne: true } }).select('displayName handle avatarUrl isAutomated automationPersona vibeScore postCount createdAt').lean(),
       Post.aggregate([
-        { $project: { author: 1, cringeScore: { $size: { $filter: { input: { $ifNull: ['$votes', []] }, as: 'vote', cond: { $and: [{ $eq: ['$$vote.value', 'cringe'] }, { $ne: ['$$vote.user', '$author'] }, ...(cutoff ? [{ $gte: ['$$vote.createdAt', cutoff] }] : [])] } } } } } },
-        { $group: { _id: '$author', cringeScore: { $sum: '$cringeScore' } } }
+        { $project: { author: 1, score: { $size: { $filter: { input: { $ifNull: ['$votes', []] }, as: 'vote', cond: { $and: [{ $eq: ['$$vote.value', voteValue] }, { $ne: ['$$vote.user', '$author'] }, ...(cutoff ? [{ $gte: ['$$vote.createdAt', cutoff] }] : [])] } } } } } },
+        { $group: { _id: '$author', score: { $sum: '$score' } } }
       ])
     ]);
-    const scoreMap = new Map(scores.map(item => [String(item._id), Number(item.cringeScore || 0)]));
-    return users.map(user => ({ ...publicIdentity(user), cringeScore: scoreMap.get(String(user._id)) || 0 }))
-      .sort((a, b) => b.cringeScore - a.cringeScore || b.vibeScore - a.vibeScore || new Date(a.createdAt) - new Date(b.createdAt))
-      .map((user, index) => ({ ...user, rank: index + 1, cringeBadge: cringeBadge(index + 1, user.cringeScore) }));
+    const scoreMap = new Map(scores.map(item => [String(item._id), Number(item.score || 0)]));
+    return users.map(user => ({ ...publicIdentity(user), [scoreKey]: scoreMap.get(String(user._id)) || 0 }))
+      .sort((a, b) => b[scoreKey] - a[scoreKey] || b.vibeScore - a.vibeScore || new Date(a.createdAt) - new Date(b.createdAt))
+      .map((user, index) => { const badge = reaction === 'based' ? basedBadge(index + 1, user[scoreKey]) : cringeBadge(index + 1, user[scoreKey]); return { ...user, rank: index + 1, badge, ...(reaction === 'cringe' ? { cringeBadge: badge } : { basedBadge: badge }) }; });
   }
   const scoreMap = new Map();
-  for (const post of memoryPosts.values()) scoreMap.set(post.author, (scoreMap.get(post.author) || 0) + (post.votes || []).filter(vote => vote.value === 'cringe' && vote.user !== post.author && (!cutoff || vote.createdAt && new Date(vote.createdAt) >= cutoff)).length);
-  return [...memoryUsers.values()].filter(user => !user.isAutomated).map(user => ({ ...publicIdentity(user), cringeScore: scoreMap.get(user.id) || 0 }))
-    .sort((a, b) => b.cringeScore - a.cringeScore || b.vibeScore - a.vibeScore || new Date(a.createdAt) - new Date(b.createdAt))
-    .map((user, index) => ({ ...user, rank: index + 1, cringeBadge: cringeBadge(index + 1, user.cringeScore) }));
+  for (const post of memoryPosts.values()) scoreMap.set(post.author, (scoreMap.get(post.author) || 0) + (post.votes || []).filter(vote => vote.value === voteValue && vote.user !== post.author && (!cutoff || vote.createdAt && new Date(vote.createdAt) >= cutoff)).length);
+  return [...memoryUsers.values()].filter(user => !user.isAutomated).map(user => ({ ...publicIdentity(user), [scoreKey]: scoreMap.get(user.id) || 0 }))
+    .sort((a, b) => b[scoreKey] - a[scoreKey] || b.vibeScore - a.vibeScore || new Date(a.createdAt) - new Date(b.createdAt))
+    .map((user, index) => { const badge = reaction === 'based' ? basedBadge(index + 1, user[scoreKey]) : cringeBadge(index + 1, user[scoreKey]); return { ...user, rank: index + 1, badge, ...(reaction === 'cringe' ? { cringeBadge: badge } : { basedBadge: badge }) }; });
+}
+
+function basedBadge(rank, score) {
+  if (rank === 1 && score > 0) return { name: 'Based Sovereign', icon: '★' };
+  if (rank <= 3 && score > 0) return { name: 'Golden Take', icon: '✦' };
+  if (rank <= 10 && score > 0) return { name: 'Top Voice', icon: '◆' };
+  if (score > 0) return { name: 'Based Contender', icon: '▲' };
+  return { name: 'Unranked Voice', icon: '◇' };
 }
 
 function cringeBadge(rank, score) {

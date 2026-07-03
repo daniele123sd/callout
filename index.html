@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="description" content="Callout is the place to post your boldest takes, vote Alright or Cringe, and build your vibe." />
+    <meta name="description" content="Callout is the place to post your boldest takes, vote Based or Cringe, and build your vibe." />
     <meta name="theme-color" content="#ff4713" />
     <meta name="google-adsense-account" content="ca-pub-XXXXXXXXXXXXXXXX" />
     <meta name="adsense-client" content="ca-pub-XXXXXXXXXXXXXXXX" />
@@ -19,7 +19,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Inter:wght@500;600;700;800&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="styles.css?v=20260629-ads-ga1" />
+    <link rel="stylesheet" href="styles.css?v=20260703-dual-rank1" />
   </head>
   <body>
     <svg class="svg-sprite" aria-hidden="true">
@@ -84,8 +84,9 @@
       <main class="main-content" id="mainContent" tabindex="-1"></main>
 
       <aside class="right-rail" id="rightRail">
-        <section class="status-card rail-leaderboard" aria-label="Global Cringe leaderboard preview">
-          <header><strong>🔥 CRINGE LEADERBOARD</strong><button class="text-button" type="button" data-route-button="leaderboards">See all</button></header>
+        <section class="status-card rail-leaderboard" aria-label="Callout leaderboard preview">
+          <header><strong>CALLOUT LEADERS</strong><button class="text-button" type="button" data-route-button="leaderboards">See all</button></header>
+          <div class="rail-ranking-kinds" aria-label="Leaderboard type"><button type="button" data-leaderboard-kind="based">★ Based</button><button class="active" type="button" data-leaderboard-kind="cringe">☹ Cringe</button></div>
           <div class="rail-periods" aria-label="Leaderboard period"><button type="button" data-leader-period="weekly">Week</button><button type="button" data-leader-period="monthly">Month</button><button class="active" type="button" data-leader-period="all">All time</button></div>
           <div class="rail-leaderboard-rows" id="railLeaderboardRows"><p>No ranked users yet.</p></div>
           <p class="status-note" id="railRankNote">Sign in to claim your place.</p>
@@ -159,6 +160,6 @@
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
     <script src="/vendor/dompurify.min.js"></script>
     <script src="/vendor/html2canvas.min.js"></script>
-    <script src="app.js?v=20260703-cringe-align2"></script>
+    <script src="app.js?v=20260703-dual-rank1"></script>
   </body>
 </html>
