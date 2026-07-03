@@ -380,7 +380,7 @@ function updateAccountChrome() {
   mini.querySelectorAll('[data-rail-user]').forEach(button => button.addEventListener('click', () => navigate(`user/${button.dataset.railUser}`)));
   const lifetimeStanding = sessionUser ? state.lifetimeLeaderboard.find(user => String(user.id) === String(sessionUser.id)) : null;
   const cringe = cringeMilestone(Number(lifetimeStanding?.cringeScore || 0));
-  document.querySelector('#personalCringeLevel').textContent = sessionUser ? `${cringe.icon} ${cringe.name}` : 'Your Cringe Rank';
+  document.querySelector('#personalCringeLevel').innerHTML = sessionUser ? `${calloutGlyph('personal')}<span>${escapeHtml(cringe.name)}</span>` : 'Your Cringe Rank';
   document.querySelector('#personalCringeMeta').textContent = sessionUser ? `Global #${lifetimeStanding?.rank || '—'} · ${Number(lifetimeStanding?.cringeScore || 0).toLocaleString()} Cringe` : 'Sign in to start your public Cringe level.';
   document.querySelector('#personalCringeProgress').style.width = `${cringe.progress}%`;
   document.querySelector('#personalCringeNext').textContent = sessionUser ? (cringe.level === 6 ? 'Highest level reached' : `${cringe.remaining.toLocaleString()} remaining until the next level`) : 'Progress appears after your first Cringe vote.';
@@ -395,7 +395,7 @@ function renderProfileCringeBadge() {
   if (!host || !standing || host.querySelector('.profile-cringe-summary')) return;
   const level = cringeMilestone(Number(standing.cringeScore || 0));
   const badge = document.createElement('button'); badge.type = 'button'; badge.className = 'profile-cringe-summary';
-  badge.innerHTML = `<span>${level.icon}</span><span><strong>${escapeHtml(level.name)}</strong><small>Level ${level.level} · Global #${standing.rank}</small></span>`;
+  badge.innerHTML = `<span>${calloutGlyph('personal')}</span><span><strong>${escapeHtml(level.name)}</strong><small>Level ${level.level} · Global #${standing.rank}</small></span>`;
   badge.addEventListener('click', () => { state.leaderboardView = 'personal'; navigate('leaderboards'); }); host.appendChild(badge);
 }
 
@@ -605,6 +605,11 @@ function emptyState(icon, title, text, action = '') {
   </section>`;
 }
 
+function calloutGlyph(kind, className = '') {
+  const symbol = kind === 'based' ? 'i-based' : kind === 'personal' ? 'i-personal-cringe' : 'i-cringe';
+  return `<svg class="callout-glyph ${className}" aria-hidden="true"><use href="#${symbol}"></use></svg>`;
+}
+
 function postTemplate(post, detail = false) {
   const total = post.alrightVotes + post.cringeVotes;
   const alrightPercent = total ? Math.round((post.alrightVotes / total) * 100) : 50;
@@ -627,13 +632,13 @@ function postTemplate(post, detail = false) {
     ${post.poll ? pollMarkup(post) : ''}
     ${post.embedUrl ? `<a class="link-embed" href="${escapeHtml(post.embedUrl)}" target="_blank" rel="noopener noreferrer"><strong>Open attached link</strong><small>${escapeHtml(new URL(post.embedUrl).hostname)}</small></a>` : ''}
     <div class="vote-row">
-      <button class="vote-button alright based ${post.userVote === 'alright' ? 'selected' : ''}" type="button" data-vote="alright"><span class="vote-face">★</span><strong>BASED</strong></button>
+      <button class="vote-button alright based ${post.userVote === 'alright' ? 'selected' : ''}" type="button" data-vote="alright"><span class="vote-face">${calloutGlyph('based')}</span><strong>BASED</strong></button>
       <b class="percent alright-percent">${alrightPercent}%</b>
       <div class="vote-progress" style="--alright:${alrightPercent}%" role="progressbar" aria-label="${alrightPercent}% Based, ${cringePercent}% Cringe" aria-valuenow="${alrightPercent}" aria-valuemin="0" aria-valuemax="100">
         <div class="progress-divider"></div>
       </div>
       <b class="percent cringe-percent">${cringePercent}%</b>
-      <button class="vote-button cringe ${post.userVote === 'cringe' ? 'selected' : ''}" type="button" data-vote="cringe"><span class="vote-face">☹</span><strong>CRINGE</strong></button>
+      <button class="vote-button cringe ${post.userVote === 'cringe' ? 'selected' : ''}" type="button" data-vote="cringe"><span class="vote-face">${calloutGlyph('cringe')}</span><strong>CRINGE</strong></button>
     </div>
     <div class="take-footer"><span>${total} ${total === 1 ? 'vote' : 'votes'}　•　${commentCount} ${commentCount === 1 ? 'Take' : 'Takes'}</span>${detail ? '' : `<button class="comment-link" type="button" data-open-take="${post.id}">Open take →</button>`}</div>
   </article>`;
@@ -755,10 +760,10 @@ function guildsView() {
 function rankingsExperienceView() {
   const standing = sessionUser ? state.lifetimeLeaderboard.find(user => String(user.id) === String(sessionUser.id)) : null;
   const personal = cringeMilestone(Number(standing?.cringeScore || 0));
-  const personalView = sessionUser ? `<section class="personal-cringe-page" style="--cringe-level:${personal.color}"><header><div class="personal-cringe-emblem">${personal.icon}</div><div><span class="section-kicker">PERSONAL CRINGE</span><h2>${escapeHtml(personal.name)}</h2><p>Level ${personal.level} · Global #${standing?.rank || '—'} · ${Number(standing?.cringeScore || 0).toLocaleString()} lifetime Cringe</p></div></header><div class="personal-level-progress"><span style="width:${personal.progress}%"></span></div><p>${personal.level === 6 ? 'You have reached the highest Cringe level.' : `${personal.remaining.toLocaleString()} valid Cringe votes until your next level.`}</p><div class="cringe-level-grid">${personal.levels.map(level => `<article class="${personal.level >= level.level ? 'unlocked' : ''}" style="--level:${level.color}"><span>${level.icon}</span><small>LEVEL ${level.level}</small><strong>${escapeHtml(level.name)}</strong><p>${level.threshold.toLocaleString()}+ Cringe</p><b>${personal.level >= level.level ? 'Unlocked' : 'Locked'}</b></article>`).join('')}</div></section>` : emptyState('◇', 'Sign in to see Personal Cringe', 'Your permanent Cringe level, progress, and global position will appear here.', '<button class="primary-action" type="button" data-go-auth>Sign in</button>');
+  const personalView = sessionUser ? `<section class="personal-cringe-page" style="--cringe-level:${personal.color}"><header><div class="personal-cringe-emblem">${calloutGlyph('personal')}</div><div><span class="section-kicker">PERSONAL CRINGE</span><h2>${escapeHtml(personal.name)}</h2><p>Level ${personal.level} · Global #${standing?.rank || '—'} · ${Number(standing?.cringeScore || 0).toLocaleString()} lifetime Cringe</p></div></header><div class="personal-level-progress"><span style="width:${personal.progress}%"></span></div><p>${personal.level === 6 ? 'You have reached the highest Cringe level.' : `${personal.remaining.toLocaleString()} valid Cringe votes until your next level.`}</p><div class="cringe-level-grid">${personal.levels.map(level => `<article class="${personal.level >= level.level ? 'unlocked' : ''}" style="--level:${level.color}"><span>${calloutGlyph('personal')}</span><small>LEVEL ${level.level}</small><strong>${escapeHtml(level.name)}</strong><p>${level.threshold.toLocaleString()}+ Cringe</p><b>${personal.level >= level.level ? 'Unlocked' : 'Locked'}</b></article>`).join('')}</div></section>` : emptyState(calloutGlyph('personal'), 'Sign in to see Personal Cringe', 'Your permanent Cringe level, progress, and global position will appear here.', '<button class="primary-action" type="button" data-go-auth>Sign in</button>');
   const mode = ['based', 'cringe', 'personal'].includes(state.leaderboardView) ? state.leaderboardView : 'based';
-  return `${pageHeader('CALLOUT RANKINGS', 'The Hall of Takes', 'Two competitive ladders. One celebrates impeccable judgment; the other immortalizes spectacularly questionable takes.')}
-    <nav class="ranking-view-tabs leaderboard-switcher"><button type="button" data-ranking-view="based" class="${mode === 'based' ? 'active' : ''}">★ Most Based</button><button type="button" data-ranking-view="cringe" class="${mode === 'cringe' ? 'active' : ''}">☹ Most Cringe</button><button type="button" data-ranking-view="personal" class="${mode === 'personal' ? 'active' : ''}">◇ Personal Cringe</button></nav>
+  return `<div class="leaderboard-compact-head"><strong>CALLOUT RANKINGS</strong><span><i></i> Updated live</span></div>
+    <nav class="ranking-view-tabs leaderboard-switcher"><button type="button" data-ranking-view="based" class="${mode === 'based' ? 'active' : ''}">${calloutGlyph('based')}<span>Most Based</span></button><button type="button" data-ranking-view="cringe" class="${mode === 'cringe' ? 'active' : ''}">${calloutGlyph('cringe')}<span>Most Cringe</span></button><button type="button" data-ranking-view="personal" class="${mode === 'personal' ? 'active' : ''}">${calloutGlyph('personal')}<span>Personal Cringe</span></button></nav>
     ${mode === 'personal' ? personalView : leaderboardExperience(mode)}`;
 }
 
@@ -771,8 +776,8 @@ function leaderboardExperience(kind) {
   const top = users.slice(0, 3);
   const podiumOrder = [top[1], top[0], top[2]].filter(Boolean);
   const avatar = user => user.avatarUrl ? `<span class="avatar"><img src="${escapeHtml(user.avatarUrl)}" alt="" /></span>` : `<span class="avatar">${escapeHtml((user.displayName || 'C').charAt(0))}</span>`;
-  const podium = podiumOrder.map(user => `<button type="button" data-leader-user="${user.id}" class="leader-podium-place place-${user.rank}"><span class="podium-rank">#${user.rank}</span>${avatar(user)}<strong>${escapeHtml(user.displayName)}</strong><small>${escapeHtml(user.badge?.icon || '◇')} ${escapeHtml(user.badge?.name || 'New contender')}</small><b>${Number(user[scoreKey] || 0).toLocaleString()} ${isBased ? 'Based' : 'Cringe'}</b></button>`).join('');
-  const rows = users.slice(3).map(user => `<button type="button" data-leader-user="${user.id}" class="ranking-row premium-row ${String(user.id) === String(sessionUser?.id) ? 'is-you' : ''}"><strong>#${user.rank}</strong><span class="ranking-user">${avatar(user)}<span><b>${escapeHtml(user.displayName)}${String(user.id) === String(sessionUser?.id) ? ' (You)' : ''}</b><small>${escapeHtml(user.handle || '')}</small></span></span><span class="rank-trend stable">— STABLE</span><b>${Number(user[scoreKey] || 0).toLocaleString()}</b><small>${escapeHtml(user.badge?.icon || '◇')} ${escapeHtml(user.badge?.name || 'New contender')}</small></button>`).join('');
+  const podium = podiumOrder.map(user => `<button type="button" data-leader-user="${user.id}" class="leader-podium-place place-${user.rank}"><span class="podium-rank">#${user.rank}</span>${avatar(user)}<strong>${escapeHtml(user.displayName)}</strong><small class="callout-rank-badge">${calloutGlyph(kind)} ${escapeHtml(user.badge?.name || 'New contender')}</small><b>${Number(user[scoreKey] || 0).toLocaleString()} ${isBased ? 'Based' : 'Cringe'}</b></button>`).join('');
+  const rows = users.slice(3).map(user => `<button type="button" data-leader-user="${user.id}" class="ranking-row premium-row ${String(user.id) === String(sessionUser?.id) ? 'is-you' : ''}"><strong>#${user.rank}</strong><span class="ranking-user">${avatar(user)}<span><b>${escapeHtml(user.displayName)}${String(user.id) === String(sessionUser?.id) ? ' (You)' : ''}</b><small>${escapeHtml(user.handle || '')}</small></span></span><span class="rank-trend stable">— STABLE</span><b>${Number(user[scoreKey] || 0).toLocaleString()}</b><small class="callout-rank-badge">${calloutGlyph(kind)} ${escapeHtml(user.badge?.name || 'New contender')}</small></button>`).join('');
   const totalVotes = users.reduce((sum, user) => sum + Number(user[scoreKey] || 0), 0);
   return `<section class="leaderboard-experience leaderboard-${kind}">
     <header class="leaderboard-hero"><div><span class="section-kicker">${isBased ? 'THE HONOUR ROLL' : 'THE CHAOS ARCHIVE'}</span><h2>${title}</h2><p>${subtitle}</p></div><div class="leaderboard-live"><i></i> LIVE RANKING</div></header>

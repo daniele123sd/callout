@@ -710,12 +710,12 @@ html[data-resolved-theme="dark"] .settings-subnav a.active { color:#1a1d22;backg
 /* Organized Cringe ranking system */
 .right-rail { display:flex;flex-direction:column;gap:16px; }.right-rail .rail-leaderboard{order:1}.right-rail .personal-cringe-widget{order:2}.right-rail .rail-guild-card{order:3}.right-rail .sidebar-widgets{order:4}.right-rail .ad-rectangle{order:5}
 .personal-cringe-widget { padding:18px;border:1.5px solid var(--line);border-radius:15px;background:var(--paper);box-shadow:3px 4px 0 var(--ink); }
-.personal-cringe-widget header { display:grid;gap:6px; }.personal-cringe-widget header strong { font:20px/1.1 Archivo Black,sans-serif; }.personal-cringe-widget p { margin:10px 0;color:var(--muted);font-size:12px;font-weight:700; }
+.personal-cringe-widget header { display:grid;gap:6px; }.personal-cringe-widget header strong { display:flex;align-items:center;gap:7px;font:20px/1.1 Archivo Black,sans-serif; }.personal-cringe-widget header strong .callout-glyph { width:25px;height:25px;color:#ff5938; }.personal-cringe-widget p { margin:10px 0;color:var(--muted);font-size:12px;font-weight:700; }
 .personal-cringe-track { height:9px;overflow:hidden;border-radius:999px;background:var(--soft); }.personal-cringe-track span { display:block;width:0;height:100%;border-radius:inherit;background:linear-gradient(90deg,#e9782c,#bd2831);transition:width .45s ease; }
 .personal-cringe-widget > small { display:block;margin:8px 0 14px;color:var(--muted);font-size:10px; }.personal-cringe-widget > button { width:100%;padding:10px;border:0;border-radius:9px;color:#d7dae0;background:#292e37;font-weight:900; }
 .ranking-view-tabs { display:flex;gap:7px;margin:20px 0;padding:5px;border:1px solid var(--line);border-radius:14px;background:var(--soft); }.ranking-view-tabs button { flex:1;padding:11px;border:0;border-radius:10px;color:var(--muted);background:transparent;font-weight:900; }.ranking-view-tabs button.active { color:var(--paper);background:var(--ink); }
 .personal-cringe-page { padding:26px;border:1px solid var(--line);border-radius:18px;background:var(--paper); }.personal-cringe-page > header { display:flex;align-items:center;gap:18px; }.personal-cringe-page h2 { margin:5px 0;font:clamp(28px,4vw,45px)/1 Archivo Black,sans-serif; }.personal-cringe-page header p,.personal-cringe-page > p { margin:7px 0;color:var(--muted); }
-.personal-cringe-emblem { width:82px;height:82px;display:grid;place-items:center;flex:0 0 auto;border:2px solid var(--cringe-level);border-radius:24px;background:color-mix(in srgb,var(--cringe-level) 14%,var(--paper));font-size:38px; }
+.personal-cringe-emblem { width:82px;height:82px;display:grid;place-items:center;flex:0 0 auto;border:2px solid var(--cringe-level);border-radius:24px;background:color-mix(in srgb,var(--cringe-level) 14%,var(--paper)); }.personal-cringe-emblem .callout-glyph{width:52px;height:52px;color:var(--cringe-level)}
 .personal-level-progress { height:14px;margin:24px 0 10px;overflow:hidden;border-radius:999px;background:var(--soft); }.personal-level-progress span { display:block;height:100%;border-radius:inherit;background:linear-gradient(90deg,#e9782c,var(--cringe-level)); }
 .cringe-level-grid { display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:11px;margin-top:24px; }.cringe-level-grid article { display:grid;gap:5px;min-height:145px;padding:16px;border:1px solid var(--line);border-radius:14px;background:var(--soft);opacity:.56; }.cringe-level-grid article.unlocked { border-color:var(--level);background:color-mix(in srgb,var(--level) 9%,var(--paper));opacity:1; }.cringe-level-grid article > span { font-size:28px; }.cringe-level-grid small { color:var(--muted);font-size:9px;font-weight:900; }.cringe-level-grid strong { font-size:14px; }.cringe-level-grid p { margin:0;color:var(--muted);font-size:11px; }.cringe-level-grid b { margin-top:auto;color:var(--level);font-size:9px;text-transform:uppercase; }
 .profile-cringe-summary { display:flex;align-items:center;gap:9px;margin-left:auto;padding:9px 12px;border:1px solid var(--line);border-radius:11px;background:var(--soft);color:var(--ink);text-align:left; }.profile-cringe-summary > span:first-child { font-size:22px; }.profile-cringe-summary > span:last-child { display:grid;gap:2px; }.profile-cringe-summary strong { font-size:11px; }.profile-cringe-summary small { color:var(--muted);font-size:9px; }
@@ -748,20 +748,25 @@ html[data-resolved-theme="dark"] .rail-guild-card button { color:#d7dae0;backgro
 .vote-button.based .vote-face { background:#f5ffbd; }
 
 .rail-ranking-kinds { display:grid;grid-template-columns:1fr 1fr;gap:7px;padding:10px 12px 4px;background:var(--paper); }
-.rail-ranking-kinds button { min-height:34px;border:1.5px solid var(--line);border-radius:9px;background:var(--paper);color:var(--ink);font-weight:900;cursor:pointer; }
-.rail-ranking-kinds button.active[data-leaderboard-kind="based"] { background:#d4f541;color:#101114;border-color:#101114;box-shadow:2px 2px 0 #101114; }
+.rail-ranking-kinds button { display:flex;align-items:center;justify-content:center;gap:5px;min-height:34px;border:1.5px solid var(--line);border-radius:9px;background:var(--paper);color:var(--ink);font-weight:900;cursor:pointer; }
+.rail-ranking-kinds button.active[data-leaderboard-kind="based"] { background:#55df50;color:#101114;border-color:#101114;box-shadow:2px 2px 0 #101114; }
 .rail-ranking-kinds button.active[data-leaderboard-kind="cringe"] { background:#ff5938;color:#101114;border-color:#101114;box-shadow:2px 2px 0 #101114; }
 .rail-leaderboard-rows[data-kind="based"] em { color:#6f7d00; }
+.leaderboard-compact-head { display:flex;align-items:center;justify-content:space-between;margin:0 0 9px;padding:0 2px;color:var(--ink);font-size:11px;letter-spacing:.08em; }
+.leaderboard-compact-head span { display:flex;align-items:center;gap:6px;color:var(--muted);font-weight:800;letter-spacing:0;text-transform:uppercase; }
+.leaderboard-compact-head i { width:7px;height:7px;border-radius:50%;background:#55df50;box-shadow:0 0 0 3px rgba(85,223,80,.2); }
+.callout-glyph { width:24px;height:24px;display:inline-block;flex:0 0 auto;overflow:visible; }
+.rail-ranking-kinds .callout-glyph { width:20px;height:20px; }
 .leaderboard-switcher { display:grid;grid-template-columns:1fr 1fr 1fr;gap:9px;padding:7px;border:2px solid #101114;border-radius:15px;background:var(--paper);box-shadow:4px 5px 0 #101114; }
-.leaderboard-switcher button { min-height:48px;border:0;border-radius:10px;background:transparent;color:var(--ink);font-weight:900;cursor:pointer;transition:transform .18s ease,background .18s ease; }
+.leaderboard-switcher button { display:flex;align-items:center;justify-content:center;gap:8px;min-height:48px;border:0;border-radius:10px;background:transparent;color:var(--ink);font-weight:900;cursor:pointer;transition:transform .18s ease,background .18s ease; }
 .leaderboard-switcher button:hover { transform:translateY(-2px);background:var(--soft); }
-.leaderboard-switcher button:nth-child(1).active { background:#d4f541;color:#101114; }
+.leaderboard-switcher button:nth-child(1).active { background:#55df50;color:#101114; }
 .leaderboard-switcher button:nth-child(2).active { background:#ff5938;color:#101114; }
 .leaderboard-switcher button:nth-child(3).active { background:#2d333d;color:#f1f1ed; }
 
-.leaderboard-experience { --rank-accent:#d4f541;--rank-ink:#101114;margin-top:18px; }
+.leaderboard-experience { --rank-accent:#55df50;--rank-ink:#101114;margin-top:12px; }
 .leaderboard-cringe { --rank-accent:#ff5938;--rank-ink:#101114; }
-.leaderboard-hero { position:relative;isolation:isolate;display:flex;justify-content:space-between;align-items:flex-end;min-height:260px;overflow:hidden;padding:30px;border:3px solid #101114;border-radius:20px;background:#f5c400 url('/assets/leaderboard-based-neo.jpg') center/cover no-repeat;color:#101114;box-shadow:7px 8px 0 #101114; }
+.leaderboard-hero { position:relative;isolation:isolate;display:flex;justify-content:space-between;align-items:flex-end;min-height:260px;overflow:hidden;padding:30px;border:3px solid #101114;border-radius:20px;background:#55df50 url('/assets/leaderboard-based-green-v2.jpg') center/cover no-repeat;color:#101114;box-shadow:7px 8px 0 #101114; }
 .leaderboard-cringe .leaderboard-hero { background-color:#ff5938;background-image:url('/assets/leaderboard-cringe-neo.jpg'); }
 .leaderboard-hero::after { content:"";position:absolute;z-index:-1;inset:18px 22% 18px 18px;border:2px solid #101114;border-radius:16px;background:rgba(255,249,225,.9);box-shadow:5px 5px 0 #101114; }
 .leaderboard-hero > div:first-child { max-width:560px;padding:25px; }
@@ -787,6 +792,10 @@ html[data-resolved-theme="dark"] .rail-guild-card button { color:#d7dae0;backgro
 .leader-podium-place strong { max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:16px; }
 .leader-podium-place small { min-height:30px;color:var(--muted);font-size:10px;font-weight:800;text-align:center; }
 .leader-podium-place b { margin-top:auto;padding:7px 10px;border-radius:8px;background:#101114;color:#f5f4ef;font-size:11px; }
+.callout-rank-badge { display:flex;align-items:center;justify-content:center;gap:5px; }
+.callout-rank-badge .callout-glyph { width:20px;height:20px;color:var(--rank-accent); }
+.vote-face .callout-glyph { width:28px;height:28px;color:#55df50; }
+.vote-button.cringe .vote-face .callout-glyph { color:#ff5938; }
 .premium-ranking .ranking-head,.premium-ranking .ranking-row { grid-template-columns:62px minmax(190px,1.4fr) 90px 90px minmax(140px,.8fr); }
 .premium-row { min-height:78px; }
 .rank-trend { justify-self:start;padding:5px 7px;border:1px solid var(--line);border-radius:6px;color:var(--muted);font-size:9px;font-weight:900; }
