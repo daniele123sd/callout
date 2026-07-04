@@ -42,6 +42,22 @@ const mediaCollection = Joi.array().max(5).items(mediaItem).custom((items, helpe
   if (videos.some(item => item.aspectRatio < 0.95 || item.aspectRatio > 1.05)) return helpers.message({ custom: 'Short videos must use a square 1:1 aspect ratio.' });
   return items;
 }, 'media layout validation');
+const externalEmbed = Joi.object({
+  platform: Joi.string().valid('x', 'reddit', 'bluesky').required(),
+  url: Joi.string().uri({ scheme: ['https'] }).max(2048).required(),
+  authorName: plain(120).allow('').default(''),
+  authorHandle: plain(120).allow('').default(''),
+  authorAvatar: Joi.string().uri({ scheme: ['https'] }).max(2048).allow('').default(''),
+  text: plain(1200).allow('').default(''),
+  community: plain(120).allow('').default(''),
+  mediaUrl: Joi.string().uri({ scheme: ['https'] }).max(2048).allow('').default(''),
+  replyCount: Joi.number().integer().min(0).max(1_000_000_000).default(0),
+  repostCount: Joi.number().integer().min(0).max(1_000_000_000).default(0),
+  likeCount: Joi.number().integer().min(0).max(1_000_000_000).default(0),
+  viewCount: Joi.number().integer().min(0).max(1_000_000_000).default(0),
+  sourceCreatedAt: Joi.date().iso().allow(null).default(null),
+  fetchedAt: Joi.date().iso().required()
+});
 const postText = plain(2000).custom((value, helpers) => {
   if (value.includes('#')) return helpers.message({ custom: 'Hashtags are not allowed in post text.' });
   if (/(?:https?:\/\/|www\.|\b[a-z0-9-]+\.(?:com|net|org|io|co|gg|me|tv)(?:\/|\b))/i.test(value)) return helpers.message({ custom: 'Links are not allowed in post text.' });
@@ -110,6 +126,7 @@ export const schemas = {
     contentWarning: plain(160).allow('').default(''),
     reactionSet: Joi.string().valid('classic', 'support', 'spicy').default('classic'),
     embedUrl: Joi.string().uri({ scheme: ['https'] }).max(2048).allow('').default(''),
+    externalEmbed: externalEmbed.allow(null).default(null),
     poll: Joi.object({
       question: plain(240).required(),
       options: Joi.array().min(2).max(6).items(Joi.object({ text: plain(100).required() })).required(),
@@ -117,12 +134,13 @@ export const schemas = {
     }).allow(null).default(null),
     media: mediaCollection.default([])
   }).custom((value, helpers) => {
-    if (!value.draft && !value.content && !value.media.length && !value.poll) return helpers.message({ custom: 'Published posts need text, media, or a poll.' });
+    if (!value.draft && !value.content && !value.media.length && !value.poll && !value.externalEmbed) return helpers.message({ custom: 'Published posts need text, media, an attachment, or a poll.' });
     if (value.contentType === 'poll' && !value.poll) return helpers.message({ custom: 'Poll posts require a question and at least two options.' });
     return value;
   }, 'composer requirements'),
   vote: Joi.object({ value: Joi.string().valid('alright', 'cringe').required() }),
   emojiReaction: Joi.object({ key: Joi.string().valid('fire', 'dead', 'laugh', 'sideeye', 'mindblown').required() }),
+  embedPreview: Joi.object({ url: Joi.string().uri({ scheme: ['https'] }).max(2048).required() }),
   featureIdea: Joi.object({ text: plain(400).min(8).required(), mood: Joi.string().valid('electric', 'chaotic', 'soft', 'dark', 'wild').required() }),
   adminPost: Joi.object({
     content: postText.allow('').required(),

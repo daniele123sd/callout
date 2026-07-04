@@ -13,6 +13,7 @@ import { featureFlags } from './server/featureFlags.mjs';
 import { analyticsDataConfigured, getAnalyticsDashboard } from './server/analytics.mjs';
 import { adsenseOAuthConfigured, completeAdsenseAuthorization, createAdsenseAuthorizationUrl, getAdsenseDashboard } from './server/adsense.mjs';
 import { botStatus, initializeBots, runBotCycle, setBotEnabled } from './server/bots.mjs';
+import { buildExternalEmbed } from './server/externalEmbeds.mjs';
 import {
   ACCESS_COOKIE, REFRESH_COOKIE, clearAuthCookies, comparePassword, createPasswordResetToken,
   hashPassword, optionalAuth, requireAuth, schemas, setAuthCookies, signAccessToken, signRefreshToken,
@@ -87,6 +88,7 @@ const authLimiter = rateLimit({
   message: { error: 'Too many authentication attempts. Try again in one minute.' }
 });
 const ideaLimiter = rateLimit({ windowMs: 60 * 60 * 1000, limit: 5, standardHeaders: 'draft-7', legacyHeaders: false, message: { error: 'The archive needs a moment. Try another idea later.' } });
+const embedLimiter = rateLimit({ windowMs: 60 * 1000, limit: 20, standardHeaders: 'draft-7', legacyHeaders: false, message: { error: 'Too many attachment previews. Try again in a minute.' } });
 
 async function establishSession(res, user) {
   const userId = String(user._id || user.id);
@@ -128,6 +130,10 @@ app.get('/api/health', (_req, res) => {
   res.status(healthy ? 200 : 503).json({ ok: healthy, database: databaseMode(), googleOAuth: googleConfigured, analyticsTracking: /^G-[A-Z0-9]+$/i.test(process.env.GA_MEASUREMENT_ID || ''), analyticsDashboard: analyticsDataConfigured(), ads: /^ca-pub-\d{10,}$/.test(process.env.ADSENSE_CLIENT_ID || '') });
 });
 app.get('/api/features', (_req, res) => res.json({ features: featureFlags }));
+app.post('/api/embeds/preview', embedLimiter, requireAuth, validate(schemas.embedPreview), async (req, res, next) => {
+  try { res.json({ embed: await buildExternalEmbed(req.body.url) }); }
+  catch (error) { if (/Paste a|supports|unavailable|source returned/.test(error.message)) return res.status(400).json({ error: error.message }); next(error); }
+});
 
 app.get('/api/admin/bots', requireAuth, requireAdmin, async (_req, res, next) => {
   try { res.json({ bots: await botStatus(), intervalMinutes: Math.max(60, Number(process.env.BOT_INTERVAL_MINUTES || 360)) }); } catch (error) { next(error); }

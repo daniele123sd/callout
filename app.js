@@ -114,6 +114,7 @@ const guildComposer = document.querySelector('#guildComposer');
 const actionDialog = document.querySelector('#actionDialog');
 let sessionUser = null;
 let pendingMedia = [];
+let pendingExternalEmbed = null;
 let messageStream = null;
 let sessionRefreshRequest = null;
 let composerSubmissionInFlight = false;
@@ -456,7 +457,7 @@ function mapPost(post) {
     authorId: String(post.author?.id || post.author?._id || post.author || ''),
     authorHandle: post.author?.handle || '@member', authorName: post.author?.displayName || 'Callout member',
     authorAvatarUrl: post.author?.avatarUrl || '', authorAutomated: Boolean(post.author?.isAutomated), authorPersona: post.author?.automationPersona || '', text: String(post.content || ''), category: post.category, media: Array.isArray(post.media) ? post.media : [],
-    poll: post.poll || null, topics: post.topics || [], contentWarning: post.contentWarning || '', embedUrl: post.embedUrl || '', reactionSet: post.reactionSet || 'classic', visibility: post.visibility || 'public',
+    poll: post.poll || null, topics: post.topics || [], contentWarning: post.contentWarning || '', embedUrl: post.embedUrl || '', externalEmbed: post.externalEmbed || null, reactionSet: post.reactionSet || 'classic', visibility: post.visibility || 'public',
     alrightVotes: Number(post.alrightVotes || 0), cringeVotes: Number(post.cringeVotes || 0), impressions: Number(post.impressions || 0),
     userVote: post.userVote || null, emojiReactions: post.emojiReactions || {}, commentCount: Number(post.commentCount || 0), comments: Array.isArray(post.comments) ? post.comments : [],
     createdAt: new Date(post.createdAt || Date.now()).getTime(), publishing: Boolean(post.publishing)
@@ -633,7 +634,7 @@ function postTemplate(post, detail = false) {
     </div>
     ${postMediaMarkup(post.media)}
     ${post.poll ? pollMarkup(post) : ''}
-    ${post.embedUrl ? `<a class="link-embed" href="${escapeHtml(post.embedUrl)}" target="_blank" rel="noopener noreferrer"><strong>Open attached link</strong><small>${escapeHtml(new URL(post.embedUrl).hostname)}</small></a>` : ''}
+    ${post.externalEmbed ? externalEmbedMarkup(post.externalEmbed) : post.embedUrl ? `<a class="link-embed" href="${escapeHtml(post.embedUrl)}" target="_blank" rel="noopener noreferrer"><strong>Open attached link</strong><small>${escapeHtml(new URL(post.embedUrl).hostname)}</small></a>` : ''}
     <div class="vote-row">
       <button class="vote-button alright based ${post.userVote === 'alright' ? 'selected' : ''}" type="button" data-vote="alright"><span class="vote-face">${calloutGlyph('based')}</span><strong>BASED</strong></button>
       <b class="percent alright-percent">${alrightPercent}%</b>
@@ -663,6 +664,26 @@ function postMediaMarkup(media = []) {
     ? `<video controls playsinline preload="metadata" src="${escapeHtml(item.url)}" aria-label="Attached short video"></video>`
     : `<img src="${escapeHtml(item.url)}" alt="${escapeHtml(item.alt || 'Attached media')}" loading="lazy" />`).join('');
   return `<div class="take-media media-count-${media.length}">${items}</div>`;
+}
+
+function compactMetric(value) {
+  const number = Number(value || 0);
+  return number >= 1_000_000 ? `${(number / 1_000_000).toFixed(1).replace('.0', '')}M` : number >= 1_000 ? `${(number / 1_000).toFixed(1).replace('.0', '')}K` : String(number);
+}
+
+function externalEmbedMarkup(embed, preview = false) {
+  if (!embed?.url) return '';
+  const platformNames = { x: 'X', reddit: 'Reddit', bluesky: 'Bluesky' };
+  const marks = { x: '𝕏', reddit: '●', bluesky: '🦋' };
+  const metrics = embed.platform === 'reddit'
+    ? `<span>△ ${compactMetric(embed.likeCount)}</span><span>◯ ${compactMetric(embed.replyCount)}</span>`
+    : `<span>◯ ${compactMetric(embed.replyCount)}</span><span>↻ ${compactMetric(embed.repostCount)}</span><span>♡ ${compactMetric(embed.likeCount)}</span>${embed.viewCount ? `<span>▥ ${compactMetric(embed.viewCount)}</span>` : ''}`;
+  return `<article class="external-post external-${escapeHtml(embed.platform)} ${preview ? 'external-preview' : ''}">
+    <header>${embed.authorAvatar ? `<img src="${escapeHtml(embed.authorAvatar)}" alt="" loading="lazy" referrerpolicy="no-referrer" />` : `<i>${marks[embed.platform] || '↗'}</i>`}<div><strong>${escapeHtml(embed.authorName || embed.authorHandle || platformNames[embed.platform])}</strong><small>${escapeHtml(embed.authorHandle || embed.community || '')}</small></div><a href="${escapeHtml(embed.url)}" target="_blank" rel="noopener noreferrer" aria-label="Open original post">↗</a></header>
+    ${embed.community ? `<b class="external-community">${escapeHtml(embed.community)}</b>` : ''}<p>${escapeHtml(embed.text || 'Open the original post to view this attachment.')}</p>
+    ${embed.mediaUrl ? `<img class="external-media" src="${escapeHtml(embed.mediaUrl)}" alt="Media from the attached post" loading="lazy" referrerpolicy="no-referrer" />` : ''}
+    <footer><div>${metrics}</div><a href="${escapeHtml(embed.url)}" target="_blank" rel="noopener noreferrer"><span>${marks[embed.platform] || '↗'}</span> Attached from ${platformNames[embed.platform] || 'source'}</a></footer>
+  </article>`;
 }
 
 function countComments(comments = []) {
@@ -1873,6 +1894,35 @@ function updateComposerPreview() {
   media.hidden = pendingMedia.length === 0;
   media.className = `preview-media preview-media-${Math.min(4, pendingMedia.length)}`;
   media.innerHTML = pendingMedia.slice(0, 4).map(item => item.type === 'video' ? `<video src="${escapeHtml(item.url)}" muted></video>` : `<img src="${escapeHtml(item.url)}" alt="" />`).join('');
+  const external = document.querySelector('#previewExternalEmbed');
+  external.hidden = !pendingExternalEmbed;
+  external.innerHTML = pendingExternalEmbed ? externalEmbedMarkup(pendingExternalEmbed, true) : '';
+}
+
+function closeExternalAttachTool(clear = false) {
+  document.querySelector('#externalAttachComposer').hidden = true;
+  if (clear) {
+    pendingExternalEmbed = null;
+    document.querySelector('#externalPostUrl').value = '';
+    document.querySelector('#takeEmbed').value = '';
+    updateComposerPreview();
+  }
+}
+
+async function previewExternalPost() {
+  const input = document.querySelector('#externalPostUrl');
+  const button = document.querySelector('#previewExternalPost');
+  const url = input.value.trim();
+  if (!url) return showToast('Paste an X, Reddit, or Bluesky post link first.');
+  button.disabled = true; button.textContent = 'Building...';
+  try {
+    const payload = await apiFetch('/api/embeds/preview', { method: 'POST', body: JSON.stringify({ url }) });
+    pendingExternalEmbed = payload.embed;
+    document.querySelector('#takeEmbed').value = payload.embed.url;
+    updateComposerPreview(); closeExternalAttachTool(false);
+    showToast(`${{ x: 'X', reddit: 'Reddit', bluesky: 'Bluesky' }[payload.embed.platform]} post attached.`);
+  } catch (error) { showToast(error.message); }
+  finally { button.disabled = false; button.textContent = 'Build preview'; }
 }
 
 function setComposerBusy(busy, draft = false) {
@@ -1914,6 +1964,10 @@ async function finishPublishing(success, message = 'Your take is live.') {
 document.querySelector('#openComposer').addEventListener('click', openComposerForUser);
 document.querySelector('[data-close-composer]').addEventListener('click', () => composer.close());
 document.querySelector('#takeMedia').addEventListener('change', handleTakeMedia);
+document.querySelector('#toggleExternalAttach').addEventListener('click', () => { const panel = document.querySelector('#externalAttachComposer'); panel.hidden = !panel.hidden; if (!panel.hidden) document.querySelector('#externalPostUrl').focus(); });
+document.querySelector('#closeExternalAttach').addEventListener('click', () => closeExternalAttachTool(Boolean(pendingExternalEmbed)));
+document.querySelector('#previewExternalPost').addEventListener('click', previewExternalPost);
+document.querySelector('#externalPostUrl').addEventListener('keydown', event => { if (event.key === 'Enter') { event.preventDefault(); previewExternalPost(); } });
 const composerDropZone = document.querySelector('#composerDropZone');
 ['dragenter', 'dragover'].forEach(type => composerDropZone.addEventListener(type, event => { event.preventDefault(); if (!composerSubmissionInFlight) composerDropZone.classList.add('is-dragging'); }));
 ['dragleave', 'drop'].forEach(type => composerDropZone.addEventListener(type, event => { event.preventDefault(); composerDropZone.classList.remove('is-dragging'); }));
@@ -1948,7 +2002,7 @@ async function submitComposer(draft = false) {
   const pollBuilder = document.querySelector('#pollBuilder');
   const pollOptions = [...document.querySelectorAll('#pollOptions input')].map(option => sanitizeInput(option.value)).filter(Boolean);
   const poll = pollBuilder.hidden ? null : { question: sanitizeInput(document.querySelector('#pollQuestion').value), options: pollOptions.map(option => ({ text: option })), closesAt: null };
-  if (!draft && !text && !pendingMedia.length && !poll) return showToast('Add text, media, or a poll first.');
+  if (!draft && !text && !pendingMedia.length && !poll && !pendingExternalEmbed) return showToast('Add text, media, or an attached post first.');
   if (poll && (!poll.question || pollOptions.length < 2)) return showToast('A poll needs a question and at least 2 options.');
   const validationError = text ? postTextError(text) : ''; if (validationError) return showToast(validationError);
   const category = document.querySelector('#takeCategory').value;
@@ -1961,7 +2015,7 @@ async function submitComposer(draft = false) {
     visibility: document.querySelector('#takeAudience').value,
     topics: document.querySelector('#takeTopics').value.split(',').map(value => sanitizeInput(value)).filter(Boolean).slice(0, 5),
     contentWarning: sanitizeInput(document.querySelector('#takeWarning').value), reactionSet: document.querySelector('#takeReactionSet').value,
-    embedUrl: document.querySelector('#takeEmbed').value.trim(), scheduledPublishedAt: scheduledValue ? new Date(scheduledValue).toISOString() : null
+    embedUrl: pendingExternalEmbed?.url || document.querySelector('#takeEmbed').value.trim(), externalEmbed: pendingExternalEmbed, scheduledPublishedAt: scheduledValue ? new Date(scheduledValue).toISOString() : null
   };
   const instantPublish = !draft && !scheduledValue;
   const temporaryId = instantPublish ? `pending-${composerRequestId}` : '';
@@ -1999,7 +2053,7 @@ async function submitComposer(draft = false) {
   if (!instantPublish) await finishPublishing(true, draft ? 'Draft saved.' : scheduledValue ? 'Take scheduled.' : 'Your take is live.');
   persist();
   input.value = '';
-  pendingMedia = []; renderMediaPreview(); document.querySelector('#gifUrlInput').value = ''; document.querySelector('#gifUrlInput').hidden = true;
+  pendingMedia = []; pendingExternalEmbed = null; renderMediaPreview(); document.querySelector('#gifUrlInput').value = ''; document.querySelector('#gifUrlInput').hidden = true; document.querySelector('#externalPostUrl').value = ''; document.querySelector('#externalAttachComposer').hidden = true;
   document.querySelector('#charCount').textContent = '0 / 2000';
   document.querySelector('#composerForm').reset(); document.querySelector('#pollBuilder').hidden = true;
   composerRequestId = ''; setComposerBusy(false); updateComposerPreview();

@@ -128,16 +128,17 @@
         <textarea id="takeText" maxlength="2000" placeholder="Say something worth judging..."></textarea>
         <section class="composer-drop-zone" id="composerDropZone" tabindex="0" aria-label="Drop images, GIFs, or short videos here">
           <div class="drop-zone-copy"><strong>Drop media here</strong><span>or choose files below</span></div>
-        <div class="composer-tools" aria-label="Take attachments"><label class="media-picker" for="takeMedia">▧ Add media<input id="takeMedia" type="file" accept="image/png,image/jpeg,image/webp,image/gif,video/mp4,video/webm" multiple /></label><button type="button" id="addGifUrl">GIF link</button><div class="emoji-tray" id="postEmojiTray"><button type="button">🔥</button><button type="button">😂</button><button type="button">😭</button><button type="button">💀</button><button type="button">🤝</button><button type="button">👀</button></div></div>
+        <div class="composer-tools" aria-label="Take attachments"><label class="media-picker" for="takeMedia">▧ Add media<input id="takeMedia" type="file" accept="image/png,image/jpeg,image/webp,image/gif,video/mp4,video/webm" multiple /></label><button type="button" id="toggleExternalAttach">↗ Attach post</button><button type="button" id="addGifUrl">GIF link</button><div class="emoji-tray" id="postEmojiTray"><button type="button">🔥</button><button type="button">😂</button><button type="button">😭</button><button type="button">💀</button><button type="button">🤝</button><button type="button">👀</button></div></div>
         <div class="media-preview" id="mediaPreview" hidden></div>
         </section>
+        <section class="external-attach-composer" id="externalAttachComposer" hidden><header><div><strong>ATTACH AN OUTSIDE POST</strong><small>X, Reddit, or Bluesky</small></div><button type="button" id="closeExternalAttach" aria-label="Close attachment tool">×</button></header><div><input id="externalPostUrl" type="url" inputmode="url" placeholder="Paste a direct post link" /><button type="button" id="previewExternalPost">Build preview</button></div><p>Callout keeps the source visible and links back to the original post.</p></section>
         <input id="gifUrlInput" type="url" inputmode="url" placeholder="Paste a direct HTTPS GIF URL" hidden />
         <section class="poll-builder" id="pollBuilder" hidden><label>Poll question<input id="pollQuestion" maxlength="240" /></label><div id="pollOptions"><input maxlength="100" placeholder="Option 1" /><input maxlength="100" placeholder="Option 2" /></div><button type="button" id="addPollOption">+ Add option</button></section>
         <div class="composer-options"><label>Audience<select id="takeAudience"><option value="public">Public</option><option value="friends">Friends</option></select></label><label>Topics<input id="takeTopics" maxlength="120" placeholder="movies, hot takes" /></label><label>Content warning<input id="takeWarning" maxlength="160" placeholder="Optional" /></label><label>Schedule<input id="takeSchedule" type="datetime-local" /></label><label>Reactions<select id="takeReactionSet"><option value="classic">Classic</option><option value="support">Supportive</option><option value="spicy">Spicy</option></select></label></div>
         <p class="media-rules">Up to 5 images, square videos, or GIFs. Videos: maximum 25 seconds and 8 MB. Links belong in the embed field, not post text.</p>
-        <label class="embed-field">Link embed<input id="takeEmbed" type="url" placeholder="https://example.com" /></label>
+        <input id="takeEmbed" type="hidden" />
         <div class="composer-meta"><select id="takeCategory" aria-label="Category"><option>Movies</option><option>Music</option><option>Entertainment</option><option>Games</option><option>Life</option></select><span id="charCount">0 / 2000</span></div>
-        <section class="composer-live-preview" aria-label="Live post preview"><header><strong>LIVE PREVIEW</strong><span id="previewAudience">Public</span></header><article><div class="preview-avatar" id="previewAvatar">C</div><div><p><strong id="previewName">Callout member</strong><small id="previewCategory">Movies · now</small></p><div class="preview-content" id="previewContent">Your take will appear here as you type.</div><div class="preview-media" id="previewMedia" hidden></div></div></article></section>
+        <section class="composer-live-preview" aria-label="Live post preview"><header><strong>LIVE PREVIEW</strong><span id="previewAudience">Public</span></header><article><div class="preview-avatar" id="previewAvatar">C</div><div><p><strong id="previewName">Callout member</strong><small id="previewCategory">Movies · now</small></p><div class="preview-content" id="previewContent">Your take will appear here as you type.</div><div class="preview-media" id="previewMedia" hidden></div><div id="previewExternalEmbed" hidden></div></div></article></section>
         <div class="composer-actions"><button class="quiet-action" id="saveDraft" type="button">Save draft</button><button class="publish-button" value="default" type="submit">Post Take</button></div>
       </form>
     </dialog>
@@ -165,6 +166,6 @@
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
     <script src="/vendor/dompurify.min.js"></script>
     <script src="/vendor/html2canvas.min.js"></script>
-    <script src="app.js?v=20260703-ideas-embed1"></script>
+    <script src="app.js?v=20260704-external-attach1"></script>
   </body>
 </html>
