@@ -670,11 +670,14 @@ function externalEmbedMarkup(embed, preview = false) {
   if (!embed?.url) return '';
   const platformNames = { x: 'X', reddit: 'Reddit', bluesky: 'Bluesky' };
   const marks = { x: '𝕏', reddit: '●', bluesky: '🦋' };
-  const media = embed.mediaUrl
-    ? embed.mediaType === 'video' || /\.(mp4|webm)(?:\?|$)/i.test(embed.mediaUrl)
-      ? `<video class="external-media" src="${escapeHtml(embed.mediaUrl)}" controls muted playsinline preload="metadata"></video>`
-      : `<img class="external-media" src="${escapeHtml(embed.mediaUrl)}" alt="Media from the attached post" loading="lazy" referrerpolicy="no-referrer" />`
-    : '';
+  const mediaItems = Array.isArray(embed.mediaItems) && embed.mediaItems.length
+    ? embed.mediaItems.slice(0, 4)
+    : embed.mediaUrl ? [{ type: embed.mediaType || 'image', url: embed.mediaUrl, thumbnailUrl: '', alt: '' }] : [];
+  const media = mediaItems.length ? `<div class="external-media-grid external-media-count-${mediaItems.length}">${mediaItems.map(item =>
+    item.type === 'video' || /\.(mp4|webm)(?:\?|$)/i.test(item.url)
+      ? `<video class="external-media" src="${escapeHtml(item.url)}" ${item.thumbnailUrl ? `poster="${escapeHtml(item.thumbnailUrl)}"` : ''} controls muted playsinline preload="metadata"></video>`
+      : `<img class="external-media" src="${escapeHtml(item.url)}" alt="${escapeHtml(item.alt || 'Media from the attached post')}" loading="lazy" referrerpolicy="no-referrer" />`
+  ).join('')}</div>` : '';
   return `<article class="external-post external-${escapeHtml(embed.platform)} ${preview ? 'external-preview' : ''}">
     <header>${embed.authorAvatar ? `<img src="${escapeHtml(embed.authorAvatar)}" alt="" loading="lazy" referrerpolicy="no-referrer" />` : `<i>${marks[embed.platform] || '↗'}</i>`}<div><strong>${escapeHtml(embed.authorName || embed.authorHandle || platformNames[embed.platform])}</strong><small>${escapeHtml(embed.authorHandle || embed.community || '')}</small></div><a href="${escapeHtml(embed.url)}" target="_blank" rel="noopener noreferrer" aria-label="Open original post">↗</a></header>
     ${embed.community ? `<b class="external-community">${escapeHtml(embed.community)}</b>` : ''}<p>${escapeHtml(embed.text || 'Open the original post to view this attachment.')}</p>

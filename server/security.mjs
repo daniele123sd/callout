@@ -52,6 +52,12 @@ const externalEmbed = Joi.object({
   community: plain(120).allow('').default(''),
   mediaUrl: Joi.string().uri({ scheme: ['https'] }).max(2048).allow('').default(''),
   mediaType: Joi.string().valid('', 'image', 'video').allow('').default(''),
+  mediaItems: Joi.array().max(4).items(Joi.object({
+    type: Joi.string().valid('image', 'video').required(),
+    url: Joi.string().uri({ scheme: ['https'] }).max(2048).required(),
+    thumbnailUrl: Joi.string().uri({ scheme: ['https'] }).max(2048).allow('').default(''),
+    alt: plain(300).allow('').default('')
+  })).default([]),
   replyCount: Joi.number().integer().min(0).max(1_000_000_000).default(0),
   repostCount: Joi.number().integer().min(0).max(1_000_000_000).default(0),
   likeCount: Joi.number().integer().min(0).max(1_000_000_000).default(0),

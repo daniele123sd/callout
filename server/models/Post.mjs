@@ -18,6 +18,16 @@ const externalEmbedSchema = new mongoose.Schema({
   community: { type: String, default: '', maxlength: 120 },
   mediaUrl: { type: String, default: '', maxlength: 2048 },
   mediaType: { type: String, enum: ['', 'image', 'video'], default: '' },
+  mediaItems: {
+    type: [{
+      _id: false,
+      type: { type: String, enum: ['image', 'video'], required: true },
+      url: { type: String, required: true, maxlength: 2048 },
+      thumbnailUrl: { type: String, default: '', maxlength: 2048 },
+      alt: { type: String, default: '', maxlength: 300 }
+    }],
+    default: []
+  },
   replyCount: { type: Number, default: 0, min: 0 },
   repostCount: { type: Number, default: 0, min: 0 },
   likeCount: { type: Number, default: 0, min: 0 },
