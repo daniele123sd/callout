@@ -666,23 +666,20 @@ function postMediaMarkup(media = []) {
   return `<div class="take-media media-count-${media.length}">${items}</div>`;
 }
 
-function compactMetric(value) {
-  const number = Number(value || 0);
-  return number >= 1_000_000 ? `${(number / 1_000_000).toFixed(1).replace('.0', '')}M` : number >= 1_000 ? `${(number / 1_000).toFixed(1).replace('.0', '')}K` : String(number);
-}
-
 function externalEmbedMarkup(embed, preview = false) {
   if (!embed?.url) return '';
   const platformNames = { x: 'X', reddit: 'Reddit', bluesky: 'Bluesky' };
   const marks = { x: '𝕏', reddit: '●', bluesky: '🦋' };
-  const metrics = embed.platform === 'reddit'
-    ? `<span>△ ${compactMetric(embed.likeCount)}</span><span>◯ ${compactMetric(embed.replyCount)}</span>`
-    : `<span>◯ ${compactMetric(embed.replyCount)}</span><span>↻ ${compactMetric(embed.repostCount)}</span><span>♡ ${compactMetric(embed.likeCount)}</span>${embed.viewCount ? `<span>▥ ${compactMetric(embed.viewCount)}</span>` : ''}`;
+  const media = embed.mediaUrl
+    ? embed.mediaType === 'video' || /\.(mp4|webm)(?:\?|$)/i.test(embed.mediaUrl)
+      ? `<video class="external-media" src="${escapeHtml(embed.mediaUrl)}" controls muted playsinline preload="metadata"></video>`
+      : `<img class="external-media" src="${escapeHtml(embed.mediaUrl)}" alt="Media from the attached post" loading="lazy" referrerpolicy="no-referrer" />`
+    : '';
   return `<article class="external-post external-${escapeHtml(embed.platform)} ${preview ? 'external-preview' : ''}">
     <header>${embed.authorAvatar ? `<img src="${escapeHtml(embed.authorAvatar)}" alt="" loading="lazy" referrerpolicy="no-referrer" />` : `<i>${marks[embed.platform] || '↗'}</i>`}<div><strong>${escapeHtml(embed.authorName || embed.authorHandle || platformNames[embed.platform])}</strong><small>${escapeHtml(embed.authorHandle || embed.community || '')}</small></div><a href="${escapeHtml(embed.url)}" target="_blank" rel="noopener noreferrer" aria-label="Open original post">↗</a></header>
     ${embed.community ? `<b class="external-community">${escapeHtml(embed.community)}</b>` : ''}<p>${escapeHtml(embed.text || 'Open the original post to view this attachment.')}</p>
-    ${embed.mediaUrl ? `<img class="external-media" src="${escapeHtml(embed.mediaUrl)}" alt="Media from the attached post" loading="lazy" referrerpolicy="no-referrer" />` : ''}
-    <footer><div>${metrics}</div><a href="${escapeHtml(embed.url)}" target="_blank" rel="noopener noreferrer"><span>${marks[embed.platform] || '↗'}</span> Attached from ${platformNames[embed.platform] || 'source'}</a></footer>
+    ${media}
+    <footer><a href="${escapeHtml(embed.url)}" target="_blank" rel="noopener noreferrer"><span>${marks[embed.platform] || '↗'}</span> Attached from ${platformNames[embed.platform] || 'source'}</a></footer>
   </article>`;
 }
 

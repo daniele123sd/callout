@@ -40,7 +40,8 @@ test('post text rejects hashtags and links while GIF attachment links stay valid
 test('outside-post attachments can publish without a screenshot or caption', () => {
   const externalEmbed = {
     platform: 'x', url: 'https://x.com/jack/status/20', authorName: 'jack', authorHandle: '@jack',
-    authorAvatar: '', text: 'just setting up my twttr', community: '', mediaUrl: '', replyCount: 0,
+    authorAvatar: 'https://example.com/avatar.jpg', text: 'just setting up my twttr', community: '',
+    mediaUrl: 'https://example.com/clip.mp4', mediaType: 'video', replyCount: 0,
     repostCount: 0, likeCount: 0, viewCount: 0, sourceCreatedAt: null, fetchedAt: new Date().toISOString()
   };
   assert.equal(schemas.post.validate({ content: '', category: 'Life', media: [], externalEmbed }).error, undefined);

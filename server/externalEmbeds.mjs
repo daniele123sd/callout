@@ -25,7 +25,7 @@ function parseSource(rawUrl) {
   if (host === 'x.com' || host === 'twitter.com' || host === 'mobile.twitter.com') {
     if (!/^\/[A-Za-z0-9_]{1,15}\/status\/\d+/.test(url.pathname)) throw new Error('Paste a direct X post link.');
     url.hostname = 'x.com'; url.search = ''; url.hash = '';
-    return { platform: 'x', url: url.toString() };
+    return { platform: 'x', url: url.toString(), postId: url.pathname.match(/status\/(\d+)/)?.[1] || '' };
   }
   if (host === 'reddit.com' || host.endsWith('.reddit.com') || host === 'redd.it') {
     if (host !== 'redd.it' && !/\/comments\/[A-Za-z0-9]+/i.test(url.pathname)) throw new Error('Paste a direct Reddit post or comment link.');
@@ -44,10 +44,15 @@ function parseSource(rawUrl) {
 
 async function previewX(source) {
   const data = await getJson(`https://publish.twitter.com/oembed?omit_script=true&dnt=true&url=${encodeURIComponent(source.url)}`);
+  let rich = null;
+  try { rich = await getJson(`https://api.fxtwitter.com/status/${encodeURIComponent(source.postId)}`); } catch { /* Keep the official oEmbed fallback. */ }
+  const tweet = rich?.tweet;
+  const video = tweet?.media?.videos?.[0]?.url || '';
+  const image = tweet?.media?.photos?.[0]?.url || '';
   return {
-    platform: 'x', url: source.url, authorName: htmlText(data.author_name),
-    authorHandle: data.author_url ? `@${new URL(data.author_url).pathname.split('/').filter(Boolean)[0] || data.author_name}` : `@${data.author_name || 'x'}`,
-    authorAvatar: '', text: firstMatch(data.html, /<p[^>]*>([\s\S]*?)<\/p>/i), community: '', mediaUrl: '',
+    platform: 'x', url: source.url, authorName: sanitizePlainText(tweet?.author?.name || htmlText(data.author_name)),
+    authorHandle: tweet?.author?.screen_name ? `@${sanitizePlainText(tweet.author.screen_name)}` : data.author_url ? `@${new URL(data.author_url).pathname.split('/').filter(Boolean)[0] || data.author_name}` : `@${data.author_name || 'x'}`,
+    authorAvatar: tweet?.author?.avatar_url || '', text: sanitizePlainText(tweet?.text || firstMatch(data.html, /<p[^>]*>([\s\S]*?)<\/p>/i)), community: '', mediaUrl: video || image, mediaType: video ? 'video' : image ? 'image' : '',
     replyCount: 0, repostCount: 0, likeCount: 0, viewCount: 0, sourceCreatedAt: null, fetchedAt: fetchedAt()
   };
 }
@@ -59,7 +64,7 @@ async function previewReddit(source) {
   return {
     platform: 'reddit', url: source.url, authorName: htmlText(data.author_name || 'Redditor'),
     authorHandle: data.author_name ? `u/${htmlText(data.author_name)}` : 'u/redditor', authorAvatar: '', text: title,
-    community: community ? `r/${community.replace(/^r\//, '')}` : '', mediaUrl: '', replyCount: 0, repostCount: 0,
+    community: community ? `r/${community.replace(/^r\//, '')}` : '', mediaUrl: data.thumbnail_url || '', mediaType: data.thumbnail_url ? 'image' : '', replyCount: 0, repostCount: 0,
     likeCount: 0, viewCount: 0, sourceCreatedAt: null, fetchedAt: fetchedAt()
   };
 }
@@ -74,7 +79,7 @@ async function previewBluesky(source) {
   return {
     platform: 'bluesky', url: source.url, authorName: sanitizePlainText(post.author?.displayName || post.author?.handle || 'Bluesky user'),
     authorHandle: `@${sanitizePlainText(post.author?.handle || source.handle)}`, authorAvatar: post.author?.avatar || '',
-    text: sanitizePlainText(post.record.text || ''), community: '', mediaUrl: image, replyCount: Number(post.replyCount || 0),
+    text: sanitizePlainText(post.record.text || ''), community: '', mediaUrl: image, mediaType: image ? 'image' : '', replyCount: Number(post.replyCount || 0),
     repostCount: Number(post.repostCount || 0), likeCount: Number(post.likeCount || 0), viewCount: Number(post.quoteCount || 0),
     sourceCreatedAt: post.record.createdAt || null, fetchedAt: fetchedAt()
   };

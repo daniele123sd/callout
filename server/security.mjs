@@ -51,6 +51,7 @@ const externalEmbed = Joi.object({
   text: plain(1200).allow('').default(''),
   community: plain(120).allow('').default(''),
   mediaUrl: Joi.string().uri({ scheme: ['https'] }).max(2048).allow('').default(''),
+  mediaType: Joi.string().valid('', 'image', 'video').allow('').default(''),
   replyCount: Joi.number().integer().min(0).max(1_000_000_000).default(0),
   repostCount: Joi.number().integer().min(0).max(1_000_000_000).default(0),
   likeCount: Joi.number().integer().min(0).max(1_000_000_000).default(0),
