@@ -61,7 +61,7 @@ test('guild style studio, role cosmetics, and member identities persist', async 
     name: guild.name, description: 'A styled community', tagline: 'Distinct by design', rules: '', iconUrl: '', bannerUrl: '',
     themeColor: '#7444e8', accentColor: '#ff4713', backgroundPattern: 'stars', cardStyle: 'glass', iconShape: 'hex', seasonalEffect: 'sparkles',
     customEmojis: [{ name: 'callout', imageUrl: 'https://example.com/callout.png' }], reactionSet: ['🔥', '◇'],
-    landingLayout: ['progress', 'announcement', 'about'], welcomeMessage: 'Welcome in.', onboardingQuestions: [{ prompt: 'Pick a side', options: ['Alright', 'Cringe'], required: true }],
+    landingLayout: ['progress', 'announcement', 'about'], welcomeMessage: 'Welcome in.', onboardingQuestions: [{ prompt: 'Pick a side', options: ['Based', 'Hot Take'], required: true }],
     privacy: 'public', pinnedAnnouncement: '', settings: { allowJoinRequests: true, showMemberList: true, allowPerGuildProfiles: true, showOnlineStatus: true }, contentPrivacy: 'members'
   });
   await updateGuildIdentity(guild.id, member.id, { nickname: 'Guild Voice', avatarUrl: '', bannerUrl: '', bio: 'Only in this guild', themeColor: '#63e6be', avatarFrame: 'spark', onboardingAnswers: [{ question: 'Pick a side', answer: 'Alright' }] });

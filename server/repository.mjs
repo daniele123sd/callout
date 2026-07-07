@@ -97,11 +97,12 @@ export function publicUser(user) {
 }
 
 export function vibeBadges(score = 0) {
-  const badges = [{ key: 'new-voice', name: 'New Voice', icon: '✦', threshold: 0 }];
-  if (score >= 25) badges.push({ key: 'good-energy', name: 'Good Energy', icon: '☀', threshold: 25 });
-  if (score >= 100) badges.push({ key: 'conversation-starter', name: 'Conversation Starter', icon: '⚡', threshold: 100 });
-  if (score >= 250) badges.push({ key: 'community-spark', name: 'Community Spark', icon: '🔥', threshold: 250 });
-  if (score >= 1000) badges.push({ key: 'vibe-legend', name: 'Vibe Legend', icon: '♛', threshold: 1000 });
+  const badges = [{ key: 'new-voice', name: 'Mic Check', icon: '◉', threshold: 0 }];
+  if (score >= 25) badges.push({ key: 'good-energy', name: 'First Spark', icon: '✦', threshold: 25 });
+  if (score >= 100) badges.push({ key: 'conversation-starter', name: 'Crowd Starter', icon: '⚡', threshold: 100 });
+  if (score >= 250) badges.push({ key: 'community-spark', name: 'Debate Driver', icon: '◆', threshold: 250 });
+  if (score >= 1000) badges.push({ key: 'vibe-legend', name: 'Headliner', icon: '♛', threshold: 1000 });
+  if (score >= 2500) badges.push({ key: 'callout-icon', name: 'Callout Icon', icon: '★', threshold: 2500 });
   return badges;
 }
 
@@ -364,7 +365,7 @@ export async function voteOnPost(postId, userId, value) {
     await post.save();
     if (!previousValue) await incrementVibe(userId, 1);
     if (String(post.author) !== String(userId) && previousValue !== value) {
-      await Notification.create({ recipient: post.author, actor: userId, type: 'vote', post: post._id, text: `Someone voted ${value === 'alright' ? 'Based' : 'Cringe'} on your take.` });
+      await Notification.create({ recipient: post.author, actor: userId, type: 'vote', post: post._id, text: `Someone voted ${value === 'alright' ? 'Based' : 'Hot Take'} on your take.` });
     }
     return serializePost(post, userId);
   }
@@ -380,7 +381,7 @@ export async function voteOnPost(postId, userId, value) {
   post.cringeVotes = post.votes.filter(vote => vote.value === 'cringe').length;
   post.impressions += 1;
   if (!previousValue) await incrementVibe(userId, 1);
-  if (post.author !== String(userId) && previousValue !== value) memoryNotifications.push({ id: crypto.randomUUID(), recipient: post.author, actor: publicUser(memoryUsers.get(String(userId))), type: 'vote', post: post.id, text: `Someone voted ${value === 'alright' ? 'Based' : 'Cringe'} on your take.`, read: false, createdAt: new Date() });
+  if (post.author !== String(userId) && previousValue !== value) memoryNotifications.push({ id: crypto.randomUUID(), recipient: post.author, actor: publicUser(memoryUsers.get(String(userId))), type: 'vote', post: post.id, text: `Someone voted ${value === 'alright' ? 'Based' : 'Hot Take'} on your take.`, read: false, createdAt: new Date() });
   return serializePost(post, userId);
 }
 
@@ -847,10 +848,10 @@ function basedBadge(rank, score) {
 }
 
 function cringeBadge(rank, score) {
-  if (rank === 1 && score > 0) return { name: 'Cringe Crown', icon: '♛' };
+  if (rank === 1 && score > 0) return { name: 'Heat Crown', icon: '♛' };
   if (rank <= 3 && score > 0) return { name: 'Podium Menace', icon: '🔥' };
   if (rank <= 10 && score > 0) return { name: 'Top Ten Take', icon: '⚡' };
-  if (score > 0) return { name: 'Cringe Contender', icon: '◆' };
+  if (score > 0) return { name: 'Heat Contender', icon: '◆' };
   return { name: 'Fresh Face', icon: '◇' };
 }
 

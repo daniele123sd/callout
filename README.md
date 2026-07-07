@@ -1,6 +1,6 @@
 # Callout
 
-Callout is an Express-backed social product prototype where people publish takes, vote **Based** or **Cringe**, build a Vibe Score, customize profiles, join guilds, and participate in nested discussions.
+Callout is an Express-backed social product prototype where people publish takes, vote **Based** or **Hot Take**, build Voice XP, customize profiles, join guilds, and participate in nested discussions.
 
 ## Run locally
 
@@ -36,9 +36,9 @@ Set `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, and `GOOGLE_CALLBACK_URL` in `.e
 ## Product areas
 
 - Home, Trending, Guilds, Leaderboards, Notifications, Messages, Saved, Profile, Settings, and Auth
-- Animated Based/Cringe response meter
+- Animated Based/Hot Take response meter
 - Dedicated take details with nested Reddit-style comments
-- Discord-style profile customization, Vibe Score, badges, banner, accent color, status, pronouns, and social links
+- Discord-style profile customization, Voice XP, badges, banner, accent color, status, pronouns, and social links
 - Conditional author/non-author post menus with edit, delete, share, and report flows
 - Light, Dark, and System themes plus notification, privacy, and display preferences
 - Privacy Policy and Terms of Service routes

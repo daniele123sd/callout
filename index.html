@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="description" content="Callout is the place to post your boldest takes, vote Based or Cringe, and build your vibe." />
+    <meta name="description" content="Callout is the place to post your boldest takes, vote Based or Hot Take, and build your Voice XP." />
     <meta name="theme-color" content="#ff4713" />
     <meta name="google-adsense-account" content="ca-pub-XXXXXXXXXXXXXXXX" />
     <meta name="adsense-client" content="ca-pub-XXXXXXXXXXXXXXXX" />
@@ -33,7 +33,7 @@
       <symbol id="i-trophy" viewBox="0 0 24 24"><path d="M8 4h8v5a4 4 0 0 1-8 0zM8 6H4v2a4 4 0 0 0 4 4m8-6h4v2a4 4 0 0 1-4 4M12 13v4m-4 3h8" fill="none" stroke="currentColor" stroke-width="2"/></symbol>
       <symbol id="i-idea" viewBox="0 0 24 24"><path d="M8 15c-1.7-1.2-2.7-3-2.7-5.2a6.7 6.7 0 0 1 13.4 0c0 2.2-1 4-2.7 5.2l-1 1.5H9zM9 20h6M10 17h4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="m3 4-1-1m19 1 1-1M12 1V0" stroke="currentColor" stroke-width="2"/></symbol>
       <symbol id="i-based" viewBox="0 0 32 32"><path d="M16 2.5 19 6l4.5-1 .7 4.5 4 2.5-2.4 4 1.5 4.4-4.4 1.7-2 4.2-4.6-1-3.5 3-3.1-3.4-4.7.4-.4-4.7-3.8-2.7 2.7-3.8-1.1-4.5 4.5-1.4L11 4.5z" fill="currentColor" stroke="#101114" stroke-width="1.8" stroke-linejoin="round"/><circle cx="16" cy="15.5" r="8.5" fill="#f5f1df" stroke="#101114" stroke-width="2"/><circle cx="13" cy="13.5" r="1.2" fill="#101114"/><circle cx="19" cy="13.5" r="1.2" fill="#101114"/><path d="M12.2 17.2c1 2.5 6.6 2.5 7.6 0" fill="none" stroke="#101114" stroke-width="2" stroke-linecap="round"/></symbol>
-      <symbol id="i-cringe" viewBox="0 0 32 32"><path d="M7 4.5 10 6l2.2-3 3 2 3-2 2.2 3 3-1.5 1.2 3.4 3.5.5-.2 3.5 2.8 2-1.8 3 1.8 3-2.8 2 .2 3.5-3.5.5-1.2 3.4-3-1.5-2.2 3-3-2-3 2-2.2-3-3 1.5-1.2-3.4-3.5-.5.2-3.5-2.8-2 1.8-3-1.8-3 2.8-2-.2-3.5 3.5-.5z" fill="currentColor" stroke="#101114" stroke-width="1.8" stroke-linejoin="round"/><circle cx="16" cy="16" r="8.5" fill="#f5f1df" stroke="#101114" stroke-width="2"/><path d="m11.5 13 2 1.5m7-1.5-2 1.5M12 20c1.2-2.5 6.8-2.5 8 0" fill="none" stroke="#101114" stroke-width="2" stroke-linecap="round"/></symbol>
+      <symbol id="i-cringe" viewBox="0 0 32 32"><path d="M16 2c1 5 6 5 5 11 2-2 3-4 3-6 4 4 6 8 5 13-1 6-6 10-13 10S4 26 3 20c-1-6 3-10 8-15 0 4 1 6 3 7 2-3 2-6 2-10z" fill="currentColor" stroke="#101114" stroke-width="1.8" stroke-linejoin="round"/><circle cx="16" cy="18" r="7.5" fill="#ffd37a" stroke="#101114" stroke-width="2"/><path d="M12.5 16h.1m6.8 0h.1M12.5 20c1.4 2 5.6 2 7 0" fill="none" stroke="#101114" stroke-width="2" stroke-linecap="round"/></symbol>
       <symbol id="i-personal-cringe" viewBox="0 0 32 32"><path d="m16 2 12 14-12 14L4 16z" fill="currentColor" stroke="#101114" stroke-width="2" stroke-linejoin="round"/><circle cx="16" cy="16" r="7" fill="#f5f1df" stroke="#101114" stroke-width="2"/><path d="m12.5 13 2 1.3m5-1.3-2 1.3M12.5 20c1-2.2 6-2.2 7 0" fill="none" stroke="#101114" stroke-width="1.8" stroke-linecap="round"/></symbol>
       <symbol id="i-more" viewBox="0 0 24 24"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></symbol>
       <symbol id="i-edit" viewBox="0 0 24 24"><path d="m4 16-1 5 5-1L20 8l-4-4zM14 6l4 4" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></symbol>
@@ -73,13 +73,13 @@
         </nav>
         <button class="post-button" id="openComposer" type="button"><span>＋</span> Post Take</button>
 
-        <section class="vibe-card" aria-label="Your vibe score">
-          <p class="eyebrow">YOUR VIBE</p>
+        <section class="vibe-card" aria-label="Your Voice XP">
+          <p class="eyebrow">YOUR VOICE</p>
           <div class="score" id="sidebarVibeScore">0</div>
-          <strong>VIBE SCORE</strong>
-          <div class="score-track" id="vibeProgress" role="progressbar" aria-label="Vibe badge progress" aria-valuenow="0" aria-valuemin="0" aria-valuemax="25"><span></span><i></i></div>
+          <strong>VOICE XP</strong>
+          <div class="score-track" id="vibeProgress" role="progressbar" aria-label="Voice level progress" aria-valuenow="0" aria-valuemin="0" aria-valuemax="25"><span></span><i></i></div>
           <hr />
-          <div class="rank-row"><span id="vibeBadgeIcon">✦</span><strong id="vibeBadgeName">New Voice</strong></div>
+          <div class="rank-row"><span id="vibeBadgeIcon">◉</span><strong id="vibeBadgeName">Mic Check</strong></div>
           <p id="vibeProgressText">0 / 25</p>
           <a href="#vibe-progress" data-route="vibe-progress">View progress →</a>
         </section>
@@ -91,17 +91,17 @@
       <aside class="right-rail" id="rightRail">
         <section class="status-card rail-leaderboard" aria-label="Callout leaderboard preview">
           <header><strong>CALLOUT LEADERS</strong><button class="text-button" type="button" data-route-button="leaderboards">See all</button></header>
-          <div class="rail-ranking-kinds" aria-label="Leaderboard type"><button type="button" data-leaderboard-kind="based"><svg class="callout-glyph"><use href="#i-based"></use></svg>Based</button><button class="active" type="button" data-leaderboard-kind="cringe"><svg class="callout-glyph"><use href="#i-cringe"></use></svg>Cringe</button></div>
+          <div class="rail-ranking-kinds" aria-label="Leaderboard type"><button type="button" data-leaderboard-kind="based"><svg class="callout-glyph"><use href="#i-based"></use></svg>Based</button><button class="active" type="button" data-leaderboard-kind="cringe"><svg class="callout-glyph"><use href="#i-cringe"></use></svg>Hot Takes</button></div>
           <div class="rail-periods" aria-label="Leaderboard period"><button type="button" data-leader-period="weekly">Week</button><button type="button" data-leader-period="monthly">Month</button><button class="active" type="button" data-leader-period="all">All time</button></div>
           <div class="rail-leaderboard-rows" id="railLeaderboardRows"><p>No ranked users yet.</p></div>
           <p class="status-note" id="railRankNote">Sign in to claim your place.</p>
         </section>
-        <section class="personal-cringe-widget" aria-label="Your personal Cringe level">
-          <header><span class="section-kicker">YOUR CRINGE RANK</span><strong id="personalCringeLevel">Your Cringe Rank</strong></header>
-          <p id="personalCringeMeta">Sign in to start your public Cringe level.</p>
+        <section class="personal-cringe-widget" aria-label="Your personal Heat level">
+          <header><span class="section-kicker">YOUR HEAT LEVEL</span><strong id="personalCringeLevel">Your Heat Level</strong></header>
+          <p id="personalCringeMeta">Sign in to start your public Heat level.</p>
           <div class="personal-cringe-track"><span id="personalCringeProgress"></span></div>
-          <small id="personalCringeNext">Progress appears after your first Cringe vote.</small>
-          <button type="button" data-personal-cringe>View Personal Cringe</button>
+          <small id="personalCringeNext">Progress appears after your first Hot Take vote.</small>
+          <button type="button" data-personal-cringe>View Your Heat</button>
         </section>
         <div class="sidebar-widgets" id="sidebarWidgets" aria-label="Customizable sidebar widgets"></div>
         <div class="ad-slot ad-rectangle" data-ad-placement="right-rail"><ins class="adsbygoogle" data-ad-client="ca-pub-XXXXXXXXXXXXXXXX" data-ad-slot="ADSENSE_RIGHT_RAIL_SLOT" data-ad-format="rectangle" data-full-width-responsive="true"></ins><span class="ad-placeholder-copy">ADVERTISEMENT <small>300 × 250</small></span></div>

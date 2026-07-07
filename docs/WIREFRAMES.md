@@ -52,7 +52,7 @@ Reaction set [Classic ▾]    [Publish / Schedule]
 ┌ Custom banner ───────────────────────────────────────────────┐
 │ [Avatar+frame] Name · pronouns · status   [Follow] [Message]│
 └──────────────────────────────────────────────────────────────┘
-Stats: Vibe · posts · Takes · guilds · streak
+Stats: Voice XP · posts · Takes · guilds · streak
 [Posts] [About] [Guilds] [Achievements] [Media]
 Featured posts / pinned guilds / badges / social links
 ```

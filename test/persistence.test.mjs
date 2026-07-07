@@ -66,7 +66,7 @@ test('custom post reactions persist per user and anonymous ideas store no identi
   assert.ok((await listFeatureIdeas('wild')).some(item => item.id === idea.id));
 });
 
-test('guild membership, Cringe ranking, search and messages use shared records', async () => {
+test('guild membership, Hot Take ranking, search and messages use shared records', async () => {
   const { author, reader } = await accounts();
   const post = await createPost(author.id, { content: 'Find this callout', category: 'Games' });
   const guild = await createGuild(author.id, { name: `Guild ${post.id.slice(0, 6)}`, description: 'Persistent community' });
