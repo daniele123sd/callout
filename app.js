@@ -643,7 +643,7 @@ function postTemplate(post, detail = false) {
         <div class="progress-divider"></div>
       </div>
       <b class="percent cringe-percent">${cringePercent}%</b>
-      <button class="vote-button cringe hot-take ${post.userVote === 'cringe' ? 'selected' : ''}" type="button" data-vote="cringe"><span class="vote-face">${calloutGlyph('cringe')}</span><strong>HOT TAKE</strong><small>TURN UP THE HEAT</small></button>
+      <button class="vote-button cringe hot-take ${post.userVote === 'cringe' ? 'selected' : ''}" type="button" data-vote="cringe"><span class="vote-face">${calloutGlyph('cringe')}</span><strong>HOT TAKE</strong></button>
     </div>
     <div class="post-emoji-reactions" aria-label="React to this post">${postReactions.map(reaction => { const value = post.emojiReactions?.[reaction.key] || {}; return `<button type="button" data-post-reaction="${reaction.key}" aria-label="${reaction.label}" title="${reaction.label}" class="emoji-reaction emoji-${reaction.key} ${value.reacted ? 'reacted' : ''}"><span>${reaction.face}</span><b>${Number(value.count || 0)}</b></button>`; }).join('')}</div>
     <div class="take-footer"><span>${total} ${total === 1 ? 'vote' : 'votes'}　•　${commentCount} ${commentCount === 1 ? 'Take' : 'Takes'}</span>${detail ? '' : `<button class="comment-link" type="button" data-open-take="${post.id}">Open take →</button>`}</div>

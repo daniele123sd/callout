@@ -165,11 +165,10 @@ a { color: inherit; text-decoration: none; }
 .vote-button:active,.vote-button.vote-confirmed { transform: translate(2px,2px); box-shadow: 1px 1px 0 #111; }
 .vote-button.alright { color: #071407; background: #55df50; }
 .vote-button.cringe { color: #101114; background: #ff4b20; }
-.vote-button.hot-take { position:relative;overflow:hidden;display:grid;grid-template-columns:38px 1fr;grid-template-rows:1fr 1fr;column-gap:9px;padding:7px 12px;background:linear-gradient(135deg,#ff7a28 0%,#ff4b20 58%,#e82d24 100%);box-shadow:3px 3px 0 #111,0 0 0 0 rgba(255,75,32,0); }
+.vote-button.hot-take { position:relative;overflow:hidden;display:flex;align-items:center;justify-content:center;gap:10px;padding:0 14px;background:linear-gradient(135deg,#ff7a28 0%,#ff4b20 58%,#e82d24 100%);box-shadow:3px 3px 0 #111,0 0 0 0 rgba(255,75,32,0); }
 .vote-button.hot-take::after { content:'';position:absolute;right:-17px;top:-25px;width:62px;height:62px;border:2px solid rgba(255,220,164,.42);border-radius:50%;box-shadow:0 0 0 9px rgba(255,220,164,.12);pointer-events:none; }
-.vote-button.hot-take .vote-face { grid-row:1 / 3;background:#ffb13b;color:#101114; }
-.vote-button.hot-take strong { align-self:end;text-align:left;font:13px/1 Archivo Black,sans-serif;letter-spacing:.025em; }
-.vote-button.hot-take small { align-self:start;text-align:left;font:700 7px/1.2 Arial,sans-serif;letter-spacing:.09em;opacity:.78; }
+.vote-button.hot-take .vote-face { flex:0 0 38px;background:#ffb13b;color:#101114; }
+.vote-button.hot-take strong { position:relative;z-index:1;text-align:center;font:900 14px/1 Arial,sans-serif;letter-spacing:0;white-space:nowrap; }
 .vote-button.hot-take:hover { transform:translateY(-2px) rotate(-.35deg);box-shadow:4px 6px 0 #111,0 0 22px rgba(255,75,32,.23);filter:saturate(1.08); }
 .vote-button.hot-take:active,.vote-button.hot-take.vote-confirmed { transform:translate(2px,2px);box-shadow:1px 1px 0 #111; }
 .vote-button.selected { box-shadow: 0 0 0 3px color-mix(in srgb,currentColor 24%,transparent),3px 3px 0 #111; }
@@ -586,7 +585,6 @@ html[data-resolved-theme="dark"] .guild-public-grid article, html[data-resolved-
   .vote-face { display: none; }
   .vote-button.cringe { grid-column: 3; grid-row: 1; }
   .vote-button.hot-take { display:flex;padding:0 9px;transform:none; }
-  .vote-button.hot-take small { display:none; }
   .vote-button.hot-take strong { text-align:center;font-size:12px; }
   .alright-percent { grid-column: 1; grid-row: 2; }.cringe-percent { grid-column: 3; grid-row: 2; }
   .vote-progress { grid-column: 2; grid-row: 1 / 3; width: 22px; height: 88px; justify-self: center; background: linear-gradient(0deg,#67e454 0 var(--alright),#ff6640 var(--alright) 100%); }
