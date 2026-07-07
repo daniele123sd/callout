@@ -1399,7 +1399,7 @@ function openPostMenu(id) {
 
 async function openPostDownload(post) {
   const format = selectExportFormat(post); let backgroundMode = 'transparent'; let canvases = [];
-  showActionDialog(actionDialogShell('EXPORT TAKE', 'Ready for social', `<p class="dialog-copy">Callout selected the best portrait size for this post.</p><div class="export-auto-format"><strong>${format.label}</strong><span>${format.width} × ${format.height} · 2 PNGs</span></div><div class="export-background-choice" role="group" aria-label="Export background"><button type="button" data-export-background="transparent" class="active">No background</button><button type="button" data-export-background="brand">Callout background</button></div><div class="export-pair-preview export-preview-loading" id="exportPairPreview"><p>Building previews...</p></div><button class="primary-action export-pair-download" type="button" id="downloadExportPair" disabled>Preparing images...</button>`));
+  showActionDialog(actionDialogShell('EXPORT TAKE', 'Ready for social', `<p class="dialog-copy">Callout selected the best portrait size for this post.</p><div class="export-auto-format"><strong>${format.label}</strong><span>${format.width} × ${format.height} · 2 PNGs</span></div><div class="export-background-choice" role="group" aria-label="Export background"><button type="button" data-export-background="transparent" class="active">Transparent outside</button><button type="button" data-export-background="brand">Callout background</button></div><div class="export-pair-preview export-preview-loading" id="exportPairPreview"><p>Building previews...</p></div><button class="primary-action export-pair-download" type="button" id="downloadExportPair" disabled>Preparing images...</button>`));
   try {
     const assets = await loadExportAssets(post);
     const renderPreview = () => {
@@ -1531,11 +1531,11 @@ function drawQuoteExport(post, format, assets, backgroundMode = 'brand') {
   const textLimit = Math.min(format.key === 'story' ? 620 : 450, height * .36) * unit;
   const fitted = fitExportText(context, post.text, innerWidth, textLimit, 58, 32, unit); const textHeight = fitted.lines.length * fitted.lineHeight;
   const cardHeight = Math.min(height - 150 * unit, Math.max(520 * unit, 42 * unit + 72 * unit + 42 * unit + textHeight + (mediaHeight ? 32 * unit + mediaHeight : 0) + 92 * unit));
-  const top = Math.round((height - cardHeight) / 2); if (backgroundMode === 'brand') drawRoundedCard(context, side, top, cardWidth, cardHeight, 42 * unit, '#101114');
+  const top = Math.round((height - cardHeight) / 2); drawRoundedCard(context, side, top, cardWidth, cardHeight, 42 * unit, '#101114');
   const inner = side + innerPad; drawExportAuthor(context, post, inner, top + 38 * unit, unit, assets.avatar);
   let y = top + 155 * unit + fitted.lineHeight; context.fillStyle = '#101114'; context.font = fitted.font; fitted.lines.forEach(line => { context.fillText(line, inner, y); y += fitted.lineHeight; });
   if (mediaHeight) { y += 24 * unit; drawExportMedia(context, assets.media, inner, y, innerWidth, Math.min(mediaHeight, top + cardHeight - 102 * unit - y), unit); }
-  if (backgroundMode === 'brand') { context.strokeStyle = '#d5d2ce'; context.lineWidth = 2 * unit; context.beginPath(); context.moveTo(inner, top + cardHeight - 68 * unit); context.lineTo(side + cardWidth - innerPad, top + cardHeight - 68 * unit); context.stroke(); context.fillStyle = '#101114'; context.font = `900 ${Math.round(19 * unit)}px Arial`; context.fillText('CALLOUT', inner, top + cardHeight - 30 * unit); context.fillStyle = '#6b6e74'; context.font = `700 ${Math.round(15 * unit)}px Arial`; context.textAlign = 'right'; context.fillText('CALL IT LIKE YOU SEE IT.', side + cardWidth - innerPad, top + cardHeight - 31 * unit); context.textAlign = 'left'; }
+  context.strokeStyle = '#d5d2ce'; context.lineWidth = 2 * unit; context.beginPath(); context.moveTo(inner, top + cardHeight - 68 * unit); context.lineTo(side + cardWidth - innerPad, top + cardHeight - 68 * unit); context.stroke(); context.fillStyle = '#101114'; context.font = `900 ${Math.round(19 * unit)}px Arial`; context.fillText('CALLOUT', inner, top + cardHeight - 30 * unit); context.fillStyle = '#6b6e74'; context.font = `700 ${Math.round(15 * unit)}px Arial`; context.textAlign = 'right'; context.fillText('CALL IT LIKE YOU SEE IT.', side + cardWidth - innerPad, top + cardHeight - 31 * unit); context.textAlign = 'left';
   return canvas;
 }
 
@@ -1544,7 +1544,7 @@ function drawVoteExport(post, format, assets, backgroundMode = 'brand') {
   const side = Math.round(56 * unit); const cardWidth = width - side * 2; const inner = side + 42 * unit;
   context.fillStyle = '#101114'; const fitted = fitExportText(context, post.text, cardWidth - 84 * unit, 230 * unit, 44, 28, unit); const textHeight = Math.min(4, fitted.lines.length) * fitted.lineHeight;
   const relativeVoteTop = 150 * unit + textHeight + 42 * unit; const cardHeight = Math.max(640 * unit, relativeVoteTop + 105 * unit + 70 * unit + 34 * unit + 118 * unit);
-  const top = Math.round((height - cardHeight) / 2); if (backgroundMode === 'brand') drawRoundedCard(context, side, top, cardWidth, cardHeight, 38 * unit, '#101114');
+  const top = Math.round((height - cardHeight) / 2); drawRoundedCard(context, side, top, cardWidth, cardHeight, 38 * unit, '#101114');
   drawExportAuthor(context, post, inner, top + 35 * unit, unit, assets.avatar);
   let y = top + 150 * unit + fitted.lineHeight; context.font = fitted.font; context.fillStyle = '#101114';
   fitted.lines.slice(0, 4).forEach(line => { context.fillText(line, inner, y); y += fitted.lineHeight; });
@@ -1556,7 +1556,7 @@ function drawVoteExport(post, format, assets, backgroundMode = 'brand') {
   context.save(); context.beginPath(); context.roundRect(barX, barY, barWidth, barHeight, barHeight / 2); context.clip(); context.fillStyle = '#55df50'; context.fillRect(barX, barY, barWidth * based / 100, barHeight); context.fillStyle = '#ff5431'; context.fillRect(barX + barWidth * based / 100, barY, barWidth * cringe / 100, barHeight); context.restore(); context.strokeStyle = '#101114'; context.lineWidth = 4 * unit; context.beginPath(); context.roundRect(barX, barY, barWidth, barHeight, barHeight / 2); context.stroke();
   context.font = `900 ${Math.round(29 * unit)}px Arial`; context.fillStyle = '#18a832'; context.fillText(`${based}%`, barX, barY - 18 * unit); context.fillStyle = '#ef3f1b'; context.textAlign = 'right'; context.fillText(`${cringe}%`, barX + barWidth, barY - 18 * unit); context.textAlign = 'left';
   context.fillStyle = '#555960'; context.font = `700 ${Math.round(20 * unit)}px Arial`; context.fillText(`${total.toLocaleString()} votes  ·  ${Number(post.commentCount || 0).toLocaleString()} Takes`, barX, barY + 82 * unit);
-  if (backgroundMode === 'brand') { context.fillStyle = '#101114'; context.font = `900 ${Math.round(18 * unit)}px Arial`; context.textAlign = 'right'; context.fillText('CALLOUT', side + cardWidth - 42 * unit, top + cardHeight - 28 * unit); context.textAlign = 'left'; }
+  context.fillStyle = '#101114'; context.font = `900 ${Math.round(18 * unit)}px Arial`; context.textAlign = 'right'; context.fillText('CALLOUT', side + cardWidth - 42 * unit, top + cardHeight - 28 * unit); context.textAlign = 'left';
   return canvas;
 }
 
