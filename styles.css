@@ -678,12 +678,8 @@ html[data-resolved-theme="dark"][data-palette] { --soft:#353a44; --paper:#292e37
 .composer-actions { margin-top:16px; }
 .composer-actions .publish-button { min-height:52px;border-radius:12px; }
 
-.export-size-grid { display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-top:18px; }
-.export-size-grid button { min-height:120px;display:grid;place-items:center;gap:5px;padding:14px;border:1px solid var(--line);border-radius:13px;background:var(--soft);color:var(--ink); }
-.export-size-grid button:hover { border-color:var(--orange);transform:translateY(-1px); }
-.export-size-grid button > span { font-size:32px;line-height:1; }.export-size-grid button strong { font-size:12px; }.export-size-grid button small { color:var(--muted);font-size:9px; }
 .export-pair-preview{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:16px}.export-pair-preview figure{margin:0;padding:8px;border:1px solid var(--line);border-radius:12px;background:var(--soft);text-align:center}.export-pair-preview canvas{display:block;width:100%;height:150px;border-radius:8px;background:#ddd;object-fit:contain;object-position:center}.export-pair-preview figcaption{margin-top:7px;color:var(--muted);font-size:9px;font-weight:900;text-transform:uppercase}
-@media(max-width:560px){.export-size-grid{grid-template-columns:1fr}.export-size-grid button{min-height:76px;grid-template-columns:40px 1fr;place-items:center start;text-align:left}.export-size-grid button small{grid-column:2}}
+.export-auto-format{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:14px;padding:11px 13px;border:1.5px solid var(--ink);border-radius:10px;background:var(--soft)}.export-auto-format strong{font-size:11px}.export-auto-format span{color:var(--muted);font-size:9px;font-weight:800}.export-pair-download{width:100%;margin-top:14px}.export-preview-loading{display:block;min-height:182px;padding:70px 20px;border:1px dashed var(--line);border-radius:12px;color:var(--muted);text-align:center;font-size:11px;font-weight:800}
 
 /* Settings information architecture */
 .settings-subnav { display:flex;gap:6px;margin:22px 0;padding:5px;border:1px solid var(--line);border-radius:14px;background:var(--soft); }

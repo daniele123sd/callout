@@ -1397,18 +1397,17 @@ function openPostMenu(id) {
   download.addEventListener('click', () => openPostDownload(post));
 }
 
-function openPostDownload(post) {
-  const presets = [
-    ['desktop', 'Desktop', '1600 × 900'], ['mobile', 'Mobile post', '1080 × 1350'], ['story', 'Story', '1080 × 1920']
-  ];
-  showActionDialog(actionDialogShell('EXPORT TAKE', 'Choose an image size', `<p class="dialog-copy">Each option downloads two PNGs: a clean quote card and a live horizontal vote card.</p><div class="export-pair-preview" id="exportPairPreview"></div><div class="export-size-grid">${presets.map(([key, name, size]) => `<button type="button" data-export-size="${key}"><span>${key === 'desktop' ? '▭' : '▯'}</span><strong>${name}</strong><small>2 images · ${size}</small></button>`).join('')}</div>`));
-  const preview = document.querySelector('#exportPairPreview');
-  [['Quote card', drawQuoteExport(post, 'mobile')], ['Live votes', drawVoteExport(post, 'mobile')]].forEach(([label, canvas]) => { const item = document.createElement('figure'); item.append(canvas); item.insertAdjacentHTML('beforeend', `<figcaption>${label}</figcaption>`); preview.append(item); });
-  document.querySelectorAll('[data-export-size]').forEach(button => button.addEventListener('click', async () => {
-    button.disabled = true; button.querySelector('small').textContent = 'Creating image...';
-    try { await downloadPostImages(post, button.dataset.exportSize); closeActionDialog(); showToast('Quote and vote images downloaded.'); }
-    catch (error) { button.disabled = false; button.querySelector('small').textContent = 'Try again'; showToast(error.message); }
-  }));
+async function openPostDownload(post) {
+  const format = selectExportFormat(post);
+  showActionDialog(actionDialogShell('EXPORT TAKE', 'Ready for social', `<p class="dialog-copy">Callout selected the best portrait size for this post.</p><div class="export-auto-format"><strong>${format.label}</strong><span>${format.width} × ${format.height} · 2 PNGs</span></div><div class="export-pair-preview export-preview-loading" id="exportPairPreview"><p>Building previews...</p></div><button class="primary-action export-pair-download" type="button" id="downloadExportPair" disabled>Preparing images...</button>`));
+  try {
+    const assets = await loadExportAssets(post); const canvases = [drawQuoteExport(post, format, assets), drawVoteExport(post, format, assets)];
+    const preview = document.querySelector('#exportPairPreview'); if (!preview) return;
+    preview.classList.remove('export-preview-loading'); preview.innerHTML = '';
+    [['Quote card', canvases[0]], ['Live votes', canvases[1]]].forEach(([label, canvas]) => { const item = document.createElement('figure'); item.append(canvas); item.insertAdjacentHTML('beforeend', `<figcaption>${label}</figcaption>`); preview.append(item); });
+    const button = document.querySelector('#downloadExportPair'); button.disabled = false; button.textContent = 'Download both images';
+    button.addEventListener('click', async () => { button.disabled = true; button.textContent = 'Downloading...'; try { await downloadPostImages(post, format, canvases); closeActionDialog(); showToast('Quote and vote images downloaded.'); } catch (error) { button.disabled = false; button.textContent = 'Try download again'; showToast(error.message); } });
+  } catch (error) { const preview = document.querySelector('#exportPairPreview'); if (preview) preview.innerHTML = '<p>Preview could not be generated.</p>'; showToast(error.message); }
 }
 
 function canvasWrappedLines(context, text, maxWidth) {
@@ -1424,11 +1423,38 @@ function canvasWrappedLines(context, text, maxWidth) {
   return lines;
 }
 
-function exportCanvas(preset) {
-  const dimensions = { desktop: [1600, 900], mobile: [1080, 1350], story: [1080, 1920] };
-  const [width, height] = dimensions[preset] || dimensions.mobile;
+function exportMediaUrls(post) {
+  const direct = (post.media || []).filter(item => item.type === 'image' || item.type === 'gif').map(item => item.url);
+  const external = (post.externalEmbed?.mediaItems || []).filter(item => item.type === 'image').map(item => item.url);
+  if (!external.length && post.externalEmbed?.mediaType === 'image' && post.externalEmbed.mediaUrl) external.push(post.externalEmbed.mediaUrl);
+  return [...direct, ...external].filter(Boolean).slice(0, 4);
+}
+
+function selectExportFormat(post) {
+  const words = String(post.text || '').trim().split(/\s+/).filter(Boolean).length; const images = exportMediaUrls(post).length;
+  if (images >= 3 || words > 120) return { key: 'story', label: 'Story portrait', width: 1080, height: 1920 };
+  if (images || words > 55) return { key: 'tall', label: 'Tall social portrait', width: 1080, height: 1600 };
+  return { key: 'social', label: 'Social portrait', width: 1080, height: 1350 };
+}
+
+function exportCanvas(format) {
+  const { width, height } = format;
   const canvas = document.createElement('canvas'); canvas.width = width; canvas.height = height;
   return { canvas, context: canvas.getContext('2d'), width, height, unit: width / 1080 };
+}
+
+function loadExportImage(url) {
+  return new Promise(resolve => {
+    if (!url) return resolve(null);
+    const image = new Image(); const timer = setTimeout(() => resolve(null), 7000);
+    if (!String(url).startsWith('data:')) image.crossOrigin = 'anonymous';
+    image.onload = () => { clearTimeout(timer); resolve(image); }; image.onerror = () => { clearTimeout(timer); resolve(null); }; image.src = url;
+  });
+}
+
+async function loadExportAssets(post) {
+  const [avatar, ...media] = await Promise.all([loadExportImage(post.authorAvatarUrl), ...exportMediaUrls(post).map(loadExportImage)]);
+  return { avatar, media: media.filter(Boolean) };
 }
 
 function drawExportBackground(context, width, height) {
@@ -1445,16 +1471,30 @@ function drawRoundedCard(context, x, y, width, height, radius, shadow) {
   context.fillStyle = '#fffdfb'; context.strokeStyle = '#101114'; context.lineWidth = 4; context.beginPath(); context.roundRect(x, y, width, height, radius); context.fill(); context.stroke();
 }
 
-function drawVerifiedAuthor(context, post, x, y, unit) {
+function drawExportAuthor(context, post, x, y, unit, avatarImage) {
   const avatar = Math.round(72 * unit); const radius = avatar / 2;
   context.fillStyle = '#e8ecef'; context.strokeStyle = '#101114'; context.lineWidth = Math.max(3, 3 * unit); context.beginPath(); context.arc(x + radius, y + radius, radius, 0, Math.PI * 2); context.fill(); context.stroke();
-  context.fillStyle = '#101114'; context.font = `900 ${Math.round(32 * unit)}px Arial`; context.textAlign = 'center'; context.textBaseline = 'middle'; context.fillText((post.authorName || post.authorHandle || 'C').replace('@', '').charAt(0).toUpperCase(), x + radius, y + radius + unit); context.textAlign = 'left'; context.textBaseline = 'alphabetic';
+  if (avatarImage) { context.save(); context.beginPath(); context.arc(x + radius, y + radius, radius - 3 * unit, 0, Math.PI * 2); context.clip(); drawImageCover(context, avatarImage, x + 3 * unit, y + 3 * unit, avatar - 6 * unit, avatar - 6 * unit); context.restore(); }
+  else { context.fillStyle = '#101114'; context.font = `900 ${Math.round(32 * unit)}px Arial`; context.textAlign = 'center'; context.textBaseline = 'middle'; context.fillText((post.authorName || post.authorHandle || 'C').replace('@', '').charAt(0).toUpperCase(), x + radius, y + radius + unit); context.textAlign = 'left'; context.textBaseline = 'alphabetic'; }
   const name = post.authorName || String(post.authorHandle || '@member').replace('@', '');
   context.fillStyle = '#101114'; context.font = `900 ${Math.round(27 * unit)}px Arial`; context.fillText(name, x + avatar + 18 * unit, y + 29 * unit);
-  const nameWidth = context.measureText(name).width; const badgeX = x + avatar + 29 * unit + nameWidth; const badgeY = y + 20 * unit;
-  context.fillStyle = '#2296f3'; context.beginPath(); context.arc(badgeX, badgeY, 13 * unit, 0, Math.PI * 2); context.fill();
-  context.strokeStyle = '#fff'; context.lineWidth = 3 * unit; context.lineCap = 'round'; context.beginPath(); context.moveTo(badgeX - 6 * unit, badgeY); context.lineTo(badgeX - 1 * unit, badgeY + 5 * unit); context.lineTo(badgeX + 7 * unit, badgeY - 6 * unit); context.stroke();
   context.fillStyle = '#5f6269'; context.font = `700 ${Math.round(18 * unit)}px Arial`; context.fillText(post.authorHandle || '@member', x + avatar + 18 * unit, y + 57 * unit);
+}
+
+function drawImageCover(context, image, x, y, width, height) {
+  const ratio = Math.max(width / image.naturalWidth, height / image.naturalHeight); const sourceWidth = width / ratio; const sourceHeight = height / ratio;
+  context.drawImage(image, (image.naturalWidth - sourceWidth) / 2, (image.naturalHeight - sourceHeight) / 2, sourceWidth, sourceHeight, x, y, width, height);
+}
+
+function drawExportMedia(context, images, x, y, width, height, unit) {
+  if (!images.length) return;
+  const gap = 8 * unit; context.save(); context.beginPath(); context.roundRect(x, y, width, height, 18 * unit); context.clip();
+  if (images.length === 1) drawImageCover(context, images[0], x, y, width, height);
+  else {
+    const cellWidth = (width - gap) / 2; const rows = images.length > 2 ? 2 : 1; const cellHeight = (height - gap * (rows - 1)) / rows;
+    images.forEach((image, index) => drawImageCover(context, image, x + (index % 2) * (cellWidth + gap), y + Math.floor(index / 2) * (cellHeight + gap), cellWidth, cellHeight));
+  }
+  context.restore(); context.strokeStyle = '#101114'; context.lineWidth = 3 * unit; context.beginPath(); context.roundRect(x, y, width, height, 18 * unit); context.stroke();
 }
 
 function fitExportText(context, text, maxWidth, maxHeight, preferredSize, minimumSize, unit) {
@@ -1462,12 +1502,12 @@ function fitExportText(context, text, maxWidth, maxHeight, preferredSize, minimu
     context.font = `900 ${Math.round(size * unit)}px Arial`;
     const lines = canvasWrappedLines(context, String(text || '').trim(), maxWidth);
     const lineHeight = Math.round(size * 1.08 * unit);
-    if (lines.length * lineHeight <= maxHeight) return { lines, lineHeight };
+    if (lines.length * lineHeight <= maxHeight) return { lines, lineHeight, font: context.font };
   }
   context.font = `900 ${Math.round(minimumSize * unit)}px Arial`;
   const lineHeight = Math.round(minimumSize * 1.08 * unit); const lines = canvasWrappedLines(context, String(text || '').trim(), maxWidth); const limit = Math.max(1, Math.floor(maxHeight / lineHeight));
   if (lines.length > limit) { lines.length = limit; lines[limit - 1] = `${lines[limit - 1].replace(/[.,;:!?]*$/, '')}…`; }
-  return { lines, lineHeight };
+  return { lines, lineHeight, font: context.font };
 }
 
 function drawFace(context, centerX, centerY, radius, mood, unit) {
@@ -1479,32 +1519,34 @@ function drawFace(context, centerX, centerY, radius, mood, unit) {
   context.stroke();
 }
 
-function drawQuoteExport(post, preset) {
-  const { canvas, context, width, height, unit } = exportCanvas(preset); drawExportBackground(context, width, height);
-  const side = Math.round((preset === 'desktop' ? 110 : 64) * unit); const cardWidth = width - side * 2;
-  const cardHeight = Math.min(height - side * 2, Math.round((preset === 'story' ? 850 : preset === 'mobile' ? 700 : 650) * unit)); const top = Math.round((height - cardHeight) / 2);
-  drawRoundedCard(context, side, top, cardWidth, cardHeight, 46 * unit, '#101114');
-  const inner = side + 46 * unit; drawVerifiedAuthor(context, post, inner, top + 42 * unit, unit);
-  const textTop = top + 155 * unit; const footerSpace = 86 * unit;
-  const fitted = fitExportText(context, post.text, cardWidth - 92 * unit, cardHeight - (textTop - top) - footerSpace, preset === 'desktop' ? 58 : 62, 34, unit);
-  context.fillStyle = '#101114'; let y = textTop + fitted.lineHeight;
-  fitted.lines.forEach(line => { context.fillText(line, inner, y); y += fitted.lineHeight; });
-  context.strokeStyle = '#d5d2ce'; context.lineWidth = 2 * unit; context.beginPath(); context.moveTo(inner, top + cardHeight - 68 * unit); context.lineTo(side + cardWidth - 46 * unit, top + cardHeight - 68 * unit); context.stroke();
+function drawQuoteExport(post, format, assets) {
+  const { canvas, context, width, height, unit } = exportCanvas(format); drawExportBackground(context, width, height);
+  const side = Math.round(58 * unit); const cardWidth = width - side * 2; const innerPad = 42 * unit; const innerWidth = cardWidth - innerPad * 2;
+  const mediaHeight = assets.media.length ? Math.min(format.key === 'story' ? 650 : 480, assets.media.length === 1 ? 560 : 470) * unit : 0;
+  const textLimit = Math.min(format.key === 'story' ? 620 : 450, height * .36) * unit;
+  const fitted = fitExportText(context, post.text, innerWidth, textLimit, 58, 32, unit); const textHeight = fitted.lines.length * fitted.lineHeight;
+  const cardHeight = Math.min(height - 150 * unit, Math.max(520 * unit, 42 * unit + 72 * unit + 42 * unit + textHeight + (mediaHeight ? 32 * unit + mediaHeight : 0) + 92 * unit));
+  const top = Math.round((height - cardHeight) / 2); drawRoundedCard(context, side, top, cardWidth, cardHeight, 42 * unit, '#101114');
+  const inner = side + innerPad; drawExportAuthor(context, post, inner, top + 38 * unit, unit, assets.avatar);
+  let y = top + 155 * unit + fitted.lineHeight; context.fillStyle = '#101114'; context.font = fitted.font; fitted.lines.forEach(line => { context.fillText(line, inner, y); y += fitted.lineHeight; });
+  if (mediaHeight) { y += 24 * unit; drawExportMedia(context, assets.media, inner, y, innerWidth, Math.min(mediaHeight, top + cardHeight - 102 * unit - y), unit); }
+  context.strokeStyle = '#d5d2ce'; context.lineWidth = 2 * unit; context.beginPath(); context.moveTo(inner, top + cardHeight - 68 * unit); context.lineTo(side + cardWidth - innerPad, top + cardHeight - 68 * unit); context.stroke();
   context.fillStyle = '#101114'; context.font = `900 ${Math.round(19 * unit)}px Arial`; context.fillText('CALLOUT', inner, top + cardHeight - 30 * unit);
-  context.fillStyle = '#6b6e74'; context.font = `700 ${Math.round(15 * unit)}px Arial`; context.textAlign = 'right'; context.fillText('CALL IT LIKE YOU SEE IT.', side + cardWidth - 46 * unit, top + cardHeight - 31 * unit); context.textAlign = 'left';
+  context.fillStyle = '#6b6e74'; context.font = `700 ${Math.round(15 * unit)}px Arial`; context.textAlign = 'right'; context.fillText('CALL IT LIKE YOU SEE IT.', side + cardWidth - innerPad, top + cardHeight - 31 * unit); context.textAlign = 'left';
   return canvas;
 }
 
-function drawVoteExport(post, preset) {
-  const { canvas, context, width, height, unit } = exportCanvas(preset); drawExportBackground(context, width, height);
-  const side = Math.round((preset === 'desktop' ? 95 : 56) * unit); const cardWidth = width - side * 2;
-  const cardHeight = Math.min(height - side * 2, Math.round((preset === 'story' ? 900 : preset === 'mobile' ? 820 : 690) * unit)); const top = Math.round((height - cardHeight) / 2);
-  drawRoundedCard(context, side, top, cardWidth, cardHeight, 38 * unit, '#101114');
-  const inner = side + 42 * unit; drawVerifiedAuthor(context, post, inner, top + 35 * unit, unit);
-  context.fillStyle = '#101114'; const fitted = fitExportText(context, post.text, cardWidth - 84 * unit, 220 * unit, preset === 'desktop' ? 42 : 44, 28, unit); let y = top + 150 * unit + fitted.lineHeight;
+function drawVoteExport(post, format, assets) {
+  const { canvas, context, width, height, unit } = exportCanvas(format); drawExportBackground(context, width, height);
+  const side = Math.round(56 * unit); const cardWidth = width - side * 2; const inner = side + 42 * unit;
+  context.fillStyle = '#101114'; const fitted = fitExportText(context, post.text, cardWidth - 84 * unit, 230 * unit, 44, 28, unit); const textHeight = Math.min(4, fitted.lines.length) * fitted.lineHeight;
+  const relativeVoteTop = 150 * unit + textHeight + 42 * unit; const cardHeight = Math.max(640 * unit, relativeVoteTop + 105 * unit + 70 * unit + 34 * unit + 118 * unit);
+  const top = Math.round((height - cardHeight) / 2); drawRoundedCard(context, side, top, cardWidth, cardHeight, 38 * unit, '#101114');
+  drawExportAuthor(context, post, inner, top + 35 * unit, unit, assets.avatar);
+  let y = top + 150 * unit + fitted.lineHeight; context.font = fitted.font; context.fillStyle = '#101114';
   fitted.lines.slice(0, 4).forEach(line => { context.fillText(line, inner, y); y += fitted.lineHeight; });
   const total = Number(post.alrightVotes || 0) + Number(post.cringeVotes || 0); const based = total ? Math.round(Number(post.alrightVotes || 0) / total * 100) : 50; const cringe = 100 - based;
-  const voteTop = Math.max(top + 390 * unit, y + 42 * unit); const buttonWidth = 220 * unit; const buttonHeight = 105 * unit; const rightX = side + cardWidth - 42 * unit - buttonWidth;
+  const voteTop = y + 42 * unit; const buttonWidth = 220 * unit; const buttonHeight = 105 * unit; const rightX = side + cardWidth - 42 * unit - buttonWidth;
   const drawButton = (x, color, label, mood) => { context.fillStyle = '#101114'; context.beginPath(); context.roundRect(x + 8 * unit, voteTop + 9 * unit, buttonWidth, buttonHeight, 19 * unit); context.fill(); context.fillStyle = color; context.strokeStyle = '#101114'; context.lineWidth = 4 * unit; context.beginPath(); context.roundRect(x, voteTop, buttonWidth, buttonHeight, 19 * unit); context.fill(); context.stroke(); drawFace(context, x + 50 * unit, voteTop + buttonHeight / 2, 25 * unit, mood, unit); context.fillStyle = '#101114'; context.font = `900 ${Math.round(24 * unit)}px Arial`; context.fillText(label, x + 88 * unit, voteTop + 64 * unit); };
   drawButton(inner, '#55df50', 'BASED', 'based'); drawButton(rightX, '#ff5431', 'CRINGE', 'cringe');
   const barX = inner; const barY = voteTop + buttonHeight + 70 * unit; const barWidth = cardWidth - 84 * unit; const barHeight = 34 * unit;
@@ -1521,12 +1563,12 @@ async function triggerCanvasDownload(canvas, filename) {
   const url = URL.createObjectURL(blob); const link = document.createElement('a'); link.href = url; link.download = filename; document.body.appendChild(link); link.click(); link.remove(); setTimeout(() => URL.revokeObjectURL(url), 1500);
 }
 
-async function downloadPostImages(post, preset) {
+async function downloadPostImages(post, format, canvases) {
   await document.fonts?.ready;
   const safeId = String(post.id || 'take').replace(/[^a-zA-Z0-9_-]/g, '');
-  await triggerCanvasDownload(drawQuoteExport(post, preset), `callout-${safeId}-${preset}-quote.png`);
+  await triggerCanvasDownload(canvases[0], `callout-${safeId}-${format.key}-quote.png`);
   await new Promise(resolve => setTimeout(resolve, 180));
-  await triggerCanvasDownload(drawVoteExport(post, preset), `callout-${safeId}-${preset}-votes.png`);
+  await triggerCanvasDownload(canvases[1], `callout-${safeId}-${format.key}-votes.png`);
 }
 
 function openEditPost(post) {
