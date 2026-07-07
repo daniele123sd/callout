@@ -1401,10 +1401,12 @@ function openPostDownload(post) {
   const presets = [
     ['desktop', 'Desktop', '1600 × 900'], ['mobile', 'Mobile post', '1080 × 1350'], ['story', 'Story', '1080 × 1920']
   ];
-  showActionDialog(actionDialogShell('EXPORT TAKE', 'Choose an image size', `<p class="dialog-copy">Exports include the current live vote totals and generation time.</p><div class="export-size-grid">${presets.map(([key, name, size]) => `<button type="button" data-export-size="${key}"><span>${key === 'desktop' ? '▭' : key === 'mobile' ? '▯' : '▯'}</span><strong>${name}</strong><small>${size} PNG</small></button>`).join('')}</div>`));
+  showActionDialog(actionDialogShell('EXPORT TAKE', 'Choose an image size', `<p class="dialog-copy">Each option downloads two PNGs: a clean quote card and a live horizontal vote card.</p><div class="export-pair-preview" id="exportPairPreview"></div><div class="export-size-grid">${presets.map(([key, name, size]) => `<button type="button" data-export-size="${key}"><span>${key === 'desktop' ? '▭' : '▯'}</span><strong>${name}</strong><small>2 images · ${size}</small></button>`).join('')}</div>`));
+  const preview = document.querySelector('#exportPairPreview');
+  [['Quote card', drawQuoteExport(post, 'mobile')], ['Live votes', drawVoteExport(post, 'mobile')]].forEach(([label, canvas]) => { const item = document.createElement('figure'); item.append(canvas); item.insertAdjacentHTML('beforeend', `<figcaption>${label}</figcaption>`); preview.append(item); });
   document.querySelectorAll('[data-export-size]').forEach(button => button.addEventListener('click', async () => {
     button.disabled = true; button.querySelector('small').textContent = 'Creating image...';
-    try { await downloadPostImage(post, button.dataset.exportSize); closeActionDialog(); showToast('Post image downloaded.'); }
+    try { await downloadPostImages(post, button.dataset.exportSize); closeActionDialog(); showToast('Quote and vote images downloaded.'); }
     catch (error) { button.disabled = false; button.querySelector('small').textContent = 'Try again'; showToast(error.message); }
   }));
 }
@@ -1422,63 +1424,109 @@ function canvasWrappedLines(context, text, maxWidth) {
   return lines;
 }
 
-async function downloadPostImage(post, preset) {
-  if (window.html2canvas) return downloadPostDomImage(post, preset);
+function exportCanvas(preset) {
   const dimensions = { desktop: [1600, 900], mobile: [1080, 1350], story: [1080, 1920] };
   const [width, height] = dimensions[preset] || dimensions.mobile;
   const canvas = document.createElement('canvas'); canvas.width = width; canvas.height = height;
-  const context = canvas.getContext('2d'); const unit = width / 1080;
-  context.fillStyle = '#1d2026'; context.fillRect(0, 0, width, height);
-  const gradient = context.createLinearGradient(0, 0, width, height); gradient.addColorStop(0, '#ff4b20'); gradient.addColorStop(1, '#7d2516');
-  context.fillStyle = gradient; context.fillRect(0, 0, width, Math.round(18 * unit));
-  const pad = Math.round(72 * unit); const cardTop = Math.round((preset === 'story' ? 300 : 100) * unit);
-  context.fillStyle = '#303540'; context.beginPath(); context.roundRect(pad, cardTop, width - pad * 2, Math.min(height - cardTop - pad, Math.round(930 * unit)), Math.round(28 * unit)); context.fill();
-  context.fillStyle = '#d9dbe0'; context.font = `900 ${Math.round(38 * unit)}px Arial`; context.fillText('CALLOUT', pad + Math.round(38 * unit), cardTop + Math.round(70 * unit));
-  context.fillStyle = '#aeb2bb'; context.font = `700 ${Math.round(22 * unit)}px Arial`; context.fillText(`${post.authorHandle || '@member'}  ·  ${post.category || 'Take'}`, pad + Math.round(38 * unit), cardTop + Math.round(112 * unit));
-  context.fillStyle = '#d9dbe0'; context.font = `900 ${Math.round((preset === 'desktop' ? 48 : 52) * unit)}px Arial`;
-  const lines = canvasWrappedLines(context, post.text, width - pad * 2 - Math.round(76 * unit)).slice(0, preset === 'story' ? 10 : 7);
-  let y = cardTop + Math.round(205 * unit); const lineHeight = Math.round(64 * unit); lines.forEach(line => { context.fillText(line, pad + Math.round(38 * unit), y); y += lineHeight; });
-  const total = Number(post.alrightVotes || 0) + Number(post.cringeVotes || 0); const alright = total ? Math.round(Number(post.alrightVotes || 0) / total * 100) : 50; const cringe = 100 - alright;
-  const barX = pad + Math.round(38 * unit); const barWidth = width - pad * 2 - Math.round(76 * unit); const barY = Math.max(y + Math.round(60 * unit), cardTop + Math.round(520 * unit)); const barHeight = Math.round(30 * unit);
-  context.fillStyle = '#55df50'; context.fillRect(barX, barY, barWidth * alright / 100, barHeight); context.fillStyle = '#ff4b20'; context.fillRect(barX + barWidth * alright / 100, barY, barWidth * cringe / 100, barHeight);
-  context.fillStyle = '#65e461'; context.font = `900 ${Math.round(30 * unit)}px Arial`; context.fillText(`${alright}% BASED`, barX, barY + Math.round(82 * unit));
-  context.fillStyle = '#ff6542'; context.textAlign = 'right'; context.fillText(`${cringe}% CRINGE`, barX + barWidth, barY + Math.round(82 * unit)); context.textAlign = 'left';
-  context.fillStyle = '#aeb2bb'; context.font = `600 ${Math.round(20 * unit)}px Arial`; context.fillText(`${total.toLocaleString()} live votes  ·  ${Number(post.commentCount || 0).toLocaleString()} Takes`, barX, barY + Math.round(128 * unit));
-  context.fillText(`Posted ${new Date(post.createdAt).toLocaleString()}  ·  Exported ${new Date().toLocaleString()}`, barX, height - Math.round(48 * unit));
-  const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
-  if (!blob) throw new Error('The image could not be generated.');
-  const url = URL.createObjectURL(blob); const link = document.createElement('a'); link.href = url; link.download = `callout-${post.id}-${preset}.png`; link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
+  return { canvas, context: canvas.getContext('2d'), width, height, unit: width / 1080 };
 }
 
-async function downloadPostDomImage(post, preset) {
-  const dimensions = { desktop: [1600, 900], mobile: [1080, 1350], story: [1080, 1920] };
-  const responsiveWidths = { desktop: 1200, mobile: 680, story: 620 };
-  const [width, height] = dimensions[preset] || dimensions.mobile;
-  const stage = document.createElement('section');
-  stage.className = `post-export-stage post-export-${preset}`;
-  stage.style.width = `${responsiveWidths[preset] || responsiveWidths.mobile}px`;
-  stage.innerHTML = postTemplate(post);
-  document.body.appendChild(stage);
-  try {
-    await document.fonts?.ready;
-    const source = await window.html2canvas(stage, {
-      backgroundColor: null, useCORS: true, allowTaint: false, logging: false,
-      scale: 2, width: stage.scrollWidth, height: stage.scrollHeight,
-      windowWidth: responsiveWidths[preset] || responsiveWidths.mobile
-    });
-    const output = document.createElement('canvas'); output.width = width; output.height = height;
-    const context = output.getContext('2d');
-    const dark = document.documentElement.dataset.resolvedTheme === 'dark';
-    context.fillStyle = dark ? '#20242b' : '#f7f4ec'; context.fillRect(0, 0, width, height);
-    const margin = preset === 'desktop' ? 70 : 58;
-    const scale = Math.min((width - margin * 2) / source.width, (height - margin * 2) / source.height);
-    const drawWidth = Math.round(source.width * scale); const drawHeight = Math.round(source.height * scale);
-    const x = Math.round((width - drawWidth) / 2); const y = Math.round((height - drawHeight) / 2);
-    context.drawImage(source, x, y, drawWidth, drawHeight);
-    const blob = await new Promise(resolve => output.toBlob(resolve, 'image/png'));
-    if (!blob) throw new Error('The post image could not be generated.');
-    const url = URL.createObjectURL(blob); const link = document.createElement('a'); link.href = url; link.download = `callout-${post.id}-${preset}.png`; link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
-  } finally { stage.remove(); }
+function drawExportBackground(context, width, height) {
+  const gradient = context.createLinearGradient(0, 0, width, height);
+  gradient.addColorStop(0, '#ffb7c7'); gradient.addColorStop(.48, '#f16c89'); gradient.addColorStop(1, '#ff7043');
+  context.fillStyle = gradient; context.fillRect(0, 0, width, height);
+  context.globalAlpha = .14; context.fillStyle = '#fff';
+  for (let x = -height; x < width; x += 150) { context.save(); context.translate(x, 0); context.rotate(-.45); context.fillRect(0, 0, 64, height * 1.6); context.restore(); }
+  context.globalAlpha = 1;
+}
+
+function drawRoundedCard(context, x, y, width, height, radius, shadow) {
+  context.fillStyle = shadow; context.beginPath(); context.roundRect(x + 12, y + 14, width, height, radius); context.fill();
+  context.fillStyle = '#fffdfb'; context.strokeStyle = '#101114'; context.lineWidth = 4; context.beginPath(); context.roundRect(x, y, width, height, radius); context.fill(); context.stroke();
+}
+
+function drawVerifiedAuthor(context, post, x, y, unit) {
+  const avatar = Math.round(72 * unit); const radius = avatar / 2;
+  context.fillStyle = '#e8ecef'; context.strokeStyle = '#101114'; context.lineWidth = Math.max(3, 3 * unit); context.beginPath(); context.arc(x + radius, y + radius, radius, 0, Math.PI * 2); context.fill(); context.stroke();
+  context.fillStyle = '#101114'; context.font = `900 ${Math.round(32 * unit)}px Arial`; context.textAlign = 'center'; context.textBaseline = 'middle'; context.fillText((post.authorName || post.authorHandle || 'C').replace('@', '').charAt(0).toUpperCase(), x + radius, y + radius + unit); context.textAlign = 'left'; context.textBaseline = 'alphabetic';
+  const name = post.authorName || String(post.authorHandle || '@member').replace('@', '');
+  context.fillStyle = '#101114'; context.font = `900 ${Math.round(27 * unit)}px Arial`; context.fillText(name, x + avatar + 18 * unit, y + 29 * unit);
+  const nameWidth = context.measureText(name).width; const badgeX = x + avatar + 29 * unit + nameWidth; const badgeY = y + 20 * unit;
+  context.fillStyle = '#2296f3'; context.beginPath(); context.arc(badgeX, badgeY, 13 * unit, 0, Math.PI * 2); context.fill();
+  context.strokeStyle = '#fff'; context.lineWidth = 3 * unit; context.lineCap = 'round'; context.beginPath(); context.moveTo(badgeX - 6 * unit, badgeY); context.lineTo(badgeX - 1 * unit, badgeY + 5 * unit); context.lineTo(badgeX + 7 * unit, badgeY - 6 * unit); context.stroke();
+  context.fillStyle = '#5f6269'; context.font = `700 ${Math.round(18 * unit)}px Arial`; context.fillText(post.authorHandle || '@member', x + avatar + 18 * unit, y + 57 * unit);
+}
+
+function fitExportText(context, text, maxWidth, maxHeight, preferredSize, minimumSize, unit) {
+  for (let size = preferredSize; size >= minimumSize; size -= 2) {
+    context.font = `900 ${Math.round(size * unit)}px Arial`;
+    const lines = canvasWrappedLines(context, String(text || '').trim(), maxWidth);
+    const lineHeight = Math.round(size * 1.08 * unit);
+    if (lines.length * lineHeight <= maxHeight) return { lines, lineHeight };
+  }
+  context.font = `900 ${Math.round(minimumSize * unit)}px Arial`;
+  const lineHeight = Math.round(minimumSize * 1.08 * unit); const lines = canvasWrappedLines(context, String(text || '').trim(), maxWidth); const limit = Math.max(1, Math.floor(maxHeight / lineHeight));
+  if (lines.length > limit) { lines.length = limit; lines[limit - 1] = `${lines[limit - 1].replace(/[.,;:!?]*$/, '')}…`; }
+  return { lines, lineHeight };
+}
+
+function drawFace(context, centerX, centerY, radius, mood, unit) {
+  context.strokeStyle = '#101114'; context.lineWidth = Math.max(3, 3 * unit); context.beginPath(); context.arc(centerX, centerY, radius, 0, Math.PI * 2); context.stroke();
+  context.fillStyle = '#101114'; context.beginPath(); context.arc(centerX - radius * .34, centerY - radius * .18, radius * .09, 0, Math.PI * 2); context.arc(centerX + radius * .34, centerY - radius * .18, radius * .09, 0, Math.PI * 2); context.fill();
+  context.beginPath();
+  if (mood === 'based') context.arc(centerX, centerY + radius * .05, radius * .42, .15, Math.PI - .15);
+  else context.arc(centerX, centerY + radius * .55, radius * .42, Math.PI + .2, Math.PI * 2 - .2);
+  context.stroke();
+}
+
+function drawQuoteExport(post, preset) {
+  const { canvas, context, width, height, unit } = exportCanvas(preset); drawExportBackground(context, width, height);
+  const side = Math.round((preset === 'desktop' ? 110 : 64) * unit); const cardWidth = width - side * 2;
+  const cardHeight = Math.min(height - side * 2, Math.round((preset === 'story' ? 850 : preset === 'mobile' ? 700 : 650) * unit)); const top = Math.round((height - cardHeight) / 2);
+  drawRoundedCard(context, side, top, cardWidth, cardHeight, 46 * unit, '#101114');
+  const inner = side + 46 * unit; drawVerifiedAuthor(context, post, inner, top + 42 * unit, unit);
+  const textTop = top + 155 * unit; const footerSpace = 86 * unit;
+  const fitted = fitExportText(context, post.text, cardWidth - 92 * unit, cardHeight - (textTop - top) - footerSpace, preset === 'desktop' ? 58 : 62, 34, unit);
+  context.fillStyle = '#101114'; let y = textTop + fitted.lineHeight;
+  fitted.lines.forEach(line => { context.fillText(line, inner, y); y += fitted.lineHeight; });
+  context.strokeStyle = '#d5d2ce'; context.lineWidth = 2 * unit; context.beginPath(); context.moveTo(inner, top + cardHeight - 68 * unit); context.lineTo(side + cardWidth - 46 * unit, top + cardHeight - 68 * unit); context.stroke();
+  context.fillStyle = '#101114'; context.font = `900 ${Math.round(19 * unit)}px Arial`; context.fillText('CALLOUT', inner, top + cardHeight - 30 * unit);
+  context.fillStyle = '#6b6e74'; context.font = `700 ${Math.round(15 * unit)}px Arial`; context.textAlign = 'right'; context.fillText('CALL IT LIKE YOU SEE IT.', side + cardWidth - 46 * unit, top + cardHeight - 31 * unit); context.textAlign = 'left';
+  return canvas;
+}
+
+function drawVoteExport(post, preset) {
+  const { canvas, context, width, height, unit } = exportCanvas(preset); drawExportBackground(context, width, height);
+  const side = Math.round((preset === 'desktop' ? 95 : 56) * unit); const cardWidth = width - side * 2;
+  const cardHeight = Math.min(height - side * 2, Math.round((preset === 'story' ? 900 : preset === 'mobile' ? 820 : 690) * unit)); const top = Math.round((height - cardHeight) / 2);
+  drawRoundedCard(context, side, top, cardWidth, cardHeight, 38 * unit, '#101114');
+  const inner = side + 42 * unit; drawVerifiedAuthor(context, post, inner, top + 35 * unit, unit);
+  context.fillStyle = '#101114'; const fitted = fitExportText(context, post.text, cardWidth - 84 * unit, 220 * unit, preset === 'desktop' ? 42 : 44, 28, unit); let y = top + 150 * unit + fitted.lineHeight;
+  fitted.lines.slice(0, 4).forEach(line => { context.fillText(line, inner, y); y += fitted.lineHeight; });
+  const total = Number(post.alrightVotes || 0) + Number(post.cringeVotes || 0); const based = total ? Math.round(Number(post.alrightVotes || 0) / total * 100) : 50; const cringe = 100 - based;
+  const voteTop = Math.max(top + 390 * unit, y + 42 * unit); const buttonWidth = 220 * unit; const buttonHeight = 105 * unit; const rightX = side + cardWidth - 42 * unit - buttonWidth;
+  const drawButton = (x, color, label, mood) => { context.fillStyle = '#101114'; context.beginPath(); context.roundRect(x + 8 * unit, voteTop + 9 * unit, buttonWidth, buttonHeight, 19 * unit); context.fill(); context.fillStyle = color; context.strokeStyle = '#101114'; context.lineWidth = 4 * unit; context.beginPath(); context.roundRect(x, voteTop, buttonWidth, buttonHeight, 19 * unit); context.fill(); context.stroke(); drawFace(context, x + 50 * unit, voteTop + buttonHeight / 2, 25 * unit, mood, unit); context.fillStyle = '#101114'; context.font = `900 ${Math.round(24 * unit)}px Arial`; context.fillText(label, x + 88 * unit, voteTop + 64 * unit); };
+  drawButton(inner, '#55df50', 'BASED', 'based'); drawButton(rightX, '#ff5431', 'CRINGE', 'cringe');
+  const barX = inner; const barY = voteTop + buttonHeight + 70 * unit; const barWidth = cardWidth - 84 * unit; const barHeight = 34 * unit;
+  context.save(); context.beginPath(); context.roundRect(barX, barY, barWidth, barHeight, barHeight / 2); context.clip(); context.fillStyle = '#55df50'; context.fillRect(barX, barY, barWidth * based / 100, barHeight); context.fillStyle = '#ff5431'; context.fillRect(barX + barWidth * based / 100, barY, barWidth * cringe / 100, barHeight); context.restore(); context.strokeStyle = '#101114'; context.lineWidth = 4 * unit; context.beginPath(); context.roundRect(barX, barY, barWidth, barHeight, barHeight / 2); context.stroke();
+  context.font = `900 ${Math.round(29 * unit)}px Arial`; context.fillStyle = '#18a832'; context.fillText(`${based}%`, barX, barY - 18 * unit); context.fillStyle = '#ef3f1b'; context.textAlign = 'right'; context.fillText(`${cringe}%`, barX + barWidth, barY - 18 * unit); context.textAlign = 'left';
+  context.fillStyle = '#555960'; context.font = `700 ${Math.round(20 * unit)}px Arial`; context.fillText(`${total.toLocaleString()} votes  ·  ${Number(post.commentCount || 0).toLocaleString()} Takes`, barX, barY + 82 * unit);
+  context.fillStyle = '#101114'; context.font = `900 ${Math.round(18 * unit)}px Arial`; context.textAlign = 'right'; context.fillText('CALLOUT', side + cardWidth - 42 * unit, top + cardHeight - 28 * unit); context.textAlign = 'left';
+  return canvas;
+}
+
+async function triggerCanvasDownload(canvas, filename) {
+  const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+  if (!blob) throw new Error('The image could not be generated.');
+  const url = URL.createObjectURL(blob); const link = document.createElement('a'); link.href = url; link.download = filename; document.body.appendChild(link); link.click(); link.remove(); setTimeout(() => URL.revokeObjectURL(url), 1500);
+}
+
+async function downloadPostImages(post, preset) {
+  await document.fonts?.ready;
+  const safeId = String(post.id || 'take').replace(/[^a-zA-Z0-9_-]/g, '');
+  await triggerCanvasDownload(drawQuoteExport(post, preset), `callout-${safeId}-${preset}-quote.png`);
+  await new Promise(resolve => setTimeout(resolve, 180));
+  await triggerCanvasDownload(drawVoteExport(post, preset), `callout-${safeId}-${preset}-votes.png`);
 }
 
 function openEditPost(post) {
