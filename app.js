@@ -1517,6 +1517,21 @@ function fitExportText(context, text, maxWidth, maxHeight, preferredSize, minimu
 }
 
 function drawFace(context, centerX, centerY, radius, mood, unit) {
+  if (mood === 'hot') {
+    context.save();
+    context.fillStyle = '#ffb13b'; context.strokeStyle = '#101114'; context.lineWidth = Math.max(3, 3 * unit);
+    context.beginPath();
+    context.moveTo(centerX, centerY - radius * 1.18);
+    context.bezierCurveTo(centerX + radius * .16, centerY - radius * .58, centerX + radius * .78, centerY - radius * .72, centerX + radius * .78, centerY - radius * .08);
+    context.bezierCurveTo(centerX + radius * 1.05, centerY + radius * .22, centerX + radius * .8, centerY + radius * 1.05, centerX, centerY + radius * 1.12);
+    context.bezierCurveTo(centerX - radius * .82, centerY + radius * 1.05, centerX - radius * 1.02, centerY + radius * .25, centerX - radius * .7, centerY - radius * .2);
+    context.bezierCurveTo(centerX - radius * .64, centerY - radius * .56, centerX - radius * .26, centerY - radius * .7, centerX, centerY - radius * 1.18);
+    context.closePath(); context.fill(); context.stroke();
+    context.fillStyle = '#ffd37a'; context.beginPath(); context.arc(centerX, centerY + radius * .12, radius * .61, 0, Math.PI * 2); context.fill(); context.stroke();
+    context.fillStyle = '#101114'; context.beginPath(); context.arc(centerX - radius * .22, centerY, radius * .065, 0, Math.PI * 2); context.arc(centerX + radius * .22, centerY, radius * .065, 0, Math.PI * 2); context.fill();
+    context.beginPath(); context.arc(centerX, centerY + radius * .15, radius * .3, .2, Math.PI - .2); context.stroke(); context.restore();
+    return;
+  }
   context.strokeStyle = '#101114'; context.lineWidth = Math.max(3, 3 * unit); context.beginPath(); context.arc(centerX, centerY, radius, 0, Math.PI * 2); context.stroke();
   context.fillStyle = '#101114'; context.beginPath(); context.arc(centerX - radius * .34, centerY - radius * .18, radius * .09, 0, Math.PI * 2); context.arc(centerX + radius * .34, centerY - radius * .18, radius * .09, 0, Math.PI * 2); context.fill();
   context.beginPath();
@@ -1550,9 +1565,9 @@ function drawVoteExport(post, format, assets, backgroundMode = 'brand') {
   let y = top + 150 * unit + fitted.lineHeight; context.font = fitted.font; context.fillStyle = '#101114';
   fitted.lines.slice(0, 4).forEach(line => { context.fillText(line, inner, y); y += fitted.lineHeight; });
   const total = Number(post.alrightVotes || 0) + Number(post.cringeVotes || 0); const based = total ? Math.round(Number(post.alrightVotes || 0) / total * 100) : 50; const cringe = 100 - based;
-  const voteTop = y + 42 * unit; const buttonWidth = 220 * unit; const buttonHeight = 105 * unit; const rightX = side + cardWidth - 42 * unit - buttonWidth;
-  const drawButton = (x, color, label, mood) => { context.fillStyle = '#101114'; context.beginPath(); context.roundRect(x + 8 * unit, voteTop + 9 * unit, buttonWidth, buttonHeight, 19 * unit); context.fill(); context.fillStyle = color; context.strokeStyle = '#101114'; context.lineWidth = 4 * unit; context.beginPath(); context.roundRect(x, voteTop, buttonWidth, buttonHeight, 19 * unit); context.fill(); context.stroke(); drawFace(context, x + 50 * unit, voteTop + buttonHeight / 2, 25 * unit, mood, unit); context.fillStyle = '#101114'; context.font = `900 ${Math.round(24 * unit)}px Arial`; context.fillText(label, x + 88 * unit, voteTop + 64 * unit); };
-  drawButton(inner, '#55df50', 'BASED', 'based'); drawButton(rightX, '#ff5431', 'HOT TAKE', 'cringe');
+  const voteTop = y + 42 * unit; const buttonWidth = 250 * unit; const buttonHeight = 105 * unit; const rightX = side + cardWidth - 42 * unit - buttonWidth;
+  const drawButton = (x, color, label, mood) => { context.fillStyle = '#101114'; context.beginPath(); context.roundRect(x + 8 * unit, voteTop + 9 * unit, buttonWidth, buttonHeight, 19 * unit); context.fill(); context.fillStyle = color; context.strokeStyle = '#101114'; context.lineWidth = 4 * unit; context.beginPath(); context.roundRect(x, voteTop, buttonWidth, buttonHeight, 19 * unit); context.fill(); context.stroke(); drawFace(context, x + 51 * unit, voteTop + buttonHeight / 2, 25 * unit, mood, unit); context.fillStyle = '#101114'; context.font = `900 ${Math.round(24 * unit)}px Arial`; const labelX = x + 91 * unit; const maxLabelWidth = buttonWidth - 105 * unit; if (context.measureText(label).width > maxLabelWidth) context.font = `900 ${Math.round(21 * unit)}px Arial`; context.fillText(label, labelX, voteTop + 64 * unit, maxLabelWidth); };
+  drawButton(inner, '#55df50', 'BASED', 'based'); drawButton(rightX, '#ff5431', 'HOT TAKE', 'hot');
   const barX = inner; const barY = voteTop + buttonHeight + 70 * unit; const barWidth = cardWidth - 84 * unit; const barHeight = 34 * unit;
   context.save(); context.beginPath(); context.roundRect(barX, barY, barWidth, barHeight, barHeight / 2); context.clip(); context.fillStyle = '#55df50'; context.fillRect(barX, barY, barWidth * based / 100, barHeight); context.fillStyle = '#ff5431'; context.fillRect(barX + barWidth * based / 100, barY, barWidth * cringe / 100, barHeight); context.restore(); context.strokeStyle = '#101114'; context.lineWidth = 4 * unit; context.beginPath(); context.roundRect(barX, barY, barWidth, barHeight, barHeight / 2); context.stroke();
   context.font = `900 ${Math.round(29 * unit)}px Arial`; context.fillStyle = '#18a832'; context.fillText(`${based}%`, barX, barY - 18 * unit); context.fillStyle = '#ef3f1b'; context.textAlign = 'right'; context.fillText(`${cringe}%`, barX + barWidth, barY - 18 * unit); context.textAlign = 'left';
