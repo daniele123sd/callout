@@ -1412,7 +1412,9 @@ async function openPostTts(post) {
     if (!voiceGrid) return;
     voiceGrid.innerHTML = config.voices.map((voice, index) => `<button type="button" data-tts-voice="${escapeHtml(voice.key)}" ${!config.configured ? 'disabled' : ''}><b>${index + 1}</b><span><strong>${escapeHtml(voice.name)}</strong><small>${escapeHtml(voice.description)}</small></span></button>`).join('');
     if (!config.configured) {
-      document.querySelector('#ttsOutput').innerHTML = `<div class="tts-setup-note"><strong>Voice generation is ready in the UI, but ElevenLabs is not connected yet.</strong><p>Add <code>ELEVENLABS_API_KEY</code>, <code>ELEVENLABS_VOICE_SPARK</code>, <code>ELEVENLABS_VOICE_DEBATE</code>, and <code>ELEVENLABS_VOICE_CALM</code> in Render environment variables.</p></div>`;
+      document.querySelector('#ttsOutput').innerHTML = config.isAdmin
+        ? `<div class="tts-setup-note"><strong>Owner setup needed.</strong><p>Connect one ElevenLabs account once. Users will not need to do anything.</p><ol><li>Open ElevenLabs and copy your API key.</li><li>Copy 3 voice IDs.</li><li>Add them in Render as <code>ELEVENLABS_API_KEY</code>, <code>ELEVENLABS_VOICE_SPARK</code>, <code>ELEVENLABS_VOICE_DEBATE</code>, and <code>ELEVENLABS_VOICE_CALM</code>.</li></ol><p>After Render redeploys, this button will generate downloadable MP3s.</p></div>`
+        : `<div class="tts-setup-note"><strong>Voiceovers are almost ready.</strong><p>Callout voice generation is being connected by the site owner. You will not need to set up an ElevenLabs account.</p></div>`;
       return;
     }
     voiceGrid.querySelectorAll('[data-tts-voice]').forEach(button => button.addEventListener('click', () => generatePostTts(post, button.dataset.ttsVoice, button)));

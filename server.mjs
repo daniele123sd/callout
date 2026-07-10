@@ -290,8 +290,11 @@ app.get('/api/posts/trending', optionalAuth, async (req, res, next) => {
 app.get('/api/drafts', requireFeature('richComposer'), requireAuth, async (req, res, next) => {
   try { res.json({ drafts: await listDrafts(req.userId) }); } catch (error) { next(error); }
 });
-app.get('/api/tts/voices', requireAuth, (_req, res) => {
-  res.json({ configured: ttsConfigured(), voices: publicTtsVoices(), provider: 'ElevenLabs' });
+app.get('/api/tts/voices', requireAuth, async (req, res, next) => {
+  try {
+    const user = await findUserById(req.userId);
+    res.json({ configured: ttsConfigured(), voices: publicTtsVoices(), provider: 'ElevenLabs', isAdmin: isAdminAccount(user) });
+  } catch (error) { next(error); }
 });
 app.post('/api/posts', requireAuth, validate(schemas.post), async (req, res, next) => {
   try { res.status(201).json({ post: await createPost(req.userId, req.body) }); } catch (error) { next(error); }
