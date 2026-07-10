@@ -36,6 +36,15 @@ const externalEmbedSchema = new mongoose.Schema({
   fetchedAt: { type: Date, default: Date.now }
 }, { _id: false });
 
+const ttsAudioSchema = new mongoose.Schema({
+  voiceKey: { type: String, enum: ['spark', 'debate', 'calm'], required: true },
+  voiceName: { type: String, required: true, maxlength: 60 },
+  mimeType: { type: String, default: 'audio/mpeg', maxlength: 80 },
+  audioBase64: { type: String, required: true, maxlength: 3_000_000 },
+  textHash: { type: String, required: true, maxlength: 80 },
+  generatedAt: { type: Date, default: Date.now }
+}, { _id: false });
+
 const postSchema = new mongoose.Schema({
   author: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, index: true },
   clientRequestId: { type: String, default: '', maxlength: 80 },
@@ -52,6 +61,7 @@ const postSchema = new mongoose.Schema({
   reactionSet: { type: String, enum: ['classic', 'support', 'spicy'], default: 'classic' },
   embedUrl: { type: String, default: '', maxlength: 2048 },
   externalEmbed: { type: externalEmbedSchema, default: null },
+  ttsAudio: { type: [ttsAudioSchema], default: [] },
   poll: {
     question: { type: String, default: '', maxlength: 240 },
     options: [{

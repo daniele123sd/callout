@@ -40,8 +40,34 @@ Set `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, and `GOOGLE_CALLBACK_URL` in `.e
 - Dedicated take details with nested Reddit-style comments
 - Discord-style profile customization, Voice XP, badges, banner, accent color, status, pronouns, and social links
 - Conditional author/non-author post menus with edit, delete, share, and report flows
+- Post menu text-to-speech export with three Callout voices, MP3 preview/download, and cached ElevenLabs generation
 - Light, Dark, and System themes plus notification, privacy, and display preferences
 - Privacy Policy and Terms of Service routes
+
+## ElevenLabs text-to-speech setup
+
+The TTS button is designed to be zero-hassle for users. They do not connect an ElevenLabs account. Callout uses one owner-managed ElevenLabs API key and three preset voices.
+
+Add these environment variables in Render:
+
+```text
+ELEVENLABS_API_KEY=your-elevenlabs-api-key
+ELEVENLABS_MODEL_ID=eleven_multilingual_v2
+ELEVENLABS_VOICE_SPARK=voice-id-for-energetic-shortform
+ELEVENLABS_VOICE_DEBATE=voice-id-for-confident-opinion
+ELEVENLABS_VOICE_CALM=voice-id-for-clean-narration
+TTS_DAILY_LIMIT=8
+```
+
+Where to get them:
+
+1. Open ElevenLabs.
+2. Create or choose three voices.
+3. Copy each voice ID into the matching `ELEVENLABS_VOICE_*` variable.
+4. Copy your API key into `ELEVENLABS_API_KEY`.
+5. Redeploy the Render service.
+
+If these variables are missing, the UI still appears but clearly says voice generation is not connected yet. Generated audio is cached per post and voice so repeat downloads do not spend more ElevenLabs credits.
 
 ## Advertising integration
 

@@ -14,6 +14,7 @@ import { analyticsDataConfigured, getAnalyticsDashboard } from './server/analyti
 import { adsenseOAuthConfigured, completeAdsenseAuthorization, createAdsenseAuthorizationUrl, getAdsenseDashboard } from './server/adsense.mjs';
 import { botStatus, initializeBots, runBotCycle, setBotEnabled } from './server/bots.mjs';
 import { buildExternalEmbed } from './server/externalEmbeds.mjs';
+import { generateElevenLabsSpeech, publicTtsVoices, textHash, ttsConfigured } from './server/tts.mjs';
 import {
   ACCESS_COOKIE, REFRESH_COOKIE, clearAuthCookies, comparePassword, createPasswordResetToken,
   hashPassword, optionalAuth, requireAuth, schemas, setAuthCookies, signAccessToken, signRefreshToken,
@@ -21,9 +22,9 @@ import {
 } from './server/security.mjs';
 import {
   acceptFriendRequest, canAccessPost, connectDatabase, createComment, createFeatureIdea, createFriendRequest, createGuild, createGuildMessage, createGuildPost, createMessage, createPost, createReport, createUser, databaseMode, deletePost,
-  findUserByEmail, findUserByGoogleId, findUserById, getGuild, getPublicProfile, getPublicPost, joinGuildByInvite, listComments, listFriends, listGuildAudit, listGuildMembers, listGuildMessages, listGuildPosts, listGuilds, listLeaderboard, listMessages,
+  findUserByEmail, findUserByGoogleId, findUserById, getGuild, getPostForSpeech, getPublicProfile, getPublicPost, joinGuildByInvite, listComments, listFriends, listGuildAudit, listGuildMembers, listGuildMessages, listGuildPosts, listGuilds, listLeaderboard, listMessages,
   deleteNotificationMute, listDrafts, listFeatureIdeas, listNotificationMutes, listNotifications, listPosts, listSavedPostIds, listSavedPosts, markNotificationsRead, publicUser, recordPostView, searchCallout, setNotificationMute,
-  toggleGuildMembership, toggleSavedPost, updateGuild, updateGuildIdentity, updateGuildMember, updateGuildRole, updatePost, adminUpdatePost, updateUser, voteOnComment, voteOnPoll, voteOnPost, reactToPost
+  savePostSpeech, toggleGuildMembership, toggleSavedPost, updateGuild, updateGuildIdentity, updateGuildMember, updateGuildRole, updatePost, adminUpdatePost, updateUser, voteOnComment, voteOnPoll, voteOnPost, reactToPost
 } from './server/repository.mjs';
 
 dotenv.config();
@@ -89,6 +90,7 @@ const authLimiter = rateLimit({
 });
 const ideaLimiter = rateLimit({ windowMs: 60 * 60 * 1000, limit: 5, standardHeaders: 'draft-7', legacyHeaders: false, message: { error: 'The archive needs a moment. Try another idea later.' } });
 const embedLimiter = rateLimit({ windowMs: 60 * 1000, limit: 20, standardHeaders: 'draft-7', legacyHeaders: false, message: { error: 'Too many attachment previews. Try again in a minute.' } });
+const ttsLimiter = rateLimit({ windowMs: 24 * 60 * 60 * 1000, limit: Number(process.env.TTS_DAILY_LIMIT || 8), standardHeaders: 'draft-7', legacyHeaders: false, message: { error: 'Daily voice generation limit reached. Try again tomorrow.' } });
 
 async function establishSession(res, user) {
   const userId = String(user._id || user.id);
@@ -288,6 +290,9 @@ app.get('/api/posts/trending', optionalAuth, async (req, res, next) => {
 app.get('/api/drafts', requireFeature('richComposer'), requireAuth, async (req, res, next) => {
   try { res.json({ drafts: await listDrafts(req.userId) }); } catch (error) { next(error); }
 });
+app.get('/api/tts/voices', requireAuth, (_req, res) => {
+  res.json({ configured: ttsConfigured(), voices: publicTtsVoices(), provider: 'ElevenLabs' });
+});
 app.post('/api/posts', requireAuth, validate(schemas.post), async (req, res, next) => {
   try { res.status(201).json({ post: await createPost(req.userId, req.body) }); } catch (error) { next(error); }
 });
@@ -307,6 +312,27 @@ app.delete('/api/posts/:id', requireAuth, async (req, res, next) => {
 });
 app.post('/api/posts/:id/reports', requireAuth, validate(schemas.report), async (req, res, next) => {
   try { res.status(201).json({ report: await createReport(req.userId, req.params.id, req.body) }); } catch (error) { next(error); }
+});
+app.post('/api/posts/:id/tts', ttsLimiter, requireAuth, validate(schemas.tts), async (req, res, next) => {
+  try {
+    if (!(await canAccessPost(req.params.id, req.userId))) return res.status(403).json({ error: 'This post is not available to you.' });
+    const post = await getPostForSpeech(req.params.id);
+    if (!post?.content?.trim()) return res.status(404).json({ error: 'Post not found or has no text to read.' });
+    const hash = textHash(post.content);
+    const cached = (post.ttsAudio || []).find(item => item.voiceKey === req.body.voiceKey && item.textHash === hash);
+    const audio = cached || await savePostSpeech(req.params.id, await generateElevenLabsSpeech({ text: post.content, voiceKey: req.body.voiceKey }));
+    if (!audio) return res.status(404).json({ error: 'Post not found.' });
+    res.json({
+      audio: {
+        voiceKey: audio.voiceKey,
+        voiceName: audio.voiceName,
+        mimeType: audio.mimeType || 'audio/mpeg',
+        dataUrl: `data:${audio.mimeType || 'audio/mpeg'};base64,${audio.audioBase64}`,
+        generatedAt: audio.generatedAt,
+        cached: Boolean(cached)
+      }
+    });
+  } catch (error) { next(error); }
 });
 app.post('/api/posts/:id/vote', requireAuth, validate(schemas.vote), async (req, res, next) => {
   try {
@@ -543,7 +569,10 @@ app.use(express.static(root, { index: 'index.html', extensions: ['html'] }));
 app.use((error, _req, res, _next) => {
   console.error(error);
   if (error?.code === 11000) return res.status(409).json({ error: 'That record already exists.' });
-  res.status(500).json({ error: process.env.NODE_ENV === 'production' ? 'Internal server error.' : error.message });
+  const status = Number(error?.statusCode || error?.status || 500);
+  const safeStatus = status >= 400 && status < 600 ? status : 500;
+  const message = process.env.NODE_ENV === 'production' && safeStatus >= 500 && !error?.expose ? 'Internal server error.' : error.message;
+  res.status(safeStatus).json({ error: message });
 });
 
 async function startServer() {

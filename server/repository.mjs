@@ -212,8 +212,44 @@ const serializePost = (post, userId = '') => {
     cringeVotes: Math.max(0, Number(value.cringeVotes || 0) + Number(adminMetrics.cringeAdjustment || 0)),
     impressions: Math.max(0, Number(value.impressions || 0) + Number(adminMetrics.impressionsAdjustment || 0))
   };
-  return { ...value, ...effective, id: String(value._id || value.id), _id: undefined, votes: undefined, adminMetrics: undefined, emojiReactions, userVote, poll };
+  const ttsAudio = (value.ttsAudio || []).map(item => ({
+    voiceKey: item.voiceKey,
+    voiceName: item.voiceName,
+    mimeType: item.mimeType,
+    generatedAt: item.generatedAt,
+    textHash: item.textHash
+  }));
+  return { ...value, ...effective, id: String(value._id || value.id), _id: undefined, votes: undefined, adminMetrics: undefined, emojiReactions, userVote, poll, ttsAudio };
 };
+
+export async function getPostForSpeech(postId) {
+  if (connected) {
+    const post = await Post.findOne({ _id: postId, draft: { $ne: true }, visibility: { $in: ['public', null, 'friends', 'guild'] } }).select('content ttsAudio').lean();
+    return post ? { id: String(post._id), content: post.content || '', ttsAudio: post.ttsAudio || [] } : null;
+  }
+  const post = memoryPosts.get(String(postId));
+  if (!post || post.draft) return null;
+  return { id: post.id, content: post.content || '', ttsAudio: post.ttsAudio || [] };
+}
+
+export async function savePostSpeech(postId, audio) {
+  const cleanAudio = { ...audio, generatedAt: audio.generatedAt || new Date() };
+  if (connected) {
+    const post = await Post.findById(postId);
+    if (!post) return null;
+    post.ttsAudio = (post.ttsAudio || []).filter(item => item.voiceKey !== cleanAudio.voiceKey);
+    post.ttsAudio.push(cleanAudio);
+    if (post.ttsAudio.length > 3) post.ttsAudio = post.ttsAudio.slice(-3);
+    await post.save();
+    return cleanAudio;
+  }
+  const post = memoryPosts.get(String(postId));
+  if (!post) return null;
+  post.ttsAudio = (post.ttsAudio || []).filter(item => item.voiceKey !== cleanAudio.voiceKey);
+  post.ttsAudio.push(cleanAudio);
+  if (post.ttsAudio.length > 3) post.ttsAudio = post.ttsAudio.slice(-3);
+  return cleanAudio;
+}
 
 export async function reactToPost(postId, userId, key) {
   if (connected) {

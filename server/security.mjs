@@ -146,6 +146,7 @@ export const schemas = {
     return value;
   }, 'composer requirements'),
   vote: Joi.object({ value: Joi.string().valid('alright', 'cringe').required() }),
+  tts: Joi.object({ voiceKey: Joi.string().valid('spark', 'debate', 'calm').required() }),
   emojiReaction: Joi.object({ key: Joi.string().valid('fire', 'dead', 'laugh', 'sideeye', 'mindblown').required() }),
   embedPreview: Joi.object({ url: Joi.string().uri({ scheme: ['https'] }).max(2048).required() }),
   featureIdea: Joi.object({ text: plain(400).min(8).required(), mood: Joi.string().valid('electric', 'chaotic', 'soft', 'dark', 'wild').required() }),
