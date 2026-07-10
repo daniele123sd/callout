@@ -147,6 +147,13 @@ export const schemas = {
   }, 'composer requirements'),
   vote: Joi.object({ value: Joi.string().valid('alright', 'cringe').required() }),
   tts: Joi.object({ voiceKey: Joi.string().valid('spark', 'debate', 'calm').required() }),
+  ttsSettings: Joi.object({
+    apiKey: Joi.string().max(300).allow('').default(''),
+    modelId: Joi.string().max(120).default('eleven_multilingual_v2'),
+    sparkVoiceId: Joi.string().pattern(/^[A-Za-z0-9_-]{8,120}$/).required(),
+    debateVoiceId: Joi.string().pattern(/^[A-Za-z0-9_-]{8,120}$/).required(),
+    calmVoiceId: Joi.string().pattern(/^[A-Za-z0-9_-]{8,120}$/).required()
+  }),
   emojiReaction: Joi.object({ key: Joi.string().valid('fire', 'dead', 'laugh', 'sideeye', 'mindblown').required() }),
   embedPreview: Joi.object({ url: Joi.string().uri({ scheme: ['https'] }).max(2048).required() }),
   featureIdea: Joi.object({ text: plain(400).min(8).required(), mood: Joi.string().valid('electric', 'chaotic', 'soft', 'dark', 'wild').required() }),

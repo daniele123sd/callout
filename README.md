@@ -48,7 +48,17 @@ Set `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, and `GOOGLE_CALLBACK_URL` in `.e
 
 The TTS button is designed to be zero-hassle for users. They do not connect an ElevenLabs account. Callout uses one owner-managed ElevenLabs API key and three preset voices.
 
-Add these environment variables in Render:
+Recommended setup:
+
+1. Sign in as the Callout admin account.
+2. Open any post's three-dot menu.
+3. Choose **Text to Speech**.
+4. Paste the ElevenLabs API key and the three labeled voice IDs into the admin-only setup form.
+5. Press **Save voice setup**.
+
+The API key is stored server-side and is never shown back in the UI. Normal users only see the voice buttons.
+
+Render environment variables are still supported as an optional fallback:
 
 ```text
 ELEVENLABS_API_KEY=your-elevenlabs-api-key
@@ -56,18 +66,16 @@ ELEVENLABS_MODEL_ID=eleven_multilingual_v2
 ELEVENLABS_VOICE_SPARK=voice-id-for-energetic-shortform
 ELEVENLABS_VOICE_DEBATE=voice-id-for-confident-opinion
 ELEVENLABS_VOICE_CALM=voice-id-for-clean-narration
-TTS_DAILY_LIMIT=8
 ```
 
 Where to get them:
 
 1. Open ElevenLabs.
 2. Create or choose three voices.
-3. Copy each voice ID into the matching `ELEVENLABS_VOICE_*` variable.
-4. Copy your API key into `ELEVENLABS_API_KEY`.
-5. Redeploy the Render service.
+3. Copy each voice ID into the matching field in Callout.
+4. Copy your API key into the Callout setup form.
 
-If these variables are missing, the UI still appears but clearly says voice generation is not connected yet. Generated audio is cached per post and voice so repeat downloads do not spend more ElevenLabs credits.
+If setup is missing, only admins see the connection form. Non-admin users see a simple "voiceovers are almost ready" message. Generated audio is cached per post and voice so repeat downloads do not spend more ElevenLabs credits.
 
 ## Advertising integration
 

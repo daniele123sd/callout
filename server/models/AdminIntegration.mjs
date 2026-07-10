@@ -6,6 +6,7 @@ const adminIntegrationSchema = new mongoose.Schema({
   tokenIv: { type: String, select: false, default: '' },
   tokenTag: { type: String, select: false, default: '' },
   accountName: { type: String, default: '' },
+  settings: { type: mongoose.Schema.Types.Mixed, default: {} },
   connectedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null }
 }, { timestamps: true });
 

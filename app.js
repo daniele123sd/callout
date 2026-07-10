@@ -1413,14 +1413,70 @@ async function openPostTts(post) {
     voiceGrid.innerHTML = config.voices.map((voice, index) => `<button type="button" data-tts-voice="${escapeHtml(voice.key)}" ${!config.configured ? 'disabled' : ''}><b>${index + 1}</b><span><strong>${escapeHtml(voice.name)}</strong><small>${escapeHtml(voice.description)}</small></span></button>`).join('');
     if (!config.configured) {
       document.querySelector('#ttsOutput').innerHTML = config.isAdmin
-        ? `<div class="tts-setup-note"><strong>Owner setup needed.</strong><p>Connect one ElevenLabs account once. Users will not need to do anything.</p><ol><li>Open ElevenLabs and copy your API key.</li><li>Copy 3 voice IDs.</li><li>Add them in Render as <code>ELEVENLABS_API_KEY</code>, <code>ELEVENLABS_VOICE_SPARK</code>, <code>ELEVENLABS_VOICE_DEBATE</code>, and <code>ELEVENLABS_VOICE_CALM</code>.</li></ol><p>After Render redeploys, this button will generate downloadable MP3s.</p></div>`
+        ? ttsAdminSetupForm(config)
         : `<div class="tts-setup-note"><strong>Voiceovers are almost ready.</strong><p>Callout voice generation is being connected by the site owner. You will not need to set up an ElevenLabs account.</p></div>`;
+      document.querySelector('#ttsSetupForm')?.addEventListener('submit', event => submitTtsSetup(event, post));
       return;
     }
     voiceGrid.querySelectorAll('[data-tts-voice]').forEach(button => button.addEventListener('click', () => generatePostTts(post, button.dataset.ttsVoice, button)));
+    if (config.isAdmin) {
+      const output = document.querySelector('#ttsOutput');
+      if (output) output.innerHTML = `<div class="tts-player"><div><strong>ElevenLabs is connected.</strong><small>Pick a voice above to generate an MP3. You can update the saved setup below.</small></div><details class="tts-admin-details"><summary>Update ElevenLabs setup</summary>${ttsAdminSetupForm(config, { compact: true })}</details></div>`;
+      document.querySelector('#ttsSetupForm')?.addEventListener('submit', event => submitTtsSetup(event, post));
+    }
   } catch (error) {
     const output = document.querySelector('#ttsOutput');
     if (output) output.innerHTML = `<div class="tts-setup-note"><strong>Could not load voices.</strong><p>${escapeHtml(error.message)}</p></div>`;
+  }
+}
+
+function ttsAdminSetupForm(config = {}, options = {}) {
+  const setup = config.setup || {};
+  const voiceIds = setup.voiceIds || {};
+  return `<form id="ttsSetupForm" class="tts-setup-form ${options.compact ? 'compact' : ''}">
+    <div class="tts-setup-head">
+      <strong>${setup.configured ? 'Update voice setup' : 'Connect ElevenLabs once'}</strong>
+      <small>Only admins see this. Everyone else just gets the voice buttons.</small>
+    </div>
+    <label>ElevenLabs API key
+      <input name="apiKey" type="password" autocomplete="off" placeholder="${setup.hasApiKey ? `${escapeHtml(setup.apiKeyPreview)} saved — leave blank to keep it` : 'Paste API key'}" />
+    </label>
+    <div class="tts-voice-id-grid">
+      <label>Spark voice ID
+        <input name="sparkVoiceId" required value="${escapeHtml(voiceIds.spark || '')}" placeholder="Example: 21m00Tcm4TlvDq8ikWAM" />
+      </label>
+      <label>Debate voice ID
+        <input name="debateVoiceId" required value="${escapeHtml(voiceIds.debate || '')}" placeholder="Paste a voice ID" />
+      </label>
+      <label>Calm voice ID
+        <input name="calmVoiceId" required value="${escapeHtml(voiceIds.calm || '')}" placeholder="Paste a voice ID" />
+      </label>
+    </div>
+    <input name="modelId" type="hidden" value="${escapeHtml(setup.modelId || 'eleven_multilingual_v2')}" />
+    <button class="primary-action" type="submit">Save voice setup</button>
+    <small class="tts-form-help">Get these from ElevenLabs once, paste them here, then Callout handles the rest server-side.</small>
+  </form>`;
+}
+
+async function submitTtsSetup(event, post) {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const button = form.querySelector('button[type="submit"]');
+  if (button) { button.disabled = true; button.textContent = 'Saving...'; }
+  const body = {
+    apiKey: form.elements.apiKey.value.trim(),
+    modelId: form.elements.modelId.value.trim() || 'eleven_multilingual_v2',
+    sparkVoiceId: form.elements.sparkVoiceId.value.trim(),
+    debateVoiceId: form.elements.debateVoiceId.value.trim(),
+    calmVoiceId: form.elements.calmVoiceId.value.trim()
+  };
+  try {
+    await apiFetch('/api/admin/tts-settings', { method: 'POST', body: JSON.stringify(body) });
+    showToast('ElevenLabs voice setup saved.');
+    openPostTts(post);
+  } catch (error) {
+    if (button) { button.disabled = false; button.textContent = 'Save voice setup'; }
+    showToast(error.message);
   }
 }
 

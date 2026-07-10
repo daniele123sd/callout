@@ -14,7 +14,7 @@ import { analyticsDataConfigured, getAnalyticsDashboard } from './server/analyti
 import { adsenseOAuthConfigured, completeAdsenseAuthorization, createAdsenseAuthorizationUrl, getAdsenseDashboard } from './server/adsense.mjs';
 import { botStatus, initializeBots, runBotCycle, setBotEnabled } from './server/bots.mjs';
 import { buildExternalEmbed } from './server/externalEmbeds.mjs';
-import { generateElevenLabsSpeech, publicTtsVoices, textHash, ttsConfigured } from './server/tts.mjs';
+import { generateElevenLabsSpeech, getTtsSettings, publicTtsVoices, saveTtsSettings, textHash } from './server/tts.mjs';
 import {
   ACCESS_COOKIE, REFRESH_COOKIE, clearAuthCookies, comparePassword, createPasswordResetToken,
   hashPassword, optionalAuth, requireAuth, schemas, setAuthCookies, signAccessToken, signRefreshToken,
@@ -293,8 +293,14 @@ app.get('/api/drafts', requireFeature('richComposer'), requireAuth, async (req, 
 app.get('/api/tts/voices', requireAuth, async (req, res, next) => {
   try {
     const user = await findUserById(req.userId);
-    res.json({ configured: ttsConfigured(), voices: publicTtsVoices(), provider: 'ElevenLabs', isAdmin: isAdminAccount(user) });
+    const isAdmin = isAdminAccount(user);
+    const settings = await getTtsSettings({ includeSecret: isAdmin });
+    delete settings.apiKey;
+    res.json({ configured: settings.configured, setup: settings, voices: publicTtsVoices(), provider: 'ElevenLabs', isAdmin });
   } catch (error) { next(error); }
+});
+app.post('/api/admin/tts-settings', requireAuth, requireAdmin, validate(schemas.ttsSettings), async (req, res, next) => {
+  try { res.json({ setup: await saveTtsSettings(req.body, req.userId) }); } catch (error) { next(error); }
 });
 app.post('/api/posts', requireAuth, validate(schemas.post), async (req, res, next) => {
   try { res.status(201).json({ post: await createPost(req.userId, req.body) }); } catch (error) { next(error); }
