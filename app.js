@@ -1438,32 +1438,38 @@ function ttsAdminSetupForm(config = {}, options = {}) {
   const voiceIds = setup.voiceIds || {};
   return `<form id="ttsSetupForm" class="tts-setup-form ${options.compact ? 'compact' : ''}">
     <div class="tts-setup-head">
-      <strong>${setup.configured ? 'Update voice setup' : 'Connect ElevenLabs once'}</strong>
-      <small>Only admins see this. Everyone else just gets the voice buttons.</small>
+      <strong>${setup.configured ? 'Change ElevenLabs voices' : 'Connect ElevenLabs once'}</strong>
+      <small>Admin-only. You can use one voice for all slots now and replace them later.</small>
     </div>
     <label>ElevenLabs API key
       <input name="apiKey" type="password" autocomplete="off" placeholder="${setup.hasApiKey ? `${escapeHtml(setup.apiKeyPreview)} saved — leave blank to keep it` : 'Paste API key'}" />
     </label>
     <div class="tts-voice-id-grid">
       <label>Spark voice ID
-        <input name="sparkVoiceId" required value="${escapeHtml(voiceIds.spark || '')}" placeholder="Example: 21m00Tcm4TlvDq8ikWAM" />
+        <input name="sparkVoiceId" required value="${escapeHtml(voiceIds.spark || '')}" placeholder="Energetic / viral narrator voice ID" />
       </label>
       <label>Debate voice ID
-        <input name="debateVoiceId" required value="${escapeHtml(voiceIds.debate || '')}" placeholder="Paste a voice ID" />
+        <input name="debateVoiceId" required value="${escapeHtml(voiceIds.debate || '')}" placeholder="Confident opinion voice ID" />
       </label>
       <label>Calm voice ID
-        <input name="calmVoiceId" required value="${escapeHtml(voiceIds.calm || '')}" placeholder="Paste a voice ID" />
+        <input name="calmVoiceId" required value="${escapeHtml(voiceIds.calm || '')}" placeholder="Clean narrator voice ID" />
       </label>
     </div>
+    <label class="tts-same-voice"><input type="checkbox" data-copy-spark-voice /> Use the Spark voice ID for all three voices</label>
     <input name="modelId" type="hidden" value="${escapeHtml(setup.modelId || 'eleven_multilingual_v2')}" />
     <button class="primary-action" type="submit">Save voice setup</button>
-    <small class="tts-form-help">Get these from ElevenLabs once, paste them here, then Callout handles the rest server-side.</small>
+    <small class="tts-form-help">In ElevenLabs, open Voice Library and search styles like “TikTok”, “social media”, “energetic narrator”, or “storytime”. Copy the Voice ID, not the voice name.</small>
   </form>`;
 }
 
 async function submitTtsSetup(event, post) {
   event.preventDefault();
   const form = event.currentTarget;
+  const copySpark = form.querySelector('[data-copy-spark-voice]')?.checked;
+  if (copySpark && form.elements.sparkVoiceId.value.trim()) {
+    form.elements.debateVoiceId.value = form.elements.sparkVoiceId.value.trim();
+    form.elements.calmVoiceId.value = form.elements.sparkVoiceId.value.trim();
+  }
   const button = form.querySelector('button[type="submit"]');
   if (button) { button.disabled = true; button.textContent = 'Saving...'; }
   const body = {
