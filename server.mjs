@@ -290,7 +290,7 @@ app.get('/api/posts/trending', optionalAuth, async (req, res, next) => {
 app.get('/api/drafts', requireFeature('richComposer'), requireAuth, async (req, res, next) => {
   try { res.json({ drafts: await listDrafts(req.userId) }); } catch (error) { next(error); }
 });
-app.get('/api/tts/voices', requireAuth, async (req, res, next) => {
+app.get('/api/tts/voices', requireAuth, requireAdmin, async (req, res, next) => {
   try {
     const user = await findUserById(req.userId);
     const isAdmin = isAdminAccount(user);
@@ -322,7 +322,7 @@ app.delete('/api/posts/:id', requireAuth, async (req, res, next) => {
 app.post('/api/posts/:id/reports', requireAuth, validate(schemas.report), async (req, res, next) => {
   try { res.status(201).json({ report: await createReport(req.userId, req.params.id, req.body) }); } catch (error) { next(error); }
 });
-app.post('/api/posts/:id/tts', ttsLimiter, requireAuth, validate(schemas.tts), async (req, res, next) => {
+app.post('/api/posts/:id/tts', ttsLimiter, requireAuth, requireAdmin, validate(schemas.tts), async (req, res, next) => {
   try {
     if (!(await canAccessPost(req.params.id, req.userId))) return res.status(403).json({ error: 'This post is not available to you.' });
     const post = await getPostForSpeech(req.params.id);

@@ -46,7 +46,7 @@ Set `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, and `GOOGLE_CALLBACK_URL` in `.e
 
 ## ElevenLabs text-to-speech setup
 
-The TTS button is designed to be zero-hassle for users. They do not connect an ElevenLabs account. Callout uses one owner-managed ElevenLabs API key and three preset voices.
+The TTS button is admin-only. Regular users do not see it and cannot use the TTS API. Callout uses one owner-managed ElevenLabs API key and three preset voices for admin MP3 exports.
 
 Recommended setup:
 
@@ -56,7 +56,7 @@ Recommended setup:
 4. Paste the ElevenLabs API key and the three labeled voice IDs into the admin-only setup form.
 5. Press **Save voice setup**.
 
-The API key is stored server-side and is never shown back in the UI. Normal users only see the voice buttons.
+The API key is stored server-side and is never shown back in the UI. Normal users do not see voice generation controls.
 
 Render environment variables are still supported as an optional fallback:
 
@@ -75,7 +75,7 @@ Where to get them:
 3. Copy each voice ID into the matching field in Callout.
 4. Copy your API key into the Callout setup form.
 
-If setup is missing, only admins see the connection form. Non-admin users see a simple "voiceovers are almost ready" message. Generated audio is cached per post and voice so repeat downloads do not spend more ElevenLabs credits.
+If setup is missing, only admins see the connection form. Generated audio is cached per post and voice so repeat downloads do not spend more ElevenLabs credits.
 
 ## Advertising integration
 
