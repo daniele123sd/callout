@@ -759,9 +759,17 @@ function swipeVoterChip(label, active) {
   return `<span class="${active ? 'active' : ''}">${escapeHtml(label)}</span>`;
 }
 
+function swipePosts() {
+  const ownId = sessionUser?.id;
+  const otherPosts = ownId ? state.posts.filter(post => String(post.authorId) !== String(ownId)) : state.posts;
+  return otherPosts.length ? otherPosts : [];
+}
+
 function swipeView() {
-  if (!state.posts.length) return `<section class="swipe-empty">${emptyState('↕', 'No takes to swipe yet', 'Create the first take and it will appear here as a Based vs Hot Take card.', '<button class="primary-action" type="button" data-open-composer>Post a take</button>')}<button class="quiet-action" type="button" data-home-mode="feed">Back to Feed</button></section>`;
-  const post = state.posts[Math.max(0, Math.min(state.swipeIndex, state.posts.length - 1))] || state.posts[0];
+  const posts = swipePosts();
+  if (!posts.length) return `<section class="swipe-empty">${emptyState('↕', sessionUser ? 'No other takes to swipe yet' : 'No takes to swipe yet', sessionUser ? 'Swipe only shows takes from other people. Once someone else posts, their takes will appear here.' : 'Create the first take and it will appear here as a Based vs Hot Take card.', '<button class="primary-action" type="button" data-open-composer>Post a take</button>')}<button class="quiet-action" type="button" data-home-mode="feed">Back to Feed</button></section>`;
+  const currentIndex = Math.max(0, Math.min(state.swipeIndex, posts.length - 1));
+  const post = posts[currentIndex] || posts[0];
   const total = post.alrightVotes + post.cringeVotes;
   const basedPercent = total ? Math.round((post.alrightVotes / total) * 100) : 50;
   const hotPercent = 100 - basedPercent;
@@ -769,10 +777,10 @@ function swipeView() {
   const basedVoters = post.userVote === 'alright' ? swipeVoterChip('You', true) : '<small>No visible voters yet</small>';
   const hotVoters = post.userVote === 'cringe' ? swipeVoterChip('You', true) : '<small>No visible voters yet</small>';
   return `<section class="swipe-stage" data-swipe-stage data-post-id="${post.id}">
-    <div class="swipe-zone swipe-zone-based" data-swipe-vote="alright"><strong>BASED</strong><span>Swipe up</span></div>
-    <div class="swipe-zone swipe-zone-hot" data-swipe-vote="cringe"><strong>HOT TAKE</strong><span>Swipe down</span></div>
+    <div class="swipe-zone swipe-zone-based" data-swipe-vote="alright"><strong>BASED</strong><span class="desktop-copy">Swipe left</span><span class="mobile-copy">Swipe up</span></div>
+    <div class="swipe-zone swipe-zone-hot" data-swipe-vote="cringe"><strong>HOT TAKE</strong><span class="desktop-copy">Swipe right</span><span class="mobile-copy">Swipe down</span></div>
     <i class="swipe-squiggle" aria-hidden="true"></i>
-    <div class="swipe-topbar"><button type="button" data-home-mode="feed">← Back to Feed</button><b>Swipe the take</b><span>${state.swipeIndex + 1}/${state.posts.length}</span></div>
+    <div class="swipe-topbar"><button type="button" data-home-mode="feed">← Back to Feed</button><b>Swipe the take</b><span>${currentIndex + 1}/${posts.length}</span></div>
     <article class="swipe-card">
       <div class="swipe-card-stack one"></div><div class="swipe-card-stack two"></div>
       <div class="swipe-card-inner">
@@ -1172,13 +1180,15 @@ function findPostById(id) {
 }
 
 function advanceSwipeCard() {
-  if (!state.posts.length) return;
-  state.swipeIndex = (state.swipeIndex + 1) % state.posts.length;
+  const posts = swipePosts();
+  if (!posts.length) return;
+  state.swipeIndex = (state.swipeIndex + 1) % posts.length;
   renderRoute();
 }
 
 async function submitSwipeVote(value) {
-  const post = state.posts[Math.max(0, Math.min(state.swipeIndex, state.posts.length - 1))] || state.posts[0];
+  const posts = swipePosts();
+  const post = posts[Math.max(0, Math.min(state.swipeIndex, posts.length - 1))] || posts[0];
   if (!post) return;
   if (!sessionUser) { navigate('auth'); return showToast('Sign in to swipe-vote.'); }
   try {
@@ -1203,13 +1213,18 @@ function bindSwipeInteractions() {
     const touch = event.changedTouches[0];
     const deltaX = touch.clientX - startX;
     const deltaY = touch.clientY - startY;
-    if (Math.abs(deltaY) < 52 || Math.abs(deltaY) < Math.abs(deltaX)) return;
-    submitSwipeVote(deltaY < 0 ? 'alright' : 'cringe');
+    if (window.matchMedia('(max-width: 620px)').matches) {
+      if (Math.abs(deltaY) < 52 || Math.abs(deltaY) < Math.abs(deltaX)) return;
+      submitSwipeVote(deltaY < 0 ? 'alright' : 'cringe');
+      return;
+    }
+    if (Math.abs(deltaX) < 52 || Math.abs(deltaX) < Math.abs(deltaY)) return;
+    submitSwipeVote(deltaX < 0 ? 'alright' : 'cringe');
   }, { passive: true });
   stage.addEventListener('keydown', event => {
-    if (event.key === 'ArrowUp') submitSwipeVote('alright');
-    if (event.key === 'ArrowDown') submitSwipeVote('cringe');
-    if (event.key === 'ArrowRight') advanceSwipeCard();
+    if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') submitSwipeVote('alright');
+    if (event.key === 'ArrowRight' || event.key === 'ArrowDown') submitSwipeVote('cringe');
+    if (event.key === 'n' || event.key === 'N') advanceSwipeCard();
   });
   stage.tabIndex = 0;
 }
