@@ -62,6 +62,7 @@ const postSchema = new mongoose.Schema({
   embedUrl: { type: String, default: '', maxlength: 2048 },
   externalEmbed: { type: externalEmbedSchema, default: null },
   ttsAudio: { type: [ttsAudioSchema], default: [] },
+  viralVideoMilestones: { type: [Number], default: [] },
   poll: {
     question: { type: String, default: '', maxlength: 240 },
     options: [{

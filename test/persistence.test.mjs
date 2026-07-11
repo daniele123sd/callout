@@ -37,6 +37,22 @@ test('votes, comments, saves and notifications persist per account', async () =>
   assert.equal((await findUserById(reader.id)).vibeScore, 5);
 });
 
+test('viral video milestones notify creators once when a take trends', async () => {
+  const { author } = await accounts();
+  const post = await createPost(author.id, { content: 'This should become a viral card', category: 'Life' });
+  for (let index = 0; index < 100; index += 1) {
+    const voter = await createUser({ email: `viral-voter-${post.id}-${index}@example.com`, displayName: `Voter ${index}` });
+    await voteOnPost(post.id, voter.id, index % 2 ? 'alright' : 'cringe');
+  }
+  const notifications = await listNotifications(author.id);
+  const viralNotifications = notifications.filter(item => item.type === 'viral_video' && item.post === post.id);
+  assert.equal(viralNotifications.length, 1);
+  assert.equal(viralNotifications[0].payload.milestone, 100);
+  const stored = (await listPosts(author.id)).find(item => item.id === post.id);
+  assert.deepEqual(stored.viralVideo.reached, [100]);
+  assert.equal(stored.viralVideo.next, 500);
+});
+
 test('admin post corrections preserve genuine votes as metric adjustments', async () => {
   const { author, reader } = await accounts();
   const post = await createPost(author.id, { content: 'Original admin test', category: 'Life', visibility: 'public' });

@@ -30,6 +30,7 @@ const memoryGuildMemberships = new Map();
 const memoryGuildAudits = [];
 const memoryNotificationMutes = [];
 const memoryFeatureIdeas = [];
+const VIRAL_VIDEO_MILESTONES = [100, 500, 1000];
 
 const DEFAULT_GUILD_ROLES = [
   { key: 'owner', name: 'Owner', color: '#ff4713', rank: 100, builtIn: true, permissions: { manageGuild: true, manageRoles: true, manageMembers: true, managePosts: true, createPosts: true, chat: true, viewAudit: true } },
@@ -40,6 +41,9 @@ const DEFAULT_GUILD_ROLES = [
 ];
 
 const membershipKey = (guildId, userId) => `${guildId}:${userId}`;
+const reachedViralMilestones = totalVotes => VIRAL_VIDEO_MILESTONES.filter(milestone => totalVotes >= milestone);
+const nextViralMilestone = totalVotes => VIRAL_VIDEO_MILESTONES.find(milestone => totalVotes < milestone) || null;
+const viralVideoNotificationText = milestone => `Your take hit ${Number(milestone).toLocaleString()} votes — a viral video card is ready to share.`;
 
 export async function connectDatabase() {
   if (!process.env.DB_URI) {
@@ -191,7 +195,7 @@ export async function createPost(authorId, values) {
     if (existing) return existing;
   }
   const prepared = { ...values, poll: values.poll ? { ...values.poll, options: values.poll.options.map(option => ({ id: crypto.randomUUID(), text: option.text, voters: [] })) } : null };
-  const post = { id: crypto.randomUUID(), author: String(authorId), alrightVotes: 0, cringeVotes: 0, impressions: 0, votes: [], createdAt: new Date(), updatedAt: new Date(), ...prepared };
+  const post = { id: crypto.randomUUID(), author: String(authorId), alrightVotes: 0, cringeVotes: 0, impressions: 0, votes: [], viralVideoMilestones: [], createdAt: new Date(), updatedAt: new Date(), ...prepared };
   memoryPosts.set(post.id, post);
   const user = memoryUsers.get(String(authorId));
   if (user && publishedNow) { user.points = (user.points || 0) + 10; user.vibeScore = (user.vibeScore || 0) + 10; user.postCount = (user.postCount || 0) + 1; }
@@ -211,6 +215,11 @@ const serializePost = (post, userId = '') => {
     alrightVotes: Math.max(0, Number(value.alrightVotes || 0) + Number(adminMetrics.basedAdjustment || 0)),
     cringeVotes: Math.max(0, Number(value.cringeVotes || 0) + Number(adminMetrics.cringeAdjustment || 0)),
     impressions: Math.max(0, Number(value.impressions || 0) + Number(adminMetrics.impressionsAdjustment || 0))
+  };
+  value.viralVideo = {
+    milestones: VIRAL_VIDEO_MILESTONES,
+    reached: value.viralVideoMilestones || [],
+    next: nextViralMilestone(effective.alrightVotes + effective.cringeVotes)
   };
   const ttsAudio = (value.ttsAudio || []).map(item => ({
     voiceKey: item.voiceKey,
@@ -398,10 +407,16 @@ export async function voteOnPost(postId, userId, value) {
     post.alrightVotes = post.votes.filter(vote => vote.value === 'alright').length;
     post.cringeVotes = post.votes.filter(vote => vote.value === 'cringe').length;
     post.impressions += 1;
+    const totalVotes = post.alrightVotes + post.cringeVotes;
+    const reached = reachedViralMilestones(totalVotes).filter(milestone => !(post.viralVideoMilestones || []).includes(milestone));
+    if (reached.length) post.viralVideoMilestones = [...new Set([...(post.viralVideoMilestones || []), ...reached])].sort((a, b) => a - b);
     await post.save();
     if (!previousValue) await incrementVibe(userId, 1);
     if (String(post.author) !== String(userId) && previousValue !== value) {
       await Notification.create({ recipient: post.author, actor: userId, type: 'vote', post: post._id, text: `Someone voted ${value === 'alright' ? 'Based' : 'Hot Take'} on your take.` });
+    }
+    for (const milestone of reached) {
+      await Notification.create({ recipient: post.author, actor: userId, type: 'viral_video', post: post._id, text: viralVideoNotificationText(milestone), payload: { milestone, totalVotes } });
     }
     return serializePost(post, userId);
   }
@@ -416,8 +431,12 @@ export async function voteOnPost(postId, userId, value) {
   post.alrightVotes = post.votes.filter(vote => vote.value === 'alright').length;
   post.cringeVotes = post.votes.filter(vote => vote.value === 'cringe').length;
   post.impressions += 1;
+  const totalVotes = post.alrightVotes + post.cringeVotes;
+  const reached = reachedViralMilestones(totalVotes).filter(milestone => !(post.viralVideoMilestones || []).includes(milestone));
+  if (reached.length) post.viralVideoMilestones = [...new Set([...(post.viralVideoMilestones || []), ...reached])].sort((a, b) => a - b);
   if (!previousValue) await incrementVibe(userId, 1);
   if (post.author !== String(userId) && previousValue !== value) memoryNotifications.push({ id: crypto.randomUUID(), recipient: post.author, actor: publicUser(memoryUsers.get(String(userId))), type: 'vote', post: post.id, text: `Someone voted ${value === 'alright' ? 'Based' : 'Hot Take'} on your take.`, read: false, createdAt: new Date() });
+  for (const milestone of reached) memoryNotifications.push({ id: crypto.randomUUID(), recipient: post.author, actor: publicUser(memoryUsers.get(String(userId))), type: 'viral_video', post: post.id, text: viralVideoNotificationText(milestone), payload: { milestone, totalVotes }, read: false, createdAt: new Date() });
   return serializePost(post, userId);
 }
 
@@ -910,7 +929,7 @@ export async function searchCallout(query) {
 }
 
 export async function listNotifications(userId) {
-  const categoryFor = type => ({ vote: 'likes', comment: 'comments', reply: 'comments', guild: 'guild_activity', guild_invite: 'guild_activity', friend_request: 'follows', friend_accept: 'follows', message: 'dms', system: 'system' }[type] || 'system');
+  const categoryFor = type => ({ vote: 'likes', comment: 'comments', reply: 'comments', guild: 'guild_activity', guild_invite: 'guild_activity', friend_request: 'follows', friend_accept: 'follows', message: 'dms', viral_video: 'takes', system: 'system' }[type] || 'system');
   const now = new Date();
   const mutes = connected ? await NotificationMute.find({ user: userId }).lean() : memoryNotificationMutes.filter(item => item.user === String(userId));
   const hidden = item => mutes.some(mute => {

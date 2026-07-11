@@ -463,7 +463,7 @@ function mapPost(post) {
     poll: post.poll || null, topics: post.topics || [], contentWarning: post.contentWarning || '', embedUrl: post.embedUrl || '', externalEmbed: post.externalEmbed || null, reactionSet: post.reactionSet || 'classic', visibility: post.visibility || 'public',
     alrightVotes: Number(post.alrightVotes || 0), cringeVotes: Number(post.cringeVotes || 0), impressions: Number(post.impressions || 0),
     userVote: post.userVote || null, emojiReactions: post.emojiReactions || {}, commentCount: Number(post.commentCount || 0), comments: Array.isArray(post.comments) ? post.comments : [],
-    ttsAudio: Array.isArray(post.ttsAudio) ? post.ttsAudio : [],
+    ttsAudio: Array.isArray(post.ttsAudio) ? post.ttsAudio : [], viralVideo: post.viralVideo || { milestones: [100, 500, 1000], reached: [], next: null },
     createdAt: new Date(post.createdAt || Date.now()).getTime(), publishing: Boolean(post.publishing)
   };
 }
@@ -959,7 +959,7 @@ function guildDetailView() {
 }
 
 function notificationCategory(item) {
-  if (['comment', 'reply', 'vote'].includes(item.type)) return 'takes';
+  if (['comment', 'reply', 'vote', 'viral_video'].includes(item.type)) return 'takes';
   if (['guild', 'guild_invite'].includes(item.type)) return 'guilds';
   if (item.type === 'message') return 'messages';
   if (['friend_request', 'friend_accept'].includes(item.type)) return 'social';
@@ -1525,6 +1525,12 @@ function openPostMenu(id) {
   download.type = 'button'; download.dataset.downloadPost = ''; download.innerHTML = '<span>↓</span><span><strong>Download</strong><small>Export this live take as an image</small></span>';
   menu.insertBefore(download, menu.querySelector('[data-share-post]'));
   download.addEventListener('click', () => openPostDownload(post));
+  if (isAuthor || sessionUser?.isAdmin) {
+    const viral = document.createElement('button');
+    viral.type = 'button'; viral.dataset.viralVideoPost = ''; viral.innerHTML = '<span>▶</span><span><strong>Viral video</strong><small>Generate a 7-second vertical share card</small></span>';
+    menu.insertBefore(viral, menu.querySelector('[data-share-post]'));
+    viral.addEventListener('click', () => openViralVideo(post));
+  }
   if (sessionUser?.isAdmin) {
     const tts = document.createElement('button');
     tts.type = 'button'; tts.dataset.ttsPost = ''; tts.innerHTML = '<span>◉</span><span><strong>Text to Speech</strong><small>Admin-only MP3 voiceover export</small></span>';
@@ -1643,6 +1649,133 @@ function downloadDataUrl(dataUrl, filename) {
   document.body.appendChild(link);
   link.click();
   link.remove();
+}
+
+async function openViralVideo(post) {
+  const supported = Boolean(window.MediaRecorder && HTMLCanvasElement.prototype.captureStream);
+  const total = Number(post.alrightVotes || 0) + Number(post.cringeVotes || 0);
+  const milestone = [...(post.viralVideo?.reached || [])].sort((a, b) => b - a)[0] || (total >= 100 ? 100 : null);
+  showActionDialog(actionDialogShell('VIRAL VIDEO', 'Auto-generated share card', `<section class="viral-video-panel">
+    <p class="dialog-copy">A short vertical video that sells the argument first: opinion, live votes, result split, top Take, then Callout CTA.</p>
+    <div class="viral-video-status ${milestone ? 'ready' : ''}"><strong>${milestone ? `${Number(milestone).toLocaleString()} vote milestone reached` : `${Number(post.viralVideo?.next || 100).toLocaleString()} votes unlocks the trending notification`}</strong><small>You can still generate a preview/export now as the creator.</small></div>
+    <div class="viral-video-preview"><canvas id="viralVideoCanvas" width="360" height="640" aria-label="Viral video preview"></canvas></div>
+    <div class="viral-video-actions"><button type="button" data-preview-viral>Refresh preview</button><button class="primary-action" type="button" data-generate-viral ${supported ? '' : 'disabled'}>${supported ? 'Generate video' : 'Video recording unavailable'}</button></div>
+    <small class="viral-video-note">${supported ? 'Exports as a vertical WebM. Chrome, Opera, and most desktop browsers support this.' : 'This browser cannot record canvas video. Try Chrome or Opera on desktop.'}</small>
+  </section>`));
+  const canvas = document.querySelector('#viralVideoCanvas');
+  const assets = await loadExportAssets(post);
+  const drawPreview = () => drawViralVideoFrame(canvas, post, assets, .58);
+  drawPreview();
+  document.querySelector('[data-preview-viral]')?.addEventListener('click', drawPreview);
+  document.querySelector('[data-generate-viral]')?.addEventListener('click', event => generateViralVideo(post, assets, event.currentTarget));
+}
+
+function flattenPostComments(comments = []) {
+  return comments.flatMap(comment => [comment, ...flattenPostComments(comment.replies || [])]);
+}
+
+function topCommentText(post) {
+  const comments = flattenPostComments(post.comments || []);
+  if (!comments.length) return post.commentCount > 0 ? 'Top Take is loading — open the discussion to see it.' : 'No Takes yet. Be the first to answer.';
+  const top = comments.sort((a, b) => Number(b.votes || 0) - Number(a.votes || 0))[0];
+  return top?.text || 'No Takes yet. Be the first to answer.';
+}
+
+function drawViralText(context, text, x, y, maxWidth, lineHeight, maxLines) {
+  const lines = canvasWrappedLines(context, text, maxWidth).slice(0, maxLines);
+  lines.forEach((line, index) => context.fillText(line, x, y + index * lineHeight));
+  return y + lines.length * lineHeight;
+}
+
+function drawViralVideoFrame(canvas, post, assets = {}, progress = 0) {
+  const context = canvas.getContext('2d');
+  const width = canvas.width; const height = canvas.height; const scale = width / 1080;
+  const total = Number(post.alrightVotes || 0) + Number(post.cringeVotes || 0);
+  const based = total ? Math.round((Number(post.alrightVotes || 0) / total) * 100) : 50;
+  const hot = 100 - based;
+  const stage = progress < .24 ? 0 : progress < .43 ? 1 : progress < .68 ? 2 : progress < .86 ? 3 : 4;
+  drawExportBackground(context, width, height);
+  context.save();
+  context.globalAlpha = .18;
+  context.fillStyle = '#101114';
+  for (let y = 70 * scale; y < height; y += 230 * scale) {
+    context.save(); context.translate(width * .82, y); context.rotate(-.18); context.fillRect(-110 * scale, -12 * scale, 220 * scale, 24 * scale); context.restore();
+  }
+  context.restore();
+  const cardX = 58 * scale; const cardY = 172 * scale; const cardW = width - 116 * scale; const cardH = height - 315 * scale;
+  context.fillStyle = '#101114'; context.beginPath(); context.roundRect(cardX + 12 * scale, cardY + 14 * scale, cardW, cardH, 38 * scale); context.fill();
+  context.fillStyle = '#fffdfb'; context.strokeStyle = '#101114'; context.lineWidth = 4 * scale; context.beginPath(); context.roundRect(cardX, cardY, cardW, cardH, 38 * scale); context.fill(); context.stroke();
+  const avatarX = cardX + 44 * scale; const avatarY = cardY + 52 * scale; const avatarSize = 74 * scale;
+  context.save(); context.beginPath(); context.arc(avatarX + avatarSize / 2, avatarY + avatarSize / 2, avatarSize / 2, 0, Math.PI * 2); context.clip();
+  if (assets.avatar) context.drawImage(assets.avatar, avatarX, avatarY, avatarSize, avatarSize);
+  else { context.fillStyle = '#e9edf1'; context.fillRect(avatarX, avatarY, avatarSize, avatarSize); context.fillStyle = '#101114'; context.font = `900 ${Math.round(34 * scale)}px Arial`; context.textAlign = 'center'; context.fillText((post.authorName || 'C').charAt(0).toUpperCase(), avatarX + avatarSize / 2, avatarY + 49 * scale); }
+  context.restore(); context.strokeStyle = '#101114'; context.lineWidth = 3 * scale; context.beginPath(); context.arc(avatarX + avatarSize / 2, avatarY + avatarSize / 2, avatarSize / 2, 0, Math.PI * 2); context.stroke();
+  context.textAlign = 'left'; context.fillStyle = '#101114'; context.font = `900 ${Math.round(30 * scale)}px Arial`; context.fillText(post.authorName || 'Callout member', avatarX + avatarSize + 18 * scale, avatarY + 30 * scale);
+  context.fillStyle = '#5b6069'; context.font = `800 ${Math.round(20 * scale)}px Arial`; context.fillText(post.authorHandle || '@member', avatarX + avatarSize + 18 * scale, avatarY + 61 * scale);
+  const bodyX = cardX + 45 * scale; let y = cardY + 210 * scale; const maxW = cardW - 90 * scale;
+  context.fillStyle = '#101114'; context.font = `900 ${Math.round(stage === 0 ? 55 : 43) * scale}px Arial`; y = drawViralText(context, post.text || 'Untitled take', bodyX, y, maxW, (stage === 0 ? 62 : 52) * scale, stage === 0 ? 6 : 4) + 34 * scale;
+  if (stage >= 1) {
+    context.fillStyle = '#101114'; context.font = `900 ${Math.round(62 * scale)}px Arial`; context.fillText(`${total.toLocaleString()} votes`, bodyX, y);
+    context.fillStyle = '#5b6069'; context.font = `800 ${Math.round(22 * scale)}px Arial`; context.fillText('live on Callout', bodyX, y + 34 * scale); y += 92 * scale;
+  }
+  if (stage >= 2) {
+    const barX = bodyX; const barY = y + 58 * scale; const barW = maxW; const barH = 34 * scale;
+    const buttonW = 222 * scale; const buttonH = 82 * scale;
+    const drawMiniButton = (x, label, color, mood) => { context.fillStyle = '#101114'; context.beginPath(); context.roundRect(x + 8 * scale, y + 8 * scale, buttonW, buttonH, 18 * scale); context.fill(); context.fillStyle = color; context.strokeStyle = '#101114'; context.lineWidth = 4 * scale; context.beginPath(); context.roundRect(x, y, buttonW, buttonH, 18 * scale); context.fill(); context.stroke(); drawFace(context, x + 48 * scale, y + buttonH / 2, 24 * scale, mood, scale); context.fillStyle = '#101114'; context.font = `900 ${Math.round(26 * scale)}px Arial`; context.fillText(label, x + 84 * scale, y + 52 * scale); };
+    drawMiniButton(bodyX, 'BASED', '#55df50', 'based'); drawMiniButton(bodyX + maxW - buttonW, 'HOT TAKE', '#ff5431', 'hot');
+    context.fillStyle = '#0fae32'; context.font = `900 ${Math.round(34 * scale)}px Arial`; context.fillText(`${based}%`, bodyX, y + 130 * scale);
+    context.fillStyle = '#ff3f21'; context.textAlign = 'right'; context.fillText(`${hot}%`, bodyX + maxW, y + 130 * scale); context.textAlign = 'left';
+    context.save(); context.beginPath(); context.roundRect(barX, barY + 95 * scale, barW, barH, barH / 2); context.clip(); context.fillStyle = '#55df50'; context.fillRect(barX, barY + 95 * scale, barW * based / 100, barH); context.fillStyle = '#ff5431'; context.fillRect(barX + barW * based / 100, barY + 95 * scale, barW * hot / 100, barH); context.restore();
+    context.strokeStyle = '#101114'; context.lineWidth = 4 * scale; context.beginPath(); context.roundRect(barX, barY + 95 * scale, barW, barH, barH / 2); context.stroke();
+    y += 210 * scale;
+  }
+  if (stage >= 3) {
+    context.fillStyle = '#101114'; context.font = `900 ${Math.round(24 * scale)}px Arial`; context.fillText('TOP TAKE', bodyX, y);
+    context.fillStyle = '#2e333b'; context.font = `800 ${Math.round(31 * scale)}px Arial`; drawViralText(context, `“${topCommentText(post)}”`, bodyX, y + 42 * scale, maxW, 39 * scale, 3);
+  }
+  if (stage >= 4) {
+    context.fillStyle = '#101114'; context.font = `900 ${Math.round(32 * scale)}px Arial`; context.fillText('What do you think?', bodyX, cardY + cardH - 78 * scale);
+    context.textAlign = 'right'; context.fillText('VOTE ON CALLOUT', cardX + cardW - 45 * scale, cardY + cardH - 78 * scale); context.textAlign = 'left';
+  }
+  context.fillStyle = '#101114'; context.font = `900 ${Math.round(20 * scale)}px Arial`; context.fillText('CALLOUT', cardX + 45 * scale, cardY + cardH - 35 * scale);
+}
+
+async function generateViralVideo(post, assets, button) {
+  if (!window.MediaRecorder || !HTMLCanvasElement.prototype.captureStream) return showToast('This browser cannot record video exports.');
+  button.disabled = true; button.textContent = 'Generating...';
+  const canvas = document.createElement('canvas'); canvas.width = 1080; canvas.height = 1920;
+  const stream = canvas.captureStream(30);
+  const mimeType = ['video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm'].find(type => MediaRecorder.isTypeSupported(type)) || '';
+  const recorder = new MediaRecorder(stream, mimeType ? { mimeType, videoBitsPerSecond: 4_000_000 } : { videoBitsPerSecond: 4_000_000 });
+  const chunks = [];
+  recorder.ondataavailable = event => { if (event.data?.size) chunks.push(event.data); };
+  const done = new Promise(resolve => { recorder.onstop = resolve; });
+  recorder.start();
+  const duration = 7600; const started = performance.now();
+  await new Promise(resolve => {
+    const frame = now => {
+      const progress = Math.min(1, (now - started) / duration);
+      drawViralVideoFrame(canvas, post, assets, progress);
+      if (progress < 1) requestAnimationFrame(frame); else resolve();
+    };
+    requestAnimationFrame(frame);
+  });
+  await new Promise(resolve => setTimeout(resolve, 180));
+  recorder.stop();
+  await done;
+  const blob = new Blob(chunks, { type: mimeType || 'video/webm' });
+  triggerBlobDownload(blob, `callout-${String(post.id || 'take').replace(/[^a-zA-Z0-9_-]/g, '')}-viral-video.webm`);
+  trackEvent('generate_viral_video', { post: post.id, votes: Number(post.alrightVotes || 0) + Number(post.cringeVotes || 0) });
+  button.disabled = false; button.textContent = 'Generate again';
+  showToast('Viral video downloaded.');
+}
+
+function triggerBlobDownload(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url; link.download = filename;
+  document.body.appendChild(link); link.click(); link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
 }
 
 async function openPostDownload(post) {
