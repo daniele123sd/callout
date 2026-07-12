@@ -97,9 +97,7 @@ const state = {
   botAutomation: null,
   analyticsError: '',
   analyticsDays: 28,
-  notificationFilter: 'all',
-  homeMode: 'feed',
-  swipeIndex: 0
+  notificationFilter: 'all'
   ,ideas: [], ideaMood: 'all'
 };
 
@@ -745,59 +743,6 @@ function feedMarkup(posts) {
   return `<section class="take-list">${posts.map((post, index) => `${postTemplate(post)}${(index + 1) % 3 === 0 ? inFeedAd() : ''}`).join('')}</section>`;
 }
 
-function swipeMediaMarkup(post) {
-  if (post.media?.length) {
-    return `<div class="swipe-post-media swipe-media-count-${Math.min(4, post.media.length)}">${post.media.slice(0, 4).map(item => item.type === 'video'
-      ? `<video muted playsinline preload="metadata" src="${escapeHtml(item.url)}" aria-label="Attached short video"></video>`
-      : `<img src="${escapeHtml(item.url)}" alt="${escapeHtml(item.alt || 'Attached media')}" loading="lazy" />`).join('')}</div>`;
-  }
-  if (post.externalEmbed) return `<div class="swipe-external">${externalEmbedMarkup(post.externalEmbed, true)}</div>`;
-  return '';
-}
-
-function swipeVoterChip(label, active) {
-  return `<span class="${active ? 'active' : ''}">${escapeHtml(label)}</span>`;
-}
-
-function swipePosts() {
-  const ownId = sessionUser?.id;
-  const otherPosts = ownId ? state.posts.filter(post => String(post.authorId) !== String(ownId)) : state.posts;
-  return otherPosts.length ? otherPosts : [];
-}
-
-function swipeView() {
-  const posts = swipePosts();
-  if (!posts.length) return `<section class="swipe-empty">${emptyState('↕', sessionUser ? 'No other takes to swipe yet' : 'No takes to swipe yet', sessionUser ? 'Swipe only shows takes from other people. Once someone else posts, their takes will appear here.' : 'Create the first take and it will appear here as a Based vs Hot Take card.', '<button class="primary-action" type="button" data-open-composer>Post a take</button>')}<button class="quiet-action" type="button" data-home-mode="feed">Back to Feed</button></section>`;
-  const currentIndex = Math.max(0, Math.min(state.swipeIndex, posts.length - 1));
-  const post = posts[currentIndex] || posts[0];
-  const total = post.alrightVotes + post.cringeVotes;
-  const basedPercent = total ? Math.round((post.alrightVotes / total) * 100) : 50;
-  const hotPercent = 100 - basedPercent;
-  const commentCount = post.comments?.length ? countComments(post.comments) : Number(post.commentCount || 0);
-  const basedVoters = post.userVote === 'alright' ? swipeVoterChip('You', true) : '<small>No visible voters yet</small>';
-  const hotVoters = post.userVote === 'cringe' ? swipeVoterChip('You', true) : '<small>No visible voters yet</small>';
-  return `<section class="swipe-stage" data-swipe-stage data-post-id="${post.id}">
-    <div class="swipe-zone swipe-zone-based" data-swipe-vote="alright"><strong>BASED</strong><span class="desktop-copy">Swipe left</span><span class="mobile-copy">Swipe up</span></div>
-    <div class="swipe-zone swipe-zone-hot" data-swipe-vote="cringe"><strong>HOT TAKE</strong><span class="desktop-copy">Swipe right</span><span class="mobile-copy">Swipe down</span></div>
-    <i class="swipe-squiggle" aria-hidden="true"></i>
-    <div class="swipe-topbar"><button type="button" data-home-mode="feed">← Back to Feed</button><b>Swipe the take</b><span>${currentIndex + 1}/${posts.length}</span></div>
-    <article class="swipe-card">
-      <div class="swipe-card-stack one"></div><div class="swipe-card-stack two"></div>
-      <div class="swipe-card-inner">
-        <header>${postAvatarMarkup(post)}<div><strong>${escapeHtml(post.authorHandle || '@member')}</strong><small>${timeLabel(post.createdAt || Date.now())} in ${escapeHtml(post.category)}</small></div><button class="icon-button" type="button" data-post-menu="${post.id}" aria-label="Post options"><svg><use href="#i-more"></use></svg></button></header>
-        <h2>${formatPostContent(post.text)}</h2>
-        ${swipeMediaMarkup(post)}
-      </div>
-    </article>
-    <section class="swipe-stat-card" style="--based:${basedPercent}%">
-      <div class="swipe-stat-side based"><b>${basedPercent}%</b><span>Based</span><div>${basedVoters}</div></div>
-      <div class="swipe-stat-bar"><i></i></div>
-      <div class="swipe-stat-side hot"><b>${hotPercent}%</b><span>Hot Take</span><div>${hotVoters}</div></div>
-      <footer><span>${total} ${total === 1 ? 'vote' : 'votes'} · ${commentCount} ${commentCount === 1 ? 'Take' : 'Takes'}</span><button type="button" data-swipe-next>Next take</button></footer>
-    </section>
-  </section>`;
-}
-
 function homeView() {
   const posts = state.posts.length
     ? feedMarkup(state.posts)
@@ -816,25 +761,7 @@ function homeView() {
 }
 
 function homeExperienceView() {
-  const mode = state.homeMode === 'swipe' ? 'swipe' : 'feed';
-  const posts = state.posts.length
-    ? feedMarkup(state.posts)
-    : emptyState('✦', 'No takes to show yet', 'Your feed is ready for real community posts. Create the first take to see voting come alive.', '<button class="primary-action" type="button" data-open-composer>Post your first take</button>');
-
-  return `${adBanner('top-leaderboard')}
-    <div class="home-mode-tabs" role="tablist" aria-label="Home views">
-      <button class="tab ${mode === 'feed' ? 'active' : ''}" type="button" data-home-mode="feed">Feed</button>
-      <button class="tab ${mode === 'swipe' ? 'active' : ''}" type="button" data-home-mode="swipe">Swipe</button>
-    </div>
-    ${mode === 'feed' ? `<div class="feed-tabs" role="tablist" aria-label="Feed filters">
-      <button class="tab active" type="button" data-feed-tab="For You">For You</button>
-      <button class="tab" type="button" data-feed-tab="Following">Following</button>
-      <button class="tab" type="button" data-feed-tab="Latest">Latest</button>
-    </div>
-    <div class="category-row" aria-label="Filter by category">
-      <button class="chip active" type="button" data-category="All">All</button><button class="chip" type="button" data-category="Entertainment">Entertainment</button><button class="chip" type="button" data-category="Music">Music</button><button class="chip" type="button" data-category="Movies">Movies</button><button class="chip" type="button" data-category="Games">Games</button><button class="chip" type="button" data-category="Life">Life</button>
-    </div>
-    <div id="feedResults">${posts}</div>` : swipeView()}`;
+  return homeView();
 }
 
 function trendingView() {
@@ -1179,56 +1106,6 @@ function findPostById(id) {
   return [...state.posts, ...state.guildPosts].find(item => String(item.id) === String(id));
 }
 
-function advanceSwipeCard() {
-  const posts = swipePosts();
-  if (!posts.length) return;
-  state.swipeIndex = (state.swipeIndex + 1) % posts.length;
-  renderRoute();
-}
-
-async function submitSwipeVote(value) {
-  const posts = swipePosts();
-  const post = posts[Math.max(0, Math.min(state.swipeIndex, posts.length - 1))] || posts[0];
-  if (!post) return;
-  if (!sessionUser) { navigate('auth'); return showToast('Sign in to swipe-vote.'); }
-  try {
-    const payload = await apiFetch(`/api/posts/${post.databaseId}/vote`, { method: 'POST', body: JSON.stringify({ value }) });
-    Object.assign(post, { alrightVotes: payload.post.alrightVotes, cringeVotes: payload.post.cringeVotes, userVote: payload.post.userVote, impressions: payload.post.impressions });
-    await Promise.all([hydrateTrending(), hydrateSession(), hydrateLeaderboard()]);
-    trackEvent('rank_post', { rank_value: value, post_category: post.category, surface: 'swipe' });
-    showToast(payload.post.userVote ? `Swipe counted: ${value === 'alright' ? 'Based' : 'Hot Take'}.` : 'Swipe vote removed.');
-    advanceSwipeCard();
-  } catch (error) { showToast(error.message); }
-}
-
-function bindSwipeInteractions() {
-  document.querySelectorAll('[data-home-mode]').forEach(button => button.addEventListener('click', () => { state.homeMode = button.dataset.homeMode; renderRoute(); }));
-  document.querySelectorAll('[data-swipe-vote]').forEach(zone => zone.addEventListener('click', () => submitSwipeVote(zone.dataset.swipeVote)));
-  document.querySelector('[data-swipe-next]')?.addEventListener('click', advanceSwipeCard);
-  const stage = document.querySelector('[data-swipe-stage]');
-  if (!stage) return;
-  let startX = 0; let startY = 0;
-  stage.addEventListener('touchstart', event => { const touch = event.changedTouches[0]; startX = touch.clientX; startY = touch.clientY; }, { passive: true });
-  stage.addEventListener('touchend', event => {
-    const touch = event.changedTouches[0];
-    const deltaX = touch.clientX - startX;
-    const deltaY = touch.clientY - startY;
-    if (window.matchMedia('(max-width: 620px)').matches) {
-      if (Math.abs(deltaY) < 52 || Math.abs(deltaY) < Math.abs(deltaX)) return;
-      submitSwipeVote(deltaY < 0 ? 'alright' : 'cringe');
-      return;
-    }
-    if (Math.abs(deltaX) < 52 || Math.abs(deltaX) < Math.abs(deltaY)) return;
-    submitSwipeVote(deltaX < 0 ? 'alright' : 'cringe');
-  }, { passive: true });
-  stage.addEventListener('keydown', event => {
-    if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') submitSwipeVote('alright');
-    if (event.key === 'ArrowRight' || event.key === 'ArrowDown') submitSwipeVote('cringe');
-    if (event.key === 'n' || event.key === 'N') advanceSwipeCard();
-  });
-  stage.tabIndex = 0;
-}
-
 function bindPostInteractions() {
   document.querySelectorAll('[data-vote]').forEach(button => button.addEventListener('click', async () => {
     const card = button.closest('[data-post-id]');
@@ -1274,7 +1151,6 @@ function bindPostInteractions() {
 
 function bindViewInteractions(route) {
   bindPostInteractions();
-  bindSwipeInteractions();
   document.querySelectorAll('[data-open-composer]').forEach(button => button.addEventListener('click', openComposerForUser));
   document.querySelector('[data-open-idea-form]')?.addEventListener('click', openIdeaSubmission);
   document.querySelectorAll('[data-idea-mood]').forEach(button => button.addEventListener('click', () => { state.ideaMood = button.dataset.ideaMood; renderRoute(); }));
