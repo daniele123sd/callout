@@ -769,9 +769,9 @@ function postEmojiPicker(post) {
   const totalReactions = postReactions.reduce((sum, reaction) => sum + Number(post.emojiReactions?.[reaction.key]?.count || 0), 0);
   return `<div class="post-emoji-reactions" aria-label="React to this post">
     <details class="emoji-picker">
-      <summary aria-label="Open Callout emoji reactions"><span class="emoji-trigger-face">☻</span><b>${totalReactions || ''}</b><small>${activeCount}/5</small></summary>
+      <summary aria-label="Open Callout emoji reactions"><span class="emoji-trigger-face">☻</span><i aria-hidden="true">⌄</i></summary>
       <div class="emoji-menu" role="menu" aria-label="Callout reactions">
-        <header><strong>Callout emojis</strong><small>Pick up to 5</small></header>
+        <header><strong>Callout emojis</strong><small>${activeCount}/5 picked${totalReactions ? ` · ${totalReactions} total` : ''}</small></header>
         <div>${postReactions.map(reaction => { const value = post.emojiReactions?.[reaction.key] || {}; const locked = activeCount >= 5 && !value.reacted; return `<button type="button" data-post-reaction="${reaction.key}" aria-label="${reaction.label}" title="${reaction.label}" class="emoji-reaction emoji-${reaction.key} ${value.reacted ? 'reacted' : ''}" ${locked ? 'disabled' : ''}><span>${reaction.face}</span><strong>${escapeHtml(reaction.label)}</strong><b>${Number(value.count || 0)}</b></button>`; }).join('')}</div>
       </div>
     </details>
