@@ -764,17 +764,27 @@ function feedMarkup(posts) {
   return `<section class="take-list">${posts.map((post, index) => `${postTemplate(post)}${(index + 1) % 3 === 0 ? inFeedAd() : ''}`).join('')}</section>`;
 }
 
+function reactionTone(index) {
+  return `tone-${index % 10}`;
+}
+
+function calloutEmojiFace(reaction, index, className = '') {
+  return `<span class="callout-emoji ${reactionTone(index)} ${className}">${reaction.face}</span>`;
+}
+
 function postEmojiPicker(post) {
   const activeCount = postReactions.filter(reaction => post.emojiReactions?.[reaction.key]?.reacted).length;
   const totalReactions = postReactions.reduce((sum, reaction) => sum + Number(post.emojiReactions?.[reaction.key]?.count || 0), 0);
+  const visibleReactions = postReactions.map((reaction, index) => ({ reaction, index, value: post.emojiReactions?.[reaction.key] || {} })).filter(item => Number(item.value.count || 0) > 0);
   return `<div class="post-emoji-reactions" aria-label="React to this post">
     <details class="emoji-picker">
-      <summary aria-label="Open Callout emoji reactions"><span class="emoji-trigger-face">☻</span><i aria-hidden="true">⌄</i></summary>
+      <summary aria-label="Open Callout emoji reactions">${calloutEmojiFace({ face: '☻' }, 1, 'emoji-trigger-face')}<i aria-hidden="true">⌄</i></summary>
       <div class="emoji-menu" role="menu" aria-label="Callout reactions">
         <header><strong>Callout emojis</strong><small>${activeCount}/5 picked${totalReactions ? ` · ${totalReactions} total` : ''}</small></header>
-        <div>${postReactions.map(reaction => { const value = post.emojiReactions?.[reaction.key] || {}; const locked = activeCount >= 5 && !value.reacted; return `<button type="button" data-post-reaction="${reaction.key}" aria-label="${reaction.label}" title="${reaction.label}" class="emoji-reaction emoji-${reaction.key} ${value.reacted ? 'reacted' : ''}" ${locked ? 'disabled' : ''}><span>${reaction.face}</span><strong>${escapeHtml(reaction.label)}</strong><b>${Number(value.count || 0)}</b></button>`; }).join('')}</div>
+        <div>${postReactions.map((reaction, index) => { const value = post.emojiReactions?.[reaction.key] || {}; const locked = activeCount >= 5 && !value.reacted; return `<button type="button" data-post-reaction="${reaction.key}" aria-label="${reaction.label}" title="${reaction.label}" class="emoji-reaction emoji-${reaction.key} ${reactionTone(index)} ${value.reacted ? 'reacted' : ''}" ${locked ? 'disabled' : ''}>${calloutEmojiFace(reaction, index)}<strong>${escapeHtml(reaction.label)}</strong><b>${Number(value.count || 0)}</b></button>`; }).join('')}</div>
       </div>
     </details>
+    ${visibleReactions.length ? `<div class="emoji-selected-strip" aria-label="Selected reactions">${visibleReactions.map(({ reaction, index, value }) => `<button type="button" data-post-reaction="${reaction.key}" class="emoji-selected-pill ${reactionTone(index)} ${value.reacted ? 'reacted' : ''}" aria-label="${reaction.label}">${calloutEmojiFace(reaction, index)}<b>${Number(value.count || 0)}</b></button>`).join('')}</div>` : ''}
   </div>`;
 }
 
