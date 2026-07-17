@@ -107,7 +107,28 @@ if (storedState?.settings?.appearanceVersion !== 2) {
 }
 
 const routes = new Set(['home', 'trending', 'guilds', 'guild', 'ideas', 'leaderboards', 'vibe-progress', 'notifications', 'messages', 'saved', 'profile', 'user', 'settings', 'customize', 'accessibility', 'analytics', 'take', 'auth']);
-const postReactions = [{ key: 'fire', face: '🔥', label: 'Fire' }, { key: 'dead', face: '💀', label: 'Dead' }, { key: 'laugh', face: '😂', label: 'Laughing' }, { key: 'sideeye', face: '👀', label: 'Side-eye' }, { key: 'mindblown', face: '🤯', label: 'Mind blown' }];
+const postReactions = [
+  { key: 'spark', face: '✦', label: 'Sparked' },
+  { key: 'purple_smile', face: '☻', label: 'Purple smile' },
+  { key: 'based_crown', face: '♛', label: 'Based crown' },
+  { key: 'heat', face: '♨', label: 'Heat check' },
+  { key: 'micdrop', face: '♪', label: 'Mic drop' },
+  { key: 'sideeye', face: '◔', label: 'Side-eye' },
+  { key: 'brainzap', face: '⚡', label: 'Brain zap' },
+  { key: 'popcorn', face: '▣', label: 'Popcorn' },
+  { key: 'gold_star', face: '★', label: 'Gold star' },
+  { key: 'red_flag', face: '⚑', label: 'Red flag' },
+  { key: 'diamond', face: '◇', label: 'Diamond take' },
+  { key: 'ghosted', face: '♧', label: 'Ghosted' },
+  { key: 'clown', face: '◉', label: 'Clown energy' },
+  { key: 'tiny_fire', face: '🔥', label: 'Tiny fire' },
+  { key: 'skull', face: '☠', label: 'Done' },
+  { key: 'laugh', face: '☺', label: 'Laughing' },
+  { key: 'question', face: '?', label: 'Questionable' },
+  { key: 'loud', face: '!', label: 'Loud take' },
+  { key: 'rare', face: '✧', label: 'Rare take' },
+  { key: 'callout', face: '◎', label: 'Callout certified' }
+];
 const mainContent = document.querySelector('#mainContent');
 const composer = document.querySelector('#composer');
 const guildComposer = document.querySelector('#guildComposer');
@@ -646,7 +667,7 @@ function postTemplate(post, detail = false) {
       <b class="percent cringe-percent">${cringePercent}%</b>
       <button class="vote-button cringe hot-take ${post.userVote === 'cringe' ? 'selected' : ''}" type="button" data-vote="cringe"><span class="vote-face">${calloutGlyph('cringe')}</span><strong>HOT TAKE</strong></button>
     </div>
-    <div class="post-emoji-reactions" aria-label="React to this post">${postReactions.map(reaction => { const value = post.emojiReactions?.[reaction.key] || {}; return `<button type="button" data-post-reaction="${reaction.key}" aria-label="${reaction.label}" title="${reaction.label}" class="emoji-reaction emoji-${reaction.key} ${value.reacted ? 'reacted' : ''}"><span>${reaction.face}</span><b>${Number(value.count || 0)}</b></button>`; }).join('')}</div>
+    ${postEmojiPicker(post)}
     <div class="take-footer"><span>${total} ${total === 1 ? 'vote' : 'votes'}　•　${commentCount} ${commentCount === 1 ? 'Take' : 'Takes'}</span>${detail ? '' : `<button class="comment-link" type="button" data-open-take="${post.id}">Open take →</button>`}</div>
   </article>`;
 }
@@ -741,6 +762,20 @@ function takeDetailView() {
 
 function feedMarkup(posts) {
   return `<section class="take-list">${posts.map((post, index) => `${postTemplate(post)}${(index + 1) % 3 === 0 ? inFeedAd() : ''}`).join('')}</section>`;
+}
+
+function postEmojiPicker(post) {
+  const activeCount = postReactions.filter(reaction => post.emojiReactions?.[reaction.key]?.reacted).length;
+  const totalReactions = postReactions.reduce((sum, reaction) => sum + Number(post.emojiReactions?.[reaction.key]?.count || 0), 0);
+  return `<div class="post-emoji-reactions" aria-label="React to this post">
+    <details class="emoji-picker">
+      <summary aria-label="Open Callout emoji reactions"><span class="emoji-trigger-face">☻</span><b>${totalReactions || ''}</b><small>${activeCount}/5</small></summary>
+      <div class="emoji-menu" role="menu" aria-label="Callout reactions">
+        <header><strong>Callout emojis</strong><small>Pick up to 5</small></header>
+        <div>${postReactions.map(reaction => { const value = post.emojiReactions?.[reaction.key] || {}; const locked = activeCount >= 5 && !value.reacted; return `<button type="button" data-post-reaction="${reaction.key}" aria-label="${reaction.label}" title="${reaction.label}" class="emoji-reaction emoji-${reaction.key} ${value.reacted ? 'reacted' : ''}" ${locked ? 'disabled' : ''}><span>${reaction.face}</span><strong>${escapeHtml(reaction.label)}</strong><b>${Number(value.count || 0)}</b></button>`; }).join('')}</div>
+      </div>
+    </details>
+  </div>`;
 }
 
 function homeView() {

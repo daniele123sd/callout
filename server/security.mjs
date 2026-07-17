@@ -154,7 +154,7 @@ export const schemas = {
     debateVoiceId: Joi.string().pattern(/^[A-Za-z0-9_-]{8,120}$/).required(),
     calmVoiceId: Joi.string().pattern(/^[A-Za-z0-9_-]{8,120}$/).required()
   }),
-  emojiReaction: Joi.object({ key: Joi.string().valid('fire', 'dead', 'laugh', 'sideeye', 'mindblown').required() }),
+  emojiReaction: Joi.object({ key: Joi.string().valid('spark', 'purple_smile', 'based_crown', 'heat', 'micdrop', 'sideeye', 'brainzap', 'popcorn', 'gold_star', 'red_flag', 'diamond', 'ghosted', 'clown', 'tiny_fire', 'skull', 'laugh', 'question', 'loud', 'rare', 'callout').required() }),
   embedPreview: Joi.object({ url: Joi.string().uri({ scheme: ['https'] }).max(2048).required() }),
   featureIdea: Joi.object({ text: plain(400).min(8).required(), mood: Joi.string().valid('electric', 'chaotic', 'soft', 'dark', 'wild').required() }),
   adminPost: Joi.object({

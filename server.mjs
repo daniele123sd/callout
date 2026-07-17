@@ -357,6 +357,7 @@ app.post('/api/posts/:id/reactions', requireAuth, validate(schemas.emojiReaction
     if (!(await canAccessPost(req.params.id, req.userId))) return res.status(403).json({ error: 'This post is not available to you.' });
     const post = await reactToPost(req.params.id, req.userId, req.body.key);
     if (!post) return res.status(404).json({ error: 'Post not found.' });
+    if (post.limit) return res.status(400).json({ error: 'You can use up to 5 emojis per post.' });
     res.json({ post });
   } catch (error) { next(error); }
 });

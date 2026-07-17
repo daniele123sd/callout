@@ -90,7 +90,7 @@ const postSchema = new mongoose.Schema({
   }],
   emojiReactions: [{
     _id: false,
-    key: { type: String, enum: ['fire', 'dead', 'laugh', 'sideeye', 'mindblown'], required: true },
+    key: { type: String, enum: ['spark', 'purple_smile', 'based_crown', 'heat', 'micdrop', 'sideeye', 'brainzap', 'popcorn', 'gold_star', 'red_flag', 'diamond', 'ghosted', 'clown', 'tiny_fire', 'skull', 'laugh', 'question', 'loud', 'rare', 'callout', 'fire', 'dead', 'mindblown'], required: true },
     users: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }]
   }]
 }, { timestamps: true });

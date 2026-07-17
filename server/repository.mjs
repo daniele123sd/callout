@@ -31,6 +31,7 @@ const memoryGuildAudits = [];
 const memoryNotificationMutes = [];
 const memoryFeatureIdeas = [];
 const VIRAL_VIDEO_MILESTONES = [100, 500, 1000];
+const POST_REACTION_KEYS = ['spark', 'purple_smile', 'based_crown', 'heat', 'micdrop', 'sideeye', 'brainzap', 'popcorn', 'gold_star', 'red_flag', 'diamond', 'ghosted', 'clown', 'tiny_fire', 'skull', 'laugh', 'question', 'loud', 'rare', 'callout'];
 
 const DEFAULT_GUILD_ROLES = [
   { key: 'owner', name: 'Owner', color: '#ff4713', rank: 100, builtIn: true, permissions: { manageGuild: true, manageRoles: true, manageMembers: true, managePosts: true, createPosts: true, chat: true, viewAudit: true } },
@@ -208,8 +209,7 @@ const serializePost = (post, userId = '') => {
   const votes = value.votes || [];
   const userVote = votes.find(vote => String(vote.user?._id || vote.user) === String(userId))?.value || null;
   const poll = value.poll?.options?.length ? { ...value.poll, options: value.poll.options.map(option => ({ id: String(option._id || option.id), text: option.text, votes: option.voters?.length || 0, voted: (option.voters || []).some(voter => String(voter) === String(userId)), voters: undefined })) } : null;
-  const reactionKeys = ['fire', 'dead', 'laugh', 'sideeye', 'mindblown'];
-  const emojiReactions = Object.fromEntries(reactionKeys.map(key => { const reaction = (value.emojiReactions || []).find(item => item.key === key); return [key, { count: reaction?.users?.length || 0, reacted: (reaction?.users || []).some(user => String(user?._id || user) === String(userId)) }]; }));
+  const emojiReactions = Object.fromEntries(POST_REACTION_KEYS.map(key => { const reaction = (value.emojiReactions || []).find(item => item.key === key); return [key, { count: reaction?.users?.length || 0, reacted: (reaction?.users || []).some(user => String(user?._id || user) === String(userId)) }]; }));
   const adminMetrics = value.adminMetrics || {};
   const effective = {
     alrightVotes: Math.max(0, Number(value.alrightVotes || 0) + Number(adminMetrics.basedAdjustment || 0)),
@@ -267,7 +267,10 @@ export async function reactToPost(postId, userId, key) {
     let reaction = post.emojiReactions.find(item => item.key === key);
     if (!reaction) { post.emojiReactions.push({ key, users: [] }); reaction = post.emojiReactions[post.emojiReactions.length - 1]; }
     const index = reaction.users.findIndex(user => String(user) === String(userId));
-    if (index >= 0) reaction.users.splice(index, 1); else reaction.users.push(userId);
+    const activeCount = post.emojiReactions.filter(item => (item.users || []).some(user => String(user) === String(userId))).length;
+    if (index >= 0) reaction.users.splice(index, 1);
+    else if (activeCount >= 5) return { limit: true };
+    else reaction.users.push(userId);
     await post.save();
     await post.populate('author', 'displayName handle avatarUrl isAutomated automationPersona');
     const commentCount = await Comment.countDocuments({ post: post._id });
@@ -283,7 +286,10 @@ export async function reactToPost(postId, userId, key) {
   let reaction = post.emojiReactions.find(item => item.key === key);
   if (!reaction) { reaction = { key, users: [] }; post.emojiReactions.push(reaction); }
   const index = reaction.users.indexOf(String(userId));
-  if (index >= 0) reaction.users.splice(index, 1); else reaction.users.push(String(userId));
+  const activeCount = post.emojiReactions.filter(item => (item.users || []).includes(String(userId))).length;
+  if (index >= 0) reaction.users.splice(index, 1);
+  else if (activeCount >= 5) return { limit: true };
+  else reaction.users.push(String(userId));
   return {
     ...serializePost(post, userId),
     author: publicIdentity(memoryUsers.get(String(post.author))),
