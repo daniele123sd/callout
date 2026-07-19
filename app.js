@@ -162,6 +162,7 @@ function adConfiguration() {
 }
 
 let adResizeObserver = null;
+let adsenseScriptReady = false;
 
 function requestAdUnit(unit, client) {
   if (!unit?.isConnected || unit.dataset.calloutAdReady === 'true') return false;
@@ -200,7 +201,7 @@ function requestAdUnit(unit, client) {
 
 function initializeAds(root = document) {
   const { client } = adConfiguration();
-  if (!/^ca-pub-\d{10,}$/.test(client) || location.protocol === 'file:') return;
+  if (!adsenseScriptReady || !/^ca-pub-\d{10,}$/.test(client) || location.protocol === 'file:') return;
   root.querySelectorAll('.adsbygoogle:not([data-callout-ad-ready])').forEach(unit => {
     const container = unit.closest('.ad-slot');
     if (requestAdUnit(unit, client) || !container || typeof ResizeObserver === 'undefined') return;
@@ -222,9 +223,11 @@ function loadProductionAds() {
   script.async = true;
   script.crossOrigin = 'anonymous';
   script.src = `https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=${encodeURIComponent(client)}`;
-  script.addEventListener('load', () => initializeAds());
+  script.addEventListener('load', () => {
+    adsenseScriptReady = true;
+    initializeAds();
+  });
   document.head.appendChild(script);
-  initializeAds();
 }
 
 let lastTrackedPath = '';
