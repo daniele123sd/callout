@@ -164,6 +164,21 @@ function adConfiguration() {
 let adResizeObserver = null;
 let adsenseScriptReady = false;
 
+function observeAdContainer(container) {
+  if (!container || typeof ResizeObserver === 'undefined') return;
+  adResizeObserver ||= new ResizeObserver(entries => {
+    entries.forEach(entry => {
+      if (entry.contentRect.width < 250) return;
+      const pendingUnit = entry.target.querySelector('.callout-ad-pending:not([data-callout-ad-ready])');
+      if (!pendingUnit) return;
+      pendingUnit.classList.remove('callout-ad-pending');
+      pendingUnit.classList.add('adsbygoogle');
+      if (requestAdUnit(pendingUnit, adConfiguration().client)) adResizeObserver.unobserve(entry.target);
+    });
+  });
+  adResizeObserver.observe(container);
+}
+
 function requestAdUnit(unit, client) {
   if (!unit?.isConnected || unit.dataset.calloutAdReady === 'true') return false;
   const slot = unit.dataset.adSlot || '';
@@ -202,17 +217,17 @@ function requestAdUnit(unit, client) {
 function initializeAds(root = document) {
   const { client } = adConfiguration();
   if (!adsenseScriptReady || !/^ca-pub-\d{10,}$/.test(client) || location.protocol === 'file:') return;
-  root.querySelectorAll('.adsbygoogle:not([data-callout-ad-ready])').forEach(unit => {
+  const units = [...root.querySelectorAll('.adsbygoogle:not([data-callout-ad-ready]), .callout-ad-pending:not([data-callout-ad-ready])')];
+  units.forEach(unit => {
     const container = unit.closest('.ad-slot');
-    if (requestAdUnit(unit, client) || !container || typeof ResizeObserver === 'undefined') return;
-    adResizeObserver ||= new ResizeObserver(entries => {
-      entries.forEach(entry => {
-        if (entry.contentRect.width < 250) return;
-        const pendingUnit = entry.target.querySelector('.adsbygoogle:not([data-callout-ad-ready])');
-        if (pendingUnit && requestAdUnit(pendingUnit, adConfiguration().client)) adResizeObserver.unobserve(entry.target);
-      });
-    });
-    adResizeObserver.observe(container);
+    if (!container || container.getBoundingClientRect().width >= 250) return;
+    unit.classList.remove('adsbygoogle');
+    unit.classList.add('callout-ad-pending');
+    observeAdContainer(container);
+  });
+  units.forEach(unit => {
+    if (unit.classList.contains('callout-ad-pending')) return;
+    requestAdUnit(unit, client);
   });
 }
 
