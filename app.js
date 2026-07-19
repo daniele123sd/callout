@@ -161,24 +161,57 @@ function adConfiguration() {
   };
 }
 
+let adResizeObserver = null;
+
+function requestAdUnit(unit, client) {
+  if (!unit?.isConnected || unit.dataset.calloutAdReady === 'true') return false;
+  const slot = unit.dataset.adSlot || '';
+  if (!/^\d+$/.test(slot)) return false;
+  const container = unit.closest('.ad-slot');
+  if (!container) return false;
+
+  container.classList.add('is-ad-measuring');
+  if (container.getBoundingClientRect().width < 250) {
+    container.classList.remove('is-ad-measuring');
+    return false;
+  }
+
+  unit.dataset.adClient = client;
+  unit.dataset.calloutAdReady = 'true';
+  container.classList.remove('is-ad-measuring');
+  container.classList.add('is-ad-requested');
+  const syncAdStatus = () => {
+    const filled = unit.dataset.adStatus === 'filled';
+    container.classList.toggle('is-ad-live', filled);
+    container.classList.toggle('is-ad-unfilled', unit.dataset.adStatus === 'unfilled');
+  };
+  new MutationObserver(syncAdStatus).observe(unit, { attributes: true, attributeFilter: ['data-ad-status'] });
+  syncAdStatus();
+  try {
+    (window.adsbygoogle = window.adsbygoogle || []).push({});
+    return true;
+  } catch (error) {
+    delete unit.dataset.calloutAdReady;
+    container.classList.remove('is-ad-requested');
+    console.warn('AdSense unit deferred:', error.message);
+    return false;
+  }
+}
+
 function initializeAds(root = document) {
   const { client } = adConfiguration();
   if (!/^ca-pub-\d{10,}$/.test(client) || location.protocol === 'file:') return;
   root.querySelectorAll('.adsbygoogle:not([data-callout-ad-ready])').forEach(unit => {
-    const slot = unit.dataset.adSlot || '';
-    if (!/^\d+$/.test(slot)) return;
-    unit.dataset.adClient = client;
-    unit.dataset.calloutAdReady = 'true';
     const container = unit.closest('.ad-slot');
-    container?.classList.add('is-ad-requested');
-    const syncAdStatus = () => {
-      const filled = unit.dataset.adStatus === 'filled';
-      container?.classList.toggle('is-ad-live', filled);
-      container?.classList.toggle('is-ad-unfilled', unit.dataset.adStatus === 'unfilled');
-    };
-    new MutationObserver(syncAdStatus).observe(unit, { attributes: true, attributeFilter: ['data-ad-status'] });
-    syncAdStatus();
-    try { (window.adsbygoogle = window.adsbygoogle || []).push({}); } catch (error) { console.warn('AdSense unit deferred:', error.message); }
+    if (requestAdUnit(unit, client) || !container || typeof ResizeObserver === 'undefined') return;
+    adResizeObserver ||= new ResizeObserver(entries => {
+      entries.forEach(entry => {
+        if (entry.contentRect.width < 250) return;
+        const pendingUnit = entry.target.querySelector('.adsbygoogle:not([data-callout-ad-ready])');
+        if (pendingUnit && requestAdUnit(pendingUnit, adConfiguration().client)) adResizeObserver.unobserve(entry.target);
+      });
+    });
+    adResizeObserver.observe(container);
   });
 }
 

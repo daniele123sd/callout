@@ -94,9 +94,10 @@ a { color: inherit; text-decoration: none; }
 .ad-slot { position: relative; overflow: hidden; }
 .ad-placeholder-copy { display: flex; align-items: center; gap: 9px; }
 .ad-slot .adsbygoogle { display: none; width: 100%; height: 100%; }
+.ad-slot.is-ad-measuring .adsbygoogle, .ad-slot.is-ad-requested .adsbygoogle { position: absolute; inset: 0; display: block; visibility: hidden; min-width: 250px; }
 .ad-slot.is-ad-requested:not(.is-ad-live) .ad-placeholder-copy { display: flex; }
 .ad-slot.is-ad-live { display: block; border-style: solid; background: var(--paper); }
-.ad-slot.is-ad-live .adsbygoogle { display: block; opacity: 1; }
+.ad-slot.is-ad-live .adsbygoogle { position: static; display: block; visibility: visible; opacity: 1; }
 .ad-slot.is-ad-live .ad-placeholder-copy { display: none; }
 .ad-slot.is-ad-live:has(.adsbygoogle[data-ad-status="unfilled"]) { display: flex; border-style: dashed; background: repeating-linear-gradient(135deg,var(--paper),var(--paper) 10px,var(--soft) 10px,var(--soft) 20px); }
 .ad-slot.is-ad-live:has(.adsbygoogle[data-ad-status="unfilled"]) .adsbygoogle { display: none !important; }
