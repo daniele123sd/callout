@@ -1751,20 +1751,32 @@ function triggerBlobDownload(blob, filename) {
 }
 
 async function openPostDownload(post) {
-  const format = selectExportFormat(post); let backgroundMode = 'transparent'; let canvases = [];
-  showActionDialog(actionDialogShell('EXPORT TAKE', 'Ready for social', `<p class="dialog-copy">Callout selected the best portrait size for this post.</p><div class="export-auto-format"><strong>${format.label}</strong><span>${format.width} × ${format.height} · 2 PNGs</span></div><div class="export-background-choice" role="group" aria-label="Export background"><button type="button" data-export-background="transparent" class="active">Transparent outside</button><button type="button" data-export-background="brand">Callout background</button></div><div class="export-pair-preview export-preview-loading" id="exportPairPreview"><p>Building previews...</p></div><button class="primary-action export-pair-download" type="button" id="downloadExportPair" disabled>Preparing images...</button>`));
+  const format = selectExportFormat(post); let backgroundMode = 'transparent'; let canvases = []; let takesCanvas = null;
+  showActionDialog(actionDialogShell('EXPORT TAKE', 'Ready for social', `<p class="dialog-copy">Download the post cards, or export the best Takes as one clean discussion image.</p><div class="export-auto-format"><strong>${format.label}</strong><span>${format.width} × ${format.height} · 3 export options</span></div><div class="export-background-choice" role="group" aria-label="Export background"><button type="button" data-export-background="transparent" class="active">Transparent outside</button><button type="button" data-export-background="brand">Callout background</button></div><div class="export-pair-preview export-preview-loading" id="exportPairPreview"><p>Building previews...</p></div><div class="export-download-actions"><button class="primary-action export-pair-download" type="button" id="downloadExportPair" disabled>Preparing post images...</button><button class="quiet-action export-takes-download" type="button" id="downloadExportTakes" disabled>Preparing Takes...</button></div>`));
   try {
-    const assets = await loadExportAssets(post);
+    const takes = await loadExportTakes(post);
+    const assets = await loadExportAssets(post, takes);
     const renderPreview = () => {
       canvases = [drawQuoteExport(post, format, assets, backgroundMode), drawVoteExport(post, format, assets, backgroundMode)];
+      takesCanvas = takes.length ? drawTakesExport(post, takes, format, assets, backgroundMode) : null;
       const preview = document.querySelector('#exportPairPreview'); if (!preview) return;
       preview.classList.remove('export-preview-loading'); preview.classList.toggle('transparent-preview', backgroundMode === 'transparent'); preview.innerHTML = '';
-      [['Quote card', canvases[0]], ['Live votes', canvases[1]]].forEach(([label, canvas]) => { const item = document.createElement('figure'); item.append(canvas); item.insertAdjacentHTML('beforeend', `<figcaption>${label}</figcaption>`); preview.append(item); });
+      const previews = [['Quote card', canvases[0]], ['Live votes', canvases[1]]];
+      if (takesCanvas) previews.push([`${takes.length} Top ${takes.length === 1 ? 'Take' : 'Takes'}`, takesCanvas]);
+      previews.forEach(([label, canvas]) => { const item = document.createElement('figure'); item.append(canvas); item.insertAdjacentHTML('beforeend', `<figcaption>${label}</figcaption>`); preview.append(item); });
     };
     renderPreview();
     document.querySelectorAll('[data-export-background]').forEach(choice => choice.addEventListener('click', () => { backgroundMode = choice.dataset.exportBackground; document.querySelectorAll('[data-export-background]').forEach(button => button.classList.toggle('active', button === choice)); renderPreview(); }));
     const button = document.querySelector('#downloadExportPair'); button.disabled = false; button.textContent = 'Download both images';
     button.addEventListener('click', async () => { button.disabled = true; button.textContent = 'Downloading...'; try { await downloadPostImages(post, format, backgroundMode, canvases); closeActionDialog(); showToast('Quote and vote images downloaded.'); } catch (error) { button.disabled = false; button.textContent = 'Try download again'; showToast(error.message); } });
+    const takesButton = document.querySelector('#downloadExportTakes');
+    takesButton.disabled = !takesCanvas; takesButton.textContent = takesCanvas ? `Download Takes (${takes.length})` : 'No Takes to download';
+    takesButton.addEventListener('click', async () => {
+      if (!takesCanvas) return;
+      takesButton.disabled = true; takesButton.textContent = 'Downloading Takes...';
+      try { await downloadTakesImage(post, format, backgroundMode, takesCanvas); closeActionDialog(); showToast('Top Takes image downloaded.'); }
+      catch (error) { takesButton.disabled = false; takesButton.textContent = 'Try download again'; showToast(error.message); }
+    });
   } catch (error) { const preview = document.querySelector('#exportPairPreview'); if (preview) preview.innerHTML = '<p>Preview could not be generated.</p>'; showToast(error.message); }
 }
 
@@ -1810,9 +1822,30 @@ function loadExportImage(url) {
   });
 }
 
-async function loadExportAssets(post) {
-  const [avatar, ...media] = await Promise.all([loadExportImage(post.authorAvatarUrl), ...exportMediaUrls(post).map(loadExportImage)]);
-  return { avatar, media: media.filter(Boolean) };
+function exportCommentAuthor(comment) {
+  const author = comment?.author || {};
+  if (typeof author === 'string') return { name: author.replace(/^@/, ''), handle: author.startsWith('@') ? author : `@${author}`, avatarUrl: '' };
+  const handle = author.handle || '@member';
+  return { name: author.displayName || handle.replace(/^@/, ''), handle, avatarUrl: author.avatarUrl || '' };
+}
+
+async function loadExportTakes(post) {
+  let comments = flattenPostComments(post.comments || []);
+  if (!comments.length && post.databaseId && Number(post.commentCount || 0) > 0) {
+    try {
+      const payload = await apiFetch(`/api/posts/${post.databaseId}/comments`, {}, false);
+      post.comments = payload.comments || [];
+      post.commentCount = countComments(post.comments);
+      comments = flattenPostComments(post.comments);
+    } catch (error) { console.warn('Unable to load Takes for export:', error.message); }
+  }
+  return comments.sort((a, b) => Number(b.votes || 0) - Number(a.votes || 0) || new Date(a.createdAt || 0) - new Date(b.createdAt || 0)).slice(0, 3);
+}
+
+async function loadExportAssets(post, takes = []) {
+  const mediaUrls = exportMediaUrls(post);
+  const images = await Promise.all([loadExportImage(post.authorAvatarUrl), ...mediaUrls.map(loadExportImage), ...takes.map(comment => loadExportImage(exportCommentAuthor(comment).avatarUrl))]);
+  return { avatar: images[0], media: images.slice(1, 1 + mediaUrls.length).filter(Boolean), takeAvatars: images.slice(1 + mediaUrls.length) };
 }
 
 function drawExportBackground(context, width, height) {
@@ -1928,6 +1961,48 @@ function drawVoteExport(post, format, assets, backgroundMode = 'brand') {
   return canvas;
 }
 
+function drawTakesExport(post, takes, format, assets, backgroundMode = 'brand') {
+  const { canvas, context, width, height, unit } = exportCanvas(format); if (backgroundMode === 'brand') drawExportBackground(context, width, height);
+  const side = Math.round(46 * unit); const cardWidth = width - side * 2; const innerPad = 34 * unit; const inner = side + innerPad; const contentWidth = cardWidth - innerPad * 2;
+  context.fillStyle = '#101114';
+  const postText = fitExportText(context, post.text, contentWidth - 6 * unit, 170 * unit, 39, 27, unit);
+  const postHeight = Math.max(270 * unit, 145 * unit + postText.lines.length * postText.lineHeight + 38 * unit);
+  const takeRowHeight = (takes.length === 1 ? 220 : takes.length === 2 ? 205 : 188) * unit;
+  const takesHeight = 96 * unit + takeRowHeight * takes.length + 62 * unit;
+  const gap = 28 * unit; const groupHeight = postHeight + gap + takesHeight; const top = Math.max(42 * unit, (height - groupHeight) / 2);
+
+  drawRoundedCard(context, side, top, cardWidth, postHeight, 30 * unit, '#101114');
+  drawExportAuthor(context, post, inner, top + 27 * unit, unit, assets.avatar);
+  let postY = top + 132 * unit + postText.lineHeight; context.fillStyle = '#101114'; context.font = postText.font;
+  postText.lines.forEach(line => { context.fillText(line, inner, postY); postY += postText.lineHeight; });
+
+  const takesTop = top + postHeight + gap; drawRoundedCard(context, side, takesTop, cardWidth, takesHeight, 28 * unit, '#101114');
+  context.fillStyle = '#101114'; context.font = `900 ${Math.round(26 * unit)}px Arial`; context.fillText('TOP TAKES', inner, takesTop + 53 * unit);
+  const countText = String(takes.length); const pillWidth = 44 * unit;
+  context.fillStyle = '#f4f1eb'; context.strokeStyle = '#101114'; context.lineWidth = 2 * unit; context.beginPath(); context.roundRect(inner + 164 * unit, takesTop + 24 * unit, pillWidth, 38 * unit, 19 * unit); context.fill(); context.stroke();
+  context.fillStyle = '#101114'; context.font = `900 ${Math.round(17 * unit)}px Arial`; context.textAlign = 'center'; context.fillText(countText, inner + 164 * unit + pillWidth / 2, takesTop + 50 * unit); context.textAlign = 'left';
+  context.strokeStyle = '#d5d2ce'; context.lineWidth = 2 * unit; context.beginPath(); context.moveTo(inner, takesTop + 78 * unit); context.lineTo(side + cardWidth - innerPad, takesTop + 78 * unit); context.stroke();
+
+  takes.forEach((comment, index) => {
+    const rowTop = takesTop + 84 * unit + index * takeRowHeight; const author = exportCommentAuthor(comment); const avatarSize = 54 * unit; const avatarX = inner; const avatarY = rowTop + 24 * unit; const avatarImage = assets.takeAvatars?.[index];
+    context.strokeStyle = '#c8c5bf'; context.lineWidth = 3 * unit;
+    if (index < takes.length - 1) { context.beginPath(); context.moveTo(avatarX + avatarSize / 2, avatarY + avatarSize); context.lineTo(avatarX + avatarSize / 2, rowTop + takeRowHeight); context.stroke(); }
+    context.fillStyle = '#e8ecef'; context.strokeStyle = '#101114'; context.lineWidth = 3 * unit; context.beginPath(); context.arc(avatarX + avatarSize / 2, avatarY + avatarSize / 2, avatarSize / 2, 0, Math.PI * 2); context.fill(); context.stroke();
+    if (avatarImage) { context.save(); context.beginPath(); context.arc(avatarX + avatarSize / 2, avatarY + avatarSize / 2, avatarSize / 2 - 3 * unit, 0, Math.PI * 2); context.clip(); drawImageCover(context, avatarImage, avatarX + 3 * unit, avatarY + 3 * unit, avatarSize - 6 * unit, avatarSize - 6 * unit); context.restore(); }
+    else { context.fillStyle = '#101114'; context.font = `900 ${Math.round(22 * unit)}px Arial`; context.textAlign = 'center'; context.textBaseline = 'middle'; context.fillText((author.name || 'C').charAt(0).toUpperCase(), avatarX + avatarSize / 2, avatarY + avatarSize / 2 + unit); context.textAlign = 'left'; context.textBaseline = 'alphabetic'; }
+    const textX = avatarX + avatarSize + 20 * unit; const textWidth = contentWidth - avatarSize - 22 * unit;
+    context.fillStyle = '#101114'; context.font = `900 ${Math.round(21 * unit)}px Arial`; context.fillText(author.handle || author.name, textX, rowTop + 50 * unit, textWidth - 130 * unit);
+    const votes = Number(comment.votes || 0); const voteLabel = `↑ ${votes.toLocaleString()}`; context.font = `900 ${Math.round(17 * unit)}px Arial`; const voteWidth = Math.max(64 * unit, context.measureText(voteLabel).width + 24 * unit);
+    context.fillStyle = votes > 0 ? '#55df50' : '#f4f1eb'; context.strokeStyle = '#101114'; context.lineWidth = 2 * unit; context.beginPath(); context.roundRect(side + cardWidth - innerPad - voteWidth, rowTop + 24 * unit, voteWidth, 36 * unit, 18 * unit); context.fill(); context.stroke();
+    context.fillStyle = '#101114'; context.textAlign = 'center'; context.fillText(voteLabel, side + cardWidth - innerPad - voteWidth / 2, rowTop + 48 * unit); context.textAlign = 'left';
+    const commentText = fitExportText(context, comment.text, textWidth, takeRowHeight - 86 * unit, 28, 20, unit); context.fillStyle = '#101114'; context.font = commentText.font; let commentY = rowTop + 91 * unit;
+    commentText.lines.forEach(line => { context.fillText(line, textX, commentY); commentY += commentText.lineHeight; });
+    if (index < takes.length - 1) { context.strokeStyle = '#e0ddd7'; context.lineWidth = 2 * unit; context.beginPath(); context.moveTo(textX, rowTop + takeRowHeight - 4 * unit); context.lineTo(side + cardWidth - innerPad, rowTop + takeRowHeight - 4 * unit); context.stroke(); }
+  });
+  context.fillStyle = '#101114'; context.font = `900 ${Math.round(18 * unit)}px Arial`; context.textAlign = 'right'; context.fillText('CALLOUT', side + cardWidth - innerPad, takesTop + takesHeight - 25 * unit); context.textAlign = 'left';
+  return canvas;
+}
+
 async function triggerCanvasDownload(canvas, filename) {
   const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
   if (!blob) throw new Error('The image could not be generated.');
@@ -1940,6 +2015,13 @@ async function downloadPostImages(post, format, backgroundMode, canvases) {
   await triggerCanvasDownload(canvases[0], `callout-${safeId}-${format.key}-${backgroundMode}-quote.png`);
   await new Promise(resolve => setTimeout(resolve, 180));
   await triggerCanvasDownload(canvases[1], `callout-${safeId}-${format.key}-${backgroundMode}-votes.png`);
+}
+
+async function downloadTakesImage(post, format, backgroundMode, canvas) {
+  await document.fonts?.ready;
+  const safeId = String(post.id || 'take').replace(/[^a-zA-Z0-9_-]/g, '');
+  await triggerCanvasDownload(canvas, `callout-${safeId}-${format.key}-${backgroundMode}-takes.png`);
+  trackEvent('download_post_takes', { post: post.id, takes: Math.min(3, flattenPostComments(post.comments || []).length) });
 }
 
 function openEditPost(post) {
